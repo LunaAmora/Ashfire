@@ -1,0 +1,33 @@
+include "core.fire"
+
+str :
+  len  int
+  data ptr
+end
+
+ciovec :
+  buf     ptr
+  buf_len int
+end
+
+puts : *str :
+  iov ciovec:= end
+  written: 4 end
+  @ swap !iov
+  1 *iov #ptr 1 written fd_write drop
+end
+
+print : str :
+  string str:= end
+  !string *string puts
+end
+
+println : str :
+  print "\n" print
+end
+
+trim-left : *str :
+  dup 
+  .*len  dec32
+  .*data inc32
+end
