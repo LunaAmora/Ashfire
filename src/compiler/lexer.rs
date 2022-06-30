@@ -99,7 +99,8 @@ impl Lexer {
             ensure!(&name.ends_with('\"'), "Missing closing `\"` in string literal");
         }
 
-        name.pop();
+        name = name.trim_matches('\"').to_string();
+        
         let length = name.len() - name.chars().filter(|c| c.eq(&'\\')).collect::<String>().len();
         let word = Word { name, value: length as i32};
         parser.data_list.push(word.into());
