@@ -14,7 +14,7 @@ pub struct Op {
     operand: i32 //optional, default 0, can change
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Loc { //does not change
     pub file: String,
     pub line: i32,

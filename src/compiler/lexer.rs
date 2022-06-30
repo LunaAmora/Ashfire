@@ -1,6 +1,7 @@
 use std::{io::{BufRead, BufReader}, fs::File, path::PathBuf, ops::Not};
 use super::{types::*, parser::Parser};
 use anyhow::{Result, ensure, bail};
+use firelib::OptionErr;
 
 struct Token {
     name: String,
@@ -89,7 +90,7 @@ impl Lexer {
         Some(Token { name, loc })
     }
 
-    fn try_parse_string(&mut self, token: &Token, parser: &mut Parser) -> Result<Option<i32>> {
+    fn try_parse_string(&mut self, token: &Token, parser: &mut Parser) -> Result<Option<IRToken>> {
         let mut name = token.name.clone();
         
         if !name.starts_with('\"') { return Ok(None) }
@@ -104,33 +105,32 @@ impl Lexer {
         let length = name.len() - name.chars().filter(|c| c.eq(&'\\')).collect::<String>().len();
         let word = Word { name, value: length as i32};
         parser.data_list.push(word.into());
-
-        Ok(Some(parser.data_list.len() as i32 - 1))
+        let operand = parser.data_list.len() as i32 - 1;
+        
+        Ok(Some(IRToken{ typ: TokenType::Str, operand, loc: token.loc.to_owned() }))
     }
 
     pub fn lex_next_token(&mut self, parser: &mut Parser) -> Result<Option<IRToken>> {
-        Ok(match self.next_token() {
-            Some(tok) => { Some(
-                if let Some(operand) = self.try_parse_string(&tok, parser)? {
-                    IRToken{ typ: TokenType::Str, operand, loc: tok.loc }
-                } else if let Some(operand) = try_parse_char(&tok.name)? {
-                    IRToken{ typ: TokenType::DataType(0), operand, loc: tok.loc }
-                } else if let Some(operand) = try_parse_keyword(&tok.name) {
-                    IRToken{ typ: TokenType::Keyword, operand, loc: tok.loc }
-                } else if let Some(operand) = try_parse_number(&tok.name) {
-                    IRToken{ typ: TokenType::DataType(0), operand, loc: tok.loc }
-                } else {
-                    IRToken{ typ: TokenType::Word, operand: define_word(tok.name, parser), loc: tok.loc}
-                })
+        match self.next_token() {
+            Some(tok) => {
+                OptionErr::from(self.try_parse_string(&tok, parser))
+                .or_try(|| try_parse_char(&tok))
+                .or_else(|| parse_keyword(&tok))
+                .or_else(|| parse_number(&tok))
+                .or_else(|| parse_word(tok, parser)).0
             }
-            None => None,
-        })
+            None => Ok(None),
+        }
     }
 }
 
+fn parse_word(tok: Token, parser: &mut Parser) -> Option<IRToken> {
+    Some(IRToken{ typ: TokenType::Word, operand: define_word(tok.name, parser), loc: tok.loc})
+}
+
 fn define_word(name: String, parser: &mut Parser) -> i32 {
-   parser.word_list.push(name);
-   parser.word_list.len() as i32 - 1
+    parser.word_list.push(name);
+    parser.word_list.len() as i32 - 1
 }
 
 fn strip_trailing_newline(input: &str) -> &str {
@@ -140,11 +140,17 @@ fn strip_trailing_newline(input: &str) -> &str {
         .unwrap_or(input)
 }
 
-fn try_parse_number(word: &str) ->  Option<i32> {
-    word.parse::<i32>().ok()
+fn parse_number(tok: &Token) -> Option<IRToken> {
+    tok.name.parse::<i32>().ok().map(|operand| 
+        IRToken{ typ: TokenType::DataType(0), operand, loc: tok.loc.to_owned() })
 }
 
-fn try_parse_char(word: &str) -> Result<Option<i32>> {
+fn try_parse_char(tok: &Token) -> Result<Option<IRToken>> {
+    parse_char(&tok.name).map(|o| o.map(|operand|
+        IRToken{ typ: TokenType::DataType(0), operand, loc: tok.loc.to_owned() }))
+}
+
+fn parse_char(word: &str) -> Result<Option<i32>> {
     if let Some(word) = word.strip_prefix('\'') {
         if let Some(word) = word.strip_suffix('\'') { return Ok(
             if let Some(escaped) = word.strip_prefix('\\') {
@@ -171,8 +177,8 @@ fn try_parse_hex(word: &str) ->  Option<i32> {
     i64::from_str_radix(word, 16).ok().map(|h| h as i32)
 }
 
-fn try_parse_keyword(word: &str) -> Option<i32> { Some(
-    match word {
+fn parse_keyword(tok: &Token) -> Option<IRToken> {
+    let operand = match tok.name.as_str() {
         "dup"  => KeywordType::Dup.into(),
         "swap" => KeywordType::Swap.into(),
         "drop" => KeywordType::Drop.into(),
@@ -194,5 +200,6 @@ fn try_parse_keyword(word: &str) -> Option<i32> { Some(
         "struct" => KeywordType::Struct.into(),
         "include" => KeywordType::Include.into(),
         _ => return None
-    })
+    };
+    Some(IRToken{ typ: TokenType::Keyword, operand, loc: tok.loc.to_owned() })
 }
