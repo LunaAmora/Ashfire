@@ -50,18 +50,18 @@ impl Lexer {
         }
     }
 
+    fn read_from_pos(&mut self) -> String {
+        self.buffer.iter().skip(self.lex_pos).collect()
+    }
+
     fn trim_left(&mut self) -> bool {
-        if self.lex_pos + 1 > self.buffer.len() ||
-           self.buffer.iter().skip(self.lex_pos).collect::<String>().trim().is_empty() {
+        if self.lex_pos + 1 > self.buffer.len() || self.read_from_pos().trim().is_empty() {
             false
         }
         else {
             self.advance_by_predicate(|c: char| c != ' ');
             self.col_num = self.lex_pos;
-            self.buffer.iter()
-                .skip(self.lex_pos)
-                .collect::<String>()
-                .starts_with("//").not()
+            self.read_from_pos().starts_with("//").not()
         }
     }
 
