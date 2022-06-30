@@ -115,9 +115,9 @@ impl Lexer {
                     IRToken{ typ: TokenType::Str, operand, loc: tok.loc }
                 } else if let Some(operand) = try_parse_char(&tok.name)? {
                     IRToken{ typ: TokenType::DataPtr(0), operand, loc: tok.loc }
-                } else if let Some(operand) = parse_keyword(&tok.name) {
+                } else if let Some(operand) = try_parse_keyword(&tok.name) {
                     IRToken{ typ: TokenType::Keyword, operand, loc: tok.loc }
-                } else if let Some(operand) =  try_parse_number(&tok.name){
+                } else if let Some(operand) = try_parse_number(&tok.name) {
                     IRToken{ typ: TokenType::DataPtr(0), operand, loc: tok.loc }
                 } else {
                     IRToken{ typ: TokenType::Word, operand: define_word(tok.name, parser), loc: tok.loc}
@@ -171,8 +171,8 @@ fn try_parse_hex(word: &str) ->  Option<i32> {
     i64::from_str_radix(word, 16).ok().map(|h| h as i32)
 }
 
-fn parse_keyword(word: &str) -> Option<i32> {
-    let res: i32 = match word {
+fn try_parse_keyword(word: &str) -> Option<i32> { Some(
+    match word {
         "dup"  => KeywordType::Dup.into(),
         "swap" => KeywordType::Swap.into(),
         "drop" => KeywordType::Drop.into(),
@@ -193,7 +193,6 @@ fn parse_keyword(word: &str) -> Option<i32> {
         "while"  => KeywordType::While.into(),
         "struct" => KeywordType::Struct.into(),
         "include" => KeywordType::Include.into(),
-        _ => -1
-    };
-    if res >= 0 {Some(res)} else {None}
+        _ => return None
+    })
 }
