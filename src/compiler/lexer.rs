@@ -114,11 +114,11 @@ impl Lexer {
                 if let Some(operand) = self.try_parse_string(&tok, parser)? {
                     IRToken{ typ: TokenType::Str, operand, loc: tok.loc }
                 } else if let Some(operand) = try_parse_char(&tok.name)? {
-                    IRToken{ typ: TokenType::DataPtr(0), operand, loc: tok.loc }
+                    IRToken{ typ: TokenType::DataType(0), operand, loc: tok.loc }
                 } else if let Some(operand) = try_parse_keyword(&tok.name) {
                     IRToken{ typ: TokenType::Keyword, operand, loc: tok.loc }
                 } else if let Some(operand) = try_parse_number(&tok.name) {
-                    IRToken{ typ: TokenType::DataPtr(0), operand, loc: tok.loc }
+                    IRToken{ typ: TokenType::DataType(0), operand, loc: tok.loc }
                 } else {
                     IRToken{ typ: TokenType::Word, operand: define_word(tok.name, parser), loc: tok.loc}
                 })
