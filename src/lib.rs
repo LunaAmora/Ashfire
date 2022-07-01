@@ -9,25 +9,23 @@ impl<T> From<Result<Option<T>>> for OptionErr<T> {
 }
 
 impl<T> OptionErr<T> {
-    pub fn or_try<F>(self, f: F) -> OptionErr<T>
+    pub fn or_try<F>(mut self, f: F) -> OptionErr<T>
     where
         F: FnOnce() -> Result<Option<T>>,
     {
-        match self.0 {
-            Ok(Some(x)) => Self(Ok(Some(x))),
-            Ok(None) => Self(f()),
-            Err(err) => Self(Err(err)),
+        if let Ok(None) = self.0 {
+            self.0 = f();
         }
+        self
     }
 
-    pub fn or_else<F>(self, f: F) -> OptionErr<T>
+    pub fn or_else<F>(mut self, f: F) -> OptionErr<T>
     where
         F: FnOnce() -> Option<T>,
     {
-        match self.0 {
-            Ok(Some(x)) => Self(Ok(Some(x))),
-            Ok(None) => Self(Ok(f())),
-            Err(err) => Self(Err(err)),
+        if let Ok(None) = self.0 {
+            self.0 = Ok(f());
         }
+        self
     }
 }
