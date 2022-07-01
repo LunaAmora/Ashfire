@@ -1,6 +1,6 @@
 use std::{io::{BufRead, BufReader}, fs::File, path::PathBuf, ops::Not};
 use super::{types::*, parser::Parser};
-use anyhow::{Result, ensure, bail};
+use anyhow::{Result, ensure, bail, Context};
 use firelib::OptionErr;
 
 struct Token {
@@ -91,41 +91,41 @@ impl Lexer {
     }
 
     fn try_parse_string(&mut self, token: &Token, parser: &mut Parser) -> Result<Option<IRToken>> {
-        let mut name = token.name.clone();
-        
-        if !name.starts_with('\"') { return Ok(None) }
-        if !name.ends_with('\"') {
-            self.advance_by_predicate(|c: char| c == '\"');
-            name = self.read_by_predicate(|c: char| c == ' ');
-            ensure!(&name.ends_with('\"'), "Missing closing `\"` in string literal");
-        }
+        token.name
+            .strip_prefix('\"').map_or_else(|| Ok(None), |word| {word
+            .strip_suffix('\"').map_or_else(|| {
+                self.advance_by_predicate(|c: char| c == '\"');
+                Ok(self.read_by_predicate(|c: char| c == ' ')
+                    .strip_prefix('\"').unwrap()
+                    .strip_suffix('\"').with_context(|| "Missing closing `\"` in string literal")?
+                    .to_string())
+            }, |word| Ok(word.to_string()))
+            .map(|name| {
+                let length = name.len() - name.chars().filter(|c| c.eq(&'\\')).collect::<String>().len();
+                parser.data_list.push((Word { name, value: length as i32}).into());
 
-        name = name.trim_matches('\"').to_string();
-        
-        let length = name.len() - name.chars().filter(|c| c.eq(&'\\')).collect::<String>().len();
-        let word = Word { name, value: length as i32};
-        parser.data_list.push(word.into());
-        let operand = parser.data_list.len() as i32 - 1;
-        
-        Ok(Some(IRToken{ typ: TokenType::Str, operand, loc: token.loc.to_owned() }))
+                let operand = parser.data_list.len() as i32 - 1;
+                Some(IRToken{ typ: TokenType::Str, operand, loc: token.loc.to_owned() })
+            })
+        })
     }
 
     pub fn lex_next_token(&mut self, parser: &mut Parser) -> Result<Option<IRToken>> {
         match self.next_token() {
-            Some(tok) => {
-                OptionErr::from(self.try_parse_string(&tok, parser))
+            Some(tok) => { OptionErr::from(self
+                .try_parse_string(&tok, parser))
                 .or_try(|| try_parse_char(&tok))
                 .or_else(|| parse_keyword(&tok))
                 .or_else(|| parse_number(&tok))
-                .or_else(|| parse_word(tok, parser)).0
+                .or(|| parse_word(tok, parser))
             }
             None => Ok(None),
         }
     }
 }
 
-fn parse_word(tok: Token, parser: &mut Parser) -> Option<IRToken> {
-    Some(IRToken{ typ: TokenType::Word, operand: define_word(tok.name, parser), loc: tok.loc})
+fn parse_word(tok: Token, parser: &mut Parser) -> IRToken {
+    IRToken{ typ: TokenType::Word, operand: define_word(tok.name, parser), loc: tok.loc}
 }
 
 fn define_word(name: String, parser: &mut Parser) -> i32 {
@@ -146,31 +146,27 @@ fn parse_number(tok: &Token) -> Option<IRToken> {
 }
 
 fn try_parse_char(tok: &Token) -> Result<Option<IRToken>> {
-    parse_char(&tok.name).map(|o| o.map(|operand|
-        IRToken{ typ: TokenType::DataType(0), operand, loc: tok.loc.to_owned() }))
-}
-
-fn parse_char(word: &str) -> Result<Option<i32>> {
-    if let Some(word) = word.strip_prefix('\'') {
-        if let Some(word) = word.strip_suffix('\'') { return Ok(
-            if let Some(escaped) = word.strip_prefix('\\') {
-                match escaped {
-                    "t" => Some('\t' as i32),
-                    "n" => Some('\n' as i32),
-                    "r" => Some('\r' as i32),
-                    "\'" => Some('\'' as i32),
-                    "\\" => Some('\\' as i32),
-                    _ if escaped.len() == 2 => try_parse_hex(escaped),
-                    _ => bail!("Invalid escaped character sequence found on char literal: `{}`", escaped),
-                }
-            } else {
-                ensure!(word.len() == 1, "Char literals cannot contain more than one char: `{}`", word);
-                Some(word.chars().next().unwrap() as i32)
-            })
-        }
-        bail!("Missing closing `\'` in char literal")
-    }
-    Ok(None)
+    tok.name
+        .strip_prefix('\'').map_or_else(|| Ok(None), |word| word
+        .strip_suffix('\'').with_context(|| "Missing closing `\'` in char literal".to_string())?
+        .strip_prefix('\\').map_or_else(|| {
+            ensure!(word.len() == 1, "Char literals cannot contain more than one char: `{}`", word);
+            Ok(Some(word.chars().next().unwrap() as i32))
+        }, |escaped| Ok(
+            match escaped {
+                "t" => Some('\t' as i32),
+                "n" => Some('\n' as i32),
+                "r" => Some('\r' as i32),
+                "\'" => Some('\'' as i32),
+                "\\" => Some('\\' as i32),
+                _ if escaped.len() == 2 => try_parse_hex(escaped),
+                _ => bail!("Invalid escaped character sequence found on char literal: `{}`", escaped),
+            }
+        ))
+        .map(|o| o.map(|operand|
+            IRToken{ typ: TokenType::DataType(0), operand, loc: tok.loc.to_owned() }
+        ))
+    )
 }
 
 fn try_parse_hex(word: &str) ->  Option<i32> {
@@ -179,27 +175,27 @@ fn try_parse_hex(word: &str) ->  Option<i32> {
 
 fn parse_keyword(tok: &Token) -> Option<IRToken> {
     let operand = match tok.name.as_str() {
-        "dup"  => KeywordType::Dup.into(),
-        "swap" => KeywordType::Swap.into(),
-        "drop" => KeywordType::Drop.into(),
-        "over" => KeywordType::Over.into(),
-        "rot"  => KeywordType::Rot.into(),
-        "if"   => KeywordType::If.into(),
-        "else" => KeywordType::Else.into(),
-        "end"  => KeywordType::End.into(),
-        "proc" => KeywordType::Proc.into(),
-        "->"   => KeywordType::Arrow.into(),
-        "mem"  => KeywordType::Mem.into(),
-        ":"    => KeywordType::Colon.into(),
-        "="    => KeywordType::Equal.into(),
-        "let"  => KeywordType::Let.into(),
-        "do"   => KeywordType::Do.into(),
-        "@"    => KeywordType::At.into(),
-        "case" => KeywordType::Case.into(),
-        "while"  => KeywordType::While.into(),
-        "struct" => KeywordType::Struct.into(),
-        "include" => KeywordType::Include.into(),
+        "dup"  => KeywordType::Dup,
+        "swap" => KeywordType::Swap,
+        "drop" => KeywordType::Drop,
+        "over" => KeywordType::Over,
+        "rot"  => KeywordType::Rot,
+        "if"   => KeywordType::If,
+        "else" => KeywordType::Else,
+        "end"  => KeywordType::End,
+        "proc" => KeywordType::Proc,
+        "->"   => KeywordType::Arrow,
+        "mem"  => KeywordType::Mem,
+        ":"    => KeywordType::Colon,
+        "="    => KeywordType::Equal,
+        "let"  => KeywordType::Let,
+        "do"   => KeywordType::Do,
+        "@"    => KeywordType::At,
+        "case" => KeywordType::Case,
+        "while"  => KeywordType::While,
+        "struct" => KeywordType::Struct,
+        "include" => KeywordType::Include,
         _ => return None
-    };
+    }.into();
     Some(IRToken{ typ: TokenType::Keyword, operand, loc: tok.loc.to_owned() })
 }

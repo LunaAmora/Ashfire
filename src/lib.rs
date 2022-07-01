@@ -1,6 +1,12 @@
 use anyhow::Result;
 
-pub struct OptionErr<T> (pub Result<Option<T>>);
+pub struct OptionErr<T> (Result<Option<T>>);
+
+impl<T> From<OptionErr<T>> for Result<Option<T>> {
+    fn from(val: OptionErr<T>) -> Self {
+        val.0
+    }
+}
 
 impl<T> From<Result<Option<T>>> for OptionErr<T> {
     fn from(opt: Result<Option<T>>) -> Self {
@@ -27,5 +33,15 @@ impl<T> OptionErr<T> {
             self.0 = Ok(f());
         }
         self
+    }
+
+    pub fn or<F>(self, f: F) -> Result<Option<T>>
+    where
+        F: FnOnce() -> T,
+    {
+        match self.0 {
+            Ok(None) => Ok(Some(f())),
+            _ => self.0,
+        }
     }
 }
