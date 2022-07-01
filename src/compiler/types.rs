@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter, Result, write, self};
+
 pub struct Proc {
     name: String,
     contract: Contract,
@@ -14,18 +16,29 @@ pub struct Op {
     operand: i32 //optional, default 0, can change
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Loc { //does not change
     pub file: String,
     pub line: i32,
     pub col:  i32
 }
 
-#[derive(Debug)]
+impl Display for Loc {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}:{}:{}:", self.file, self.line, self.col)
+    }
+}
+
 pub struct IRToken  { //does not change
     pub typ: TokenType,
     pub operand: i32,
     pub loc: Loc
+}
+
+impl Display for IRToken {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{:?} [{}]", self.typ, self.operand)
+    }
 }
 
 pub struct StructType {
@@ -141,7 +154,7 @@ pub enum IntrinsicType {
 }
 
 pub enum KeywordType {
-    If = 0,
+    If,
     Else,
     End,
     Arrow,
@@ -163,10 +176,9 @@ pub enum KeywordType {
     Case,
 }
 
-#[allow(clippy::from_over_into)]
-impl Into<i32> for KeywordType {
-    fn into(self) -> i32 {
-        self as i32
+impl From<KeywordType> for i32{
+    fn from(k: KeywordType) -> Self {
+        k as i32
     }
 }
 

@@ -20,7 +20,7 @@ pub fn compile_file(path: PathBuf) -> Result<()> {
     let mut lex = Lexer::new(BufReader::new(f), path);
 
     while let Some(token) = lex.lex_next_token(&mut parser)? {
-        info!("Lexed token: {:?}", token);
+        info!("{} Found: {token}", token.loc);
     }
 
     Ok(())

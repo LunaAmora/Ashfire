@@ -40,7 +40,7 @@ fn main() {
     match args.command {
         Commands::Com { path, output: _ } => {
             if let Err(err) = compile_file(path) {
-                log::error!("{:#}", err);
+                error!("{:#}", err);
             }
         },
     };

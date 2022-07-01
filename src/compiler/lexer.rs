@@ -97,7 +97,8 @@ impl Lexer {
                 self.advance_by_predicate(|c: char| c == '\"');
                 Ok(self.read_by_predicate(|c: char| c == ' ')
                     .strip_prefix('\"').unwrap()
-                    .strip_suffix('\"').with_context(|| "Missing closing `\"` in string literal")?
+                    .strip_suffix('\"')
+                    .with_context(|| format!("{} Missing closing `\"` in string literal", token.loc))?
                     .to_string())
             }, |word| Ok(word.to_string()))
             .map(|name| {
@@ -148,9 +149,9 @@ fn parse_number(tok: &Token) -> Option<IRToken> {
 fn try_parse_char(tok: &Token) -> Result<Option<IRToken>> {
     tok.name
         .strip_prefix('\'').map_or_else(|| Ok(None), |word| word
-        .strip_suffix('\'').with_context(|| "Missing closing `\'` in char literal".to_string())?
+        .strip_suffix('\'').with_context(|| format!("{} Missing closing `\'` in char literal", tok.loc))?
         .strip_prefix('\\').map_or_else(|| {
-            ensure!(word.len() == 1, "Char literals cannot contain more than one char: `{}`", word);
+            ensure!(word.len() == 2, "{} Char literals cannot contain more than one char: `{word}", tok.loc);
             Ok(Some(word.chars().next().unwrap() as i32))
         }, |escaped| Ok(
             match escaped {
@@ -160,7 +161,7 @@ fn try_parse_char(tok: &Token) -> Result<Option<IRToken>> {
                 "\'" => Some('\'' as i32),
                 "\\" => Some('\\' as i32),
                 _ if escaped.len() == 2 => try_parse_hex(escaped),
-                _ => bail!("Invalid escaped character sequence found on char literal: `{}`", escaped),
+                _ => bail!("{} Invalid escaped character sequence found on char literal: `{escaped}`", tok.loc),
             }
         ))
         .map(|o| o.map(|operand|
