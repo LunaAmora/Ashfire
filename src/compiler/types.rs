@@ -1,4 +1,5 @@
 use std::fmt::{Display, Formatter, Result, write, self};
+use anyhow::Result as anyResult;
 
 pub struct Proc {
     name: String,
@@ -11,9 +12,26 @@ pub struct Contract {
 }
 
 pub struct Op {
-    op_type: OpType,
-    loc:     Loc,
-    operand: i32 //optional, default 0, can change
+    pub op_type: OpType,
+    pub operand: i32,
+    pub loc:     Loc,
+}
+
+impl From<(OpType, i32, Loc)> for Op {
+    fn from(tuple: (OpType, i32, Loc)) -> Self {
+        Self { op_type: tuple.0, operand: tuple.1, loc: tuple.2 }
+    }
+}
+impl From<(OpType, Loc)> for Op {
+    fn from(tuple: (OpType, Loc)) -> Self {
+        Self { op_type: tuple.0, operand: 0, loc: tuple.1 }
+    }
+}
+
+impl From<Op> for anyResult<Option<Op>> {
+    fn from(op: Op) -> Self {
+        Ok(Some(op))
+    }
 }
 
 #[derive(Clone)]
@@ -58,8 +76,14 @@ pub struct Word {
 }
 
 pub struct SizedWord {
-    word:   Word,
-    offset: i32 // default -1
+    pub word:   Word,
+    pub offset: i32 // default -1
+}
+
+impl SizedWord {
+    pub fn size(&self) -> i32 {
+        self.word.value
+    }
 }
 
 impl From<Word> for SizedWord {
@@ -88,14 +112,22 @@ pub enum TokenType {
     Keyword,
     Word,
     Str,
-    DataType(i32),
-    DataPtr(i32),
+    DataType(ValueType),
+    DataPtr(ValueType),
 }
 
+#[derive(Debug)]
+pub enum ValueType {
+    Int,
+    Bool,
+    Ptr,
+    Any,
+    Type(i32)
+}
+
+#[derive(Debug)]
 pub enum OpType {
-    PushInt,
-    PushBool,
-    PushPtr,
+    PushData(ValueType),
     PushStr,
     PushLocalMem,
     PushGlobalMem,
@@ -143,16 +175,19 @@ pub enum IntrinsicType {
     And,
     Or,
     Xor,
-    Load8,
-    Store8,
-    Load16,
-    Store16,
-    Load32,
-    Store32,
+    Load(DataSizes),
+    Store(DataSizes),
     FdWrite,
     Cast(i32)
 }
 
+pub enum DataSizes {
+    I8,
+    I16,
+    I32
+}
+
+#[derive(FromPrimitive, Debug)]
 pub enum KeywordType {
     If,
     Else,

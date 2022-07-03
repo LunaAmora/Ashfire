@@ -143,7 +143,7 @@ fn strip_trailing_newline(input: &str) -> &str {
 
 fn parse_number(tok: &Token) -> Option<IRToken> {
     tok.name.parse::<i32>().ok().map(|operand| 
-        IRToken{ typ: TokenType::DataType(0), operand, loc: tok.loc.to_owned() })
+        IRToken{ typ: TokenType::DataType(ValueType::Int), operand, loc: tok.loc.to_owned() })
 }
 
 fn try_parse_char(tok: &Token) -> Result<Option<IRToken>> {
@@ -165,7 +165,7 @@ fn try_parse_char(tok: &Token) -> Result<Option<IRToken>> {
             }
         ))
         .map(|o| o.map(|operand|
-            IRToken{ typ: TokenType::DataType(0), operand, loc: tok.loc.to_owned() }
+            IRToken{ typ: TokenType::DataType(ValueType::Int), operand, loc: tok.loc.to_owned() }
         ))
     )
 }
