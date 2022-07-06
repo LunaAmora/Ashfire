@@ -102,8 +102,7 @@ impl Parser<'_> {
                 Op {typ: OpType::PrepProc, operand, ..} => (OpType::EndProc, operand, loc).into(),
                 block => invalid_block(&loc, block, "Expected `end` to close a valid block")?
             },
-            KeywordType::Include => todo!(),
-            KeywordType::Arrow | KeywordType::Proc | KeywordType::Mem |
+            KeywordType::Include| KeywordType::Arrow | KeywordType::Proc | KeywordType::Mem |
             KeywordType::Struct => bail!("{} Keyword type is not valid here: `{:?}`", loc, key),
         }.into()
         
@@ -168,6 +167,44 @@ impl Parser<'_> {
     fn try_define_context(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
         todo!()
     }
+
+    fn lex_file(&mut self, path: PathBuf) -> Result<()> {
+        let reader = BufReader::new(File::open(&path)
+            .with_context(|| format!("could not read file `{:?}`", &path))?);
+
+        let current = path.to_owned();
+        let mut lex = Lexer::new(reader, path);
+
+        while let Some(token) = lex.lex_next_token(self)? {
+            if let IRToken { typ: TokenType::Keyword, operand, .. } = token { // Todo: Refactor with a better way to check for keywords
+                if let KeywordType::Include = FromPrimitive::from_i32(operand)
+                    .expect("unreachable, lexer error") {
+                    if let Some(tok) = lex.lex_next_token(self)? {
+                        if let IRToken { typ: TokenType::Str, operand, .. } = tok {
+                            let relative_path = self.data_list
+                                .get(operand as usize)
+                                .expect("unreachable, lexer error")
+                                .word.name.as_str();
+                            let include = current.ancestors()
+                                .nth(1)
+                                .expect("unreachable, could not get dir path")
+                                .join(relative_path);
+                                log::info!("Including file: {:?}", include);
+                                self.lex_file(include)?;
+                            continue;
+                        }
+                        else {
+                            bail!("{} Expected to find include file name, but found: `{}`", tok.loc, tok)
+                        }
+                    } else {
+                        bail!("Expected to find include file name, but found nothing")
+                    }
+                }
+            }
+            self.ir_tokens.push_back(token)
+        };
+        Ok(())
+    }
 }
 
 fn invalid_block(loc: &Loc, block: Op, error: &str) -> Result<Op> {
@@ -175,16 +212,8 @@ fn invalid_block(loc: &Loc, block: Op, error: &str) -> Result<Op> {
 }
 
 pub fn compile_file(path: PathBuf) -> Result<()> {
-    let f =  File::open(&path)
-        .with_context(|| format!("could not read file `{:?}`", path))?;
     log::info!("Compiling file: {:?}", path);
-
     let mut parser = Parser::new();
-    let mut lex = Lexer::new(BufReader::new(f), path);
-
-    while let Some(token) = lex.lex_next_token(&mut parser)? {
-        parser.ir_tokens.push_back(token)
-    }
-
+    parser.lex_file(path)?;
     parser.parse_tokens()
 }
