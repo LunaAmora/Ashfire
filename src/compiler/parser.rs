@@ -168,7 +168,7 @@ impl Parser<'_> {
         todo!()
     }
 
-    fn lex_file(&mut self, path: PathBuf) -> Result<()> {
+    fn lex_file(&mut self, path: PathBuf) -> Result<&mut Self> {
         let reader = BufReader::new(File::open(&path)
             .with_context(|| format!("could not read file `{:?}`", &path))?);
 
@@ -182,24 +182,25 @@ impl Parser<'_> {
             }
 
             let tok = lex.lex_next_token(self)?
-                .expect_member(TokenType::Str, "include file name")?;
+                .expect_by(|t| -> bool {t.typ == TokenType::Str}, "include file name")?;
                 
             let include = get_dir(&current)?
                 .join(self.data_list.get(tok.operand as usize)
                 .expect("unreachable, lexer error")
                 .word.name.as_str());
 
-            log::info!("Including file: {:?}", include);
+            info!("Including file: {:?}", include);
             self.lex_file(include)?;
         };
-        Ok(())
+        Ok(self)
     }
 }
 
-impl Expect<TokenType, IRToken> for Option<IRToken> {
-    fn expect_member(self, expected: TokenType, desc: &str) -> Result<IRToken> where Self: Sized {
+impl ExpectBy<IRToken> for Option<IRToken> {
+    fn expect_by<P>(self, pred: P, desc: &str) -> Result<IRToken> where
+        P: FnOnce(&IRToken) -> bool {
         match self {
-            Some(tok) if expected == tok.typ => Ok(tok),
+            Some(tok) if pred(&tok) => Ok(tok),
             Some(tok) => bail!("{} Expected to find {}, but found: `{}`", tok.loc, desc, tok),
             None => bail!("Expected to find {}, but found nothing", desc),
         }
@@ -211,8 +212,8 @@ fn invalid_block(loc: &Loc, block: Op, error: &str) -> Result<Op> {
 }
 
 pub fn compile_file(path: PathBuf) -> Result<()> {
-    log::info!("Compiling file: {:?}", path);
-    let mut parser = Parser::new();
-    parser.lex_file(path)?;
-    parser.parse_tokens()
+    info!("Compiling file: {:?}", path);
+    Parser::new()
+        .lex_file(path)?
+        .parse_tokens()
 }

@@ -47,8 +47,9 @@ impl<T> OptionErr<T> {
     }
 }
 
-pub trait Expect<T, S> {
-    fn expect_member(self, expected: T, desc: &str) -> Result<S> where Self: Sized;
+pub trait ExpectBy<T> {
+    fn expect_by<P>(self, pred: P, desc: &str) -> Result<T> where
+        P: FnOnce(&T) -> bool;
 }
 
 pub fn get_dir(current: &Path) -> Result<&Path> {
