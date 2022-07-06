@@ -11,20 +11,21 @@ pub struct Contract {
     outs: Vec<TokenType>,
 }
 
+#[derive(Clone)]
 pub struct Op {
-    pub op_type: OpType,
+    pub typ:     OpType,
     pub operand: i32,
     pub loc:     Loc,
 }
 
 impl From<(OpType, i32, Loc)> for Op {
     fn from(tuple: (OpType, i32, Loc)) -> Self {
-        Self { op_type: tuple.0, operand: tuple.1, loc: tuple.2 }
+        Self { typ: tuple.0, operand: tuple.1, loc: tuple.2 }
     }
 }
 impl From<(OpType, Loc)> for Op {
     fn from(tuple: (OpType, Loc)) -> Self {
-        Self { op_type: tuple.0, operand: 0, loc: tuple.1 }
+        Self { typ: tuple.0, operand: 0, loc: tuple.1 }
     }
 }
 
@@ -116,7 +117,7 @@ pub enum TokenType {
     DataPtr(ValueType),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ValueType {
     Int,
     Bool,
@@ -125,7 +126,7 @@ pub enum ValueType {
     Type(i32)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum OpType {
     PushData(ValueType),
     PushStr,

@@ -2,19 +2,20 @@ use std::{io::BufReader, fs::File, path::PathBuf, collections::VecDeque};
 use anyhow::{Context, Result, ensure, bail};
 use super::{lexer::Lexer, types::*};
 use num::FromPrimitive;
+use firelib::OptionErr;
 
 #[derive(Default)]
-pub struct Parser {
+pub struct Parser<'a> {
     pub word_list: Vec<String>,
     pub data_list: Vec<SizedWord>,
     pub total_data_size: i32,
     ir_tokens: VecDeque<IRToken>,
     program:   Vec<Op>,
     op_blocks: Vec<Op>,
-    current_proc: Option<Proc>,
+    current_proc: Option<&'a Proc>,
 }
 
-impl Parser {
+impl Parser<'_> {
     pub fn new() -> Self { Default::default() }
     
     fn inside_proc(&self) -> bool {
@@ -36,7 +37,6 @@ impl Parser {
         
         Op::from(match tok.typ {
             TokenType::Keyword => return self.define_keyword_op(tok.operand, tok.loc),
-            TokenType::Word => todo!(),
             TokenType::Str => (OpType::PushStr, self.register_string(tok.operand), tok.loc),
             TokenType::DataType(typ) => {
                 match typ {
@@ -45,6 +45,22 @@ impl Parser {
                 }
             },
             TokenType::DataPtr(typ) => bail!("{} Data pointer type not valid here: `{:?}`", tok.loc, typ),
+            TokenType::Word => {
+                let word = self.word_list.get(tok.operand as usize).expect("unreachable");
+                return OptionErr::from(
+                    self.try_get_const_struct(word, tok.loc.to_owned()))
+                    .or_try(|| self.try_get_offset(word, tok.operand, tok.loc.to_owned()))
+                    .or_try(|| self.try_get_binding(word, tok.loc.to_owned()))
+                    .or_try(|| self.try_get_intrinsic(word, tok.loc.to_owned()))
+                    .or_try(|| self.try_get_local_mem(word, tok.loc.to_owned()))
+                    .or_try(|| self.try_get_global_mem(word, tok.loc.to_owned()))
+                    .or_try(|| self.try_get_proc_name(word, tok.loc.to_owned()))
+                    .or_try(|| self.try_get_const_name(word, tok.loc.to_owned()))
+                    .or_try(|| self.try_get_variable(word, tok.loc.to_owned()))
+                    .or_try(|| self.try_define_context(word, tok.loc.to_owned()))
+                    .or_try(|| bail!("{} Word was not declared on the program: `{}`", tok.loc, word))
+                    .into()
+            },
         }).into()
     }
 
@@ -59,18 +75,34 @@ impl Parser {
             KeywordType::Rot   => (OpType::Rot,  loc).into(),
             KeywordType::Equal => (OpType::Equal,loc).into(),
             KeywordType::At    => (OpType::Unpack, loc).into(),
-            KeywordType::Include => todo!(),
-            KeywordType::While   => todo!(),
-            KeywordType::Do      => todo!(),
-            KeywordType::Let     => todo!(),
-            KeywordType::Case    => todo!(),
-            KeywordType::Colon   => todo!(),
-            KeywordType::If      => todo!(),
-            KeywordType::Else    => todo!(),
-            KeywordType::End     => match self.pop_block(&loc, key)? {
-                Op { op_type: OpType::PrepProc, operand, ..} => Op::from((OpType::EndProc, operand, loc)),
+            KeywordType::While => self.push_block((OpType::While, loc).into()),
+            KeywordType::Do    => match self.pop_block(&loc, key)? {
+                Op {typ: OpType::While, ..} => (OpType::Do, loc).into(),
+                Op {typ: OpType::CaseMatch, operand, ..} => (OpType::CaseOption, operand, loc).into(),
+                block => invalid_block(&loc, block, "`do` can only come in a `while` or `case` block")?
+            },
+            KeywordType::Let   => todo!(),
+            KeywordType::Case  => todo!(),
+            KeywordType::Colon => match self.pop_block(&loc, key)? {
+                Op {typ: OpType::CaseStart, ..} =>  todo!(),
+                block => invalid_block(&loc, block, "`:` can only be used on word or `case` block definition")?
+            },
+            KeywordType::If    => self.push_block((OpType::IfStart, loc).into()),
+            KeywordType::Else  => match self.pop_block(&loc, key)? {
+                Op {typ: OpType::IfStart, ..}    =>  todo!(),
+                Op {typ: OpType::CaseOption, ..} =>  todo!(),
+                block => invalid_block(&loc, block, "`else` can only come in a `if` or `case` block")?
+            },
+            KeywordType::End   => match self.pop_block(&loc, key)? {
+                Op {typ: OpType::IfStart, ..} => (OpType::EndIf, loc).into(),
+                Op {typ: OpType::Else, ..}    => (OpType::EndElse, loc).into(),
+                Op {typ: OpType::Do, ..}      => (OpType::EndWhile, loc).into(),
+                Op {typ: OpType::BindStack, ..}  => todo!(),
+                Op {typ: OpType::CaseOption, ..} => todo!(),
+                Op {typ: OpType::PrepProc, operand, ..} => (OpType::EndProc, operand, loc).into(),
                 block => invalid_block(&loc, block, "Expected `end` to close a valid block")?
             },
+            KeywordType::Include => todo!(),
             KeywordType::Arrow | KeywordType::Proc | KeywordType::Mem |
             KeywordType::Struct => bail!("{} Keyword type is not valid here: `{:?}`", loc, key),
         }.into()
@@ -91,10 +123,55 @@ impl Parser {
         self.op_blocks.pop()
             .with_context(|| format!("{} There are no open blocks to close with `{:?}`", loc, closing_type))
     }
+
+    fn push_block(&mut self, op: Op) -> Op {
+        self.op_blocks.push(op.clone());
+        op
+    }
+
+    fn try_get_const_struct(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
+        todo!()
+    }
+
+    fn try_get_offset(&self, _word: &str, _operand: i32, _loc: Loc) -> Result<Option<Op>> {
+        todo!()
+    }
+
+    fn try_get_binding(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
+        todo!()
+    }
+
+    fn try_get_local_mem(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
+        todo!()
+    }
+
+    fn try_get_intrinsic(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
+        todo!()
+    }
+
+    fn try_get_global_mem(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
+        todo!()
+    }
+
+    fn try_get_proc_name(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
+        todo!()
+    }
+
+    fn try_get_const_name(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
+        todo!()
+    }
+
+    fn try_get_variable(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
+        todo!()
+    }
+
+    fn try_define_context(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
+        todo!()
+    }
 }
 
 fn invalid_block(loc: &Loc, block: Op, error: &str) -> Result<Op> {
-    bail!("{} {}, but found a `{:?}` block instead\n{} [INFO] The found block started here", loc, error, block.op_type, block.loc)
+    bail!("{} {}, but found a `{:?}` block instead\n{} [INFO] The found block started here", loc, error, block.typ, block.loc)
 }
 
 pub fn compile_file(path: PathBuf) -> Result<()> {
