@@ -1,5 +1,5 @@
 use std::fmt::{Display, Formatter, Result, write, self};
-use anyhow::Result as anyResult;
+use num::FromPrimitive;
 
 pub struct Proc {
     name: String,
@@ -29,7 +29,7 @@ impl From<(OpType, Loc)> for Op {
     }
 }
 
-impl From<Op> for anyResult<Option<Op>> {
+impl From<Op> for anyhow::Result<Option<Op>> {
     fn from(op: Op) -> Self {
         Ok(Some(op))
     }
@@ -52,6 +52,13 @@ pub struct IRToken  { //does not change
     pub typ: TokenType,
     pub operand: i32,
     pub loc: Loc
+}
+
+impl IRToken {
+    pub fn is_keyword(&self, expected: KeywordType) -> bool{
+        self.typ == TokenType::Keyword &&
+        expected == FromPrimitive::from_i32(self.operand).expect("unreachable")
+    }
 }
 
 impl Display for IRToken {
@@ -108,7 +115,7 @@ pub struct CaseOption {
     values: Vec<i32>
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum TokenType {
     Keyword,
     Word,
@@ -117,7 +124,7 @@ pub enum TokenType {
     DataPtr(ValueType),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ValueType {
     Int,
     Bool,
@@ -188,7 +195,7 @@ pub enum DataSizes {
     I32
 }
 
-#[derive(FromPrimitive, Debug)]
+#[derive(FromPrimitive, Debug, PartialEq)]
 pub enum KeywordType {
     If,
     Else,

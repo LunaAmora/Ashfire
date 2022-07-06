@@ -2,7 +2,7 @@ use std::{io::BufReader, fs::File, path::PathBuf, collections::VecDeque};
 use anyhow::{Context, Result, ensure, bail};
 use super::{lexer::Lexer, types::*};
 use num::FromPrimitive;
-use firelib::OptionErr;
+use firelib::*;
 
 #[derive(Default)]
 pub struct Parser<'a> {
@@ -176,34 +176,33 @@ impl Parser<'_> {
         let mut lex = Lexer::new(reader, path);
 
         while let Some(token) = lex.lex_next_token(self)? {
-            if let IRToken { typ: TokenType::Keyword, operand, .. } = token { // Todo: Refactor with a better way to check for keywords
-                if let KeywordType::Include = FromPrimitive::from_i32(operand)
-                    .expect("unreachable, lexer error") {
-                    if let Some(tok) = lex.lex_next_token(self)? {
-                        if let IRToken { typ: TokenType::Str, operand, .. } = tok {
-                            let relative_path = self.data_list
-                                .get(operand as usize)
-                                .expect("unreachable, lexer error")
-                                .word.name.as_str();
-                            let include = current.ancestors()
-                                .nth(1)
-                                .expect("unreachable, could not get dir path")
-                                .join(relative_path);
-                                log::info!("Including file: {:?}", include);
-                                self.lex_file(include)?;
-                            continue;
-                        }
-                        else {
-                            bail!("{} Expected to find include file name, but found: `{}`", tok.loc, tok)
-                        }
-                    } else {
-                        bail!("Expected to find include file name, but found nothing")
-                    }
-                }
+            if !token.is_keyword(KeywordType::Include) {
+                self.ir_tokens.push_back(token);
+                continue;
             }
-            self.ir_tokens.push_back(token)
+
+            let tok = lex.lex_next_token(self)?
+                .expect_member(TokenType::Str, "include file name")?;
+                
+            let include = get_dir(&current)?
+                .join(self.data_list.get(tok.operand as usize)
+                .expect("unreachable, lexer error")
+                .word.name.as_str());
+
+            log::info!("Including file: {:?}", include);
+            self.lex_file(include)?;
         };
         Ok(())
+    }
+}
+
+impl Expect<TokenType, IRToken> for Option<IRToken> {
+    fn expect_member(self, expected: TokenType, desc: &str) -> Result<IRToken> where Self: Sized {
+        match self {
+            Some(tok) if expected == tok.typ => Ok(tok),
+            Some(tok) => bail!("{} Expected to find {}, but found: `{}`", tok.loc, desc, tok),
+            None => bail!("Expected to find {}, but found nothing", desc),
+        }
     }
 }
 

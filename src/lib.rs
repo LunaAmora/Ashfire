@@ -1,4 +1,5 @@
-use anyhow::Result;
+use anyhow::{Result, Context};
+use std::path::Path;
 
 pub struct OptionErr<T> (Result<Option<T>>);
 
@@ -44,4 +45,13 @@ impl<T> OptionErr<T> {
             _ => self.0,
         }
     }
+}
+
+pub trait Expect<T, S> {
+    fn expect_member(self, expected: T, desc: &str) -> Result<S> where Self: Sized;
+}
+
+pub fn get_dir(current: &Path) -> Result<&Path> {
+    current.ancestors()
+        .nth(1).with_context(|| "failed to get file directory path")
 }
