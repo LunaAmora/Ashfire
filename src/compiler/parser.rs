@@ -47,19 +47,18 @@ impl Parser<'_> {
             TokenType::DataPtr(typ) => bail!("{} Data pointer type not valid here: `{:?}`", tok.loc, typ),
             TokenType::Word => {
                 let word = self.word_list.get(tok.operand as usize).expect("unreachable");
-                return OptionErr::from(
-                    self.try_get_const_struct(word, tok.loc.to_owned()))
-                    .or_try(|| self.try_get_offset(word, tok.operand, tok.loc.to_owned()))
-                    .or_try(|| self.try_get_binding(word, tok.loc.to_owned()))
-                    .or_try(|| self.try_get_intrinsic(word, tok.loc.to_owned()))
-                    .or_try(|| self.try_get_local_mem(word, tok.loc.to_owned()))
-                    .or_try(|| self.try_get_global_mem(word, tok.loc.to_owned()))
-                    .or_try(|| self.try_get_proc_name(word, tok.loc.to_owned()))
-                    .or_try(|| self.try_get_const_name(word, tok.loc.to_owned()))
-                    .or_try(|| self.try_get_variable(word, tok.loc.to_owned()))
-                    .or_try(|| self.try_define_context(word, tok.loc.to_owned()))
-                    .or_try(|| bail!("{} Word was not declared on the program: `{}`", tok.loc, word))
-                    .into()
+                return choice!(
+                    self.try_get_const_struct(word, tok.loc.to_owned()),
+                    self.try_get_offset(word, tok.operand, tok.loc.to_owned()),
+                    self.try_get_binding(word, tok.loc.to_owned()),
+                    self.try_get_intrinsic(word, tok.loc.to_owned()),
+                    self.try_get_local_mem(word, tok.loc.to_owned()),
+                    self.try_get_global_mem(word, tok.loc.to_owned()),
+                    self.try_get_proc_name(word, tok.loc.to_owned()),
+                    self.try_get_const_name(word, tok.loc.to_owned()),
+                    self.try_get_variable(word, tok.loc.to_owned()),
+                    self.try_define_context(word, tok.loc.to_owned()),
+                    bail!("{} Word was not declared on the program: `{}`", tok.loc, word))
             },
         }).into()
     }
@@ -197,8 +196,7 @@ impl Parser<'_> {
 }
 
 impl ExpectBy<IRToken> for Option<IRToken> {
-    fn expect_by<P>(self, pred: P, desc: &str) -> Result<IRToken> where
-        P: FnOnce(&IRToken) -> bool {
+    fn expect_by(self, pred: impl FnOnce(&IRToken) -> bool, desc: &str) -> Result<IRToken>{
         match self {
             Some(tok) if pred(&tok) => Ok(tok),
             Some(tok) => bail!("{} Expected to find {}, but found: `{}`", tok.loc, desc, tok),

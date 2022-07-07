@@ -1,7 +1,7 @@
 use std::{io::{BufRead, BufReader}, fs::File, path::PathBuf, ops::Not};
 use super::{types::*, parser::Parser};
 use anyhow::{Result, ensure, bail, Context};
-use firelib::OptionErr;
+use firelib::*;
 
 struct Token {
     name: String,
@@ -66,13 +66,13 @@ impl Lexer {
         }
     }
 
-    fn advance_by_predicate<T>(&mut self, func: T) where T: Fn(char) -> bool {
+    fn advance_by_predicate(&mut self, func: impl Fn(char) -> bool) {
         while self.buffer.len() > self.lex_pos && !func(self.buffer[self.lex_pos]) {
             self.lex_pos += 1;
         } 
     }
 
-    fn read_by_predicate<T>(&mut self, func: T) -> String where T: Fn(char) -> bool {
+    fn read_by_predicate(&mut self, func: impl Fn(char) -> bool) -> String {
         self.advance_by_predicate(func);
         if self.col_num == self.lex_pos { self.lex_pos += 1}
         self.buffer.iter()
@@ -113,12 +113,12 @@ impl Lexer {
 
     pub fn lex_next_token(&mut self, parser: &mut Parser) -> Result<Option<IRToken>> {
         match self.next_token() {
-            Some(tok) => { OptionErr::from(self
-                .try_parse_string(&tok, parser))
-                .or_try(|| try_parse_char(&tok))
-                .or_else(|| parse_keyword(&tok))
-                .or_else(|| parse_number(&tok))
-                .or(|| parse_word(tok, parser))
+            Some(tok) => { choice!(
+                self.try_parse_string(&tok, parser),
+                try_parse_char(&tok),
+                parse_keyword(&tok),
+                parse_number(&tok),
+                parse_word(tok, parser))
             }
             None => Ok(None),
         }

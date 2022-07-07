@@ -15,44 +15,53 @@ impl<T> From<Result<Option<T>>> for OptionErr<T> {
     }
 }
 
-impl<T> OptionErr<T> {
-    pub fn or_try<F>(mut self, f: F) -> OptionErr<T>
-    where
-        F: FnOnce() -> Result<Option<T>>,
-    {
+pub trait OrElse<T> {
+    fn or_else(self, f: impl FnOnce() -> T) -> Self;
+}
+
+impl<T> OrElse<Result<Option<T>>> for OptionErr<T> {
+    fn or_else(mut self, f: impl FnOnce() -> Result<Option<T>>) -> Self {
         if let Ok(None) = self.0 {
             self.0 = f();
         }
         self
     }
+}
 
-    pub fn or_else<F>(mut self, f: F) -> OptionErr<T>
-    where
-        F: FnOnce() -> Option<T>,
-    {
+impl<T> OrElse<Option<T>> for OptionErr<T> {
+    fn or_else(mut self, f: impl FnOnce() -> Option<T>) -> Self {
         if let Ok(None) = self.0 {
             self.0 = Ok(f());
         }
         self
     }
+}
 
-    pub fn or<F>(self, f: F) -> Result<Option<T>>
-    where
-        F: FnOnce() -> T,
-    {
-        match self.0 {
-            Ok(None) => Ok(Some(f())),
-            _ => self.0,
+impl<T> OrElse<T> for OptionErr<T> {
+    fn or_else(mut self, f: impl FnOnce() -> T) -> Self {
+        if let Ok(None) = self.0 {
+            self.0 = Ok(Some(f()));
         }
+        self
     }
 }
 
 pub trait ExpectBy<T> {
-    fn expect_by<P>(self, pred: P, desc: &str) -> Result<T> where
-        P: FnOnce(&T) -> bool;
+    fn expect_by(self, pred: impl FnOnce(&T) -> bool, desc: &str) -> Result<T>;
 }
 
 pub fn get_dir(current: &Path) -> Result<&Path> {
     current.ancestors()
         .nth(1).with_context(|| "failed to get file directory path")
+}
+
+#[macro_export]
+macro_rules! choice {
+    ( $i:expr, $( $x:expr ),* ) => {
+        OptionErr::from($i)
+        $(
+            .or_else(|| $x)
+        )*
+            .into()
+    }
 }
