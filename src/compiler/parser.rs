@@ -1,5 +1,5 @@
 use std::{io::BufReader, fs::File, path::PathBuf, collections::VecDeque};
-use anyhow::{Context, Result, ensure, bail};
+use anyhow::{Context, Result, ensure, anyhow, bail};
 use super::{lexer::Lexer, types::*};
 use num::FromPrimitive;
 use firelib::*;
@@ -58,7 +58,7 @@ impl Parser<'_> {
                     self.try_get_const_name(word, tok.loc.to_owned()),
                     self.try_get_variable(word, tok.loc.to_owned()),
                     self.try_define_context(word, tok.loc.to_owned()),
-                    bail!("{} Word was not declared on the program: `{}`", tok.loc, word))
+                    Err(anyhow!("{} Word was not declared on the program: `{}`", tok.loc, word)))
             },
         }).into()
     }
