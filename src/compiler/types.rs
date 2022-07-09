@@ -18,6 +18,12 @@ pub struct Op {
     pub loc:     Loc,
 }
 
+impl From<Op> for Vec<Op> {
+    fn from(op: Op) -> Self {
+        vec![op]
+    }
+}
+
 impl From<(OpType, i32, Loc)> for Op {
     fn from(tuple: (OpType, i32, Loc)) -> Self {
         Self { typ: tuple.0, operand: tuple.1, loc: tuple.2 }
@@ -29,9 +35,9 @@ impl From<(OpType, Loc)> for Op {
     }
 }
 
-impl From<Op> for anyhow::Result<Option<Op>> {
+impl From<Op> for anyhow::Result<Option<Vec<Op>>> {
     fn from(op: Op) -> Self {
-        Ok(Some(op))
+        Ok(Some(op.into()))
     }
 }
 
@@ -48,10 +54,17 @@ impl Display for Loc {
     }
 }
 
-pub struct IRToken  { //does not change
+pub struct IRToken  {
     pub typ: TokenType,
     pub operand: i32,
     pub loc: Loc
+}
+
+impl From<(TypedWord, Loc)> for IRToken {
+    fn from(tuple: (TypedWord, Loc)) -> Self {
+        let (typ, operand, loc) = (tuple.0.typ, tuple.0.word.value, tuple.1);
+        Self { typ, operand, loc }
+    }
 }
 
 impl IRToken {
@@ -68,16 +81,35 @@ impl Display for IRToken {
 }
 
 pub struct StructType {
-    name:    String,
-    members: Vec<StructMember>
+    pub name:    String,
+    pub members: Vec<StructMember>
+}
+
+impl From<(&str, ValueType)> for StructType {
+    fn from(tuple: (&str, ValueType)) -> Self {
+        Self { name: tuple.0.to_string(), members: vec![tuple.1.into()] }
+    }
 }
 
 pub struct StructMember {
     name: String,
     typ:  TokenType,
-    default_value: i32 // default 0
+    default_value: i32
 }
 
+impl From<(String, TokenType)> for StructMember {
+    fn from(tuple: (String, TokenType)) -> Self {
+        Self { name: tuple.0, typ: tuple.1, default_value: 0 }
+    }
+}
+
+impl From<ValueType> for StructMember {
+    fn from(typ: ValueType) -> Self {
+        (String::new(), TokenType::DataType(typ)).into()
+    }
+}
+
+#[derive(Clone)]
 pub struct Word {
     pub name:  String,
     pub value: i32
@@ -85,7 +117,7 @@ pub struct Word {
 
 pub struct SizedWord {
     pub word:   Word,
-    pub offset: i32 // default -1
+    pub offset: i32
 }
 
 impl SizedWord {
@@ -100,9 +132,16 @@ impl From<Word> for SizedWord {
     }
 }
 
+#[derive(Clone)]
 pub struct TypedWord {
-    word: Word,
-    typ:  TokenType
+    pub word: Word,
+    pub typ:  TokenType
+}
+
+impl TypedWord {
+    pub fn name(&self) -> &str {
+        self.word.name.as_str()
+    }
 }
 
 pub struct TypeFrame {
@@ -115,7 +154,7 @@ pub struct CaseOption {
     values: Vec<i32>
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TokenType {
     Keyword,
     Word,
@@ -183,16 +222,40 @@ pub enum IntrinsicType {
     And,
     Or,
     Xor,
-    Load(DataSizes),
-    Store(DataSizes),
+    Load8,
+    Store8,
+    Load16,
+    Store16,
+    Load32,
+    Store32,
     FdWrite,
     Cast(i32)
 }
 
-pub enum DataSizes {
-    I8,
-    I16,
-    I32
+impl From<IntrinsicType> for i32 {
+    fn from(intrinsic: IntrinsicType) -> Self {
+        match intrinsic {
+            IntrinsicType::Plus     => 0,
+            IntrinsicType::Minus    => 1,
+            IntrinsicType::Times    => 2,
+            IntrinsicType::Div      => 3,
+            IntrinsicType::Greater  => 4,
+            IntrinsicType::GreaterE => 5,
+            IntrinsicType::Lesser   => 6,
+            IntrinsicType::LesserE  => 7,
+            IntrinsicType::And      => 8,
+            IntrinsicType::Or       => 9,
+            IntrinsicType::Xor      => 10,
+            IntrinsicType::Load8    => 11,
+            IntrinsicType::Store8   => 12,
+            IntrinsicType::Load16   => 13,
+            IntrinsicType::Store16  => 14,
+            IntrinsicType::Load32   => 16,
+            IntrinsicType::Store32  => 17,
+            IntrinsicType::FdWrite  => 19,
+            IntrinsicType::Cast(n)  => 20 + n,
+        }
+    }
 }
 
 #[derive(FromPrimitive, Debug, PartialEq)]

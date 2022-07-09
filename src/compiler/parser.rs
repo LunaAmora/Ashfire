@@ -9,29 +9,44 @@ pub struct Parser<'a> {
     pub word_list: Vec<String>,
     pub data_list: Vec<SizedWord>,
     pub total_data_size: i32,
-    ir_tokens: VecDeque<IRToken>,
+    pub struct_list : Vec<StructType>,
+    ir_tokens:  VecDeque<IRToken>,
+    const_list: Vec<TypedWord>,
     program:   Vec<Op>,
     op_blocks: Vec<Op>,
     current_proc: Option<&'a Proc>,
 }
 
 impl Parser<'_> {
-    pub fn new() -> Self { Default::default() }
+    pub fn new() -> Self {
+        Self {
+            struct_list : vec![
+                ("int",  ValueType::Int).into(),
+                ("bool", ValueType::Bool).into(),
+                ("ptr",  ValueType::Ptr).into(),
+                ("any",  ValueType::Any).into()],
+            ..Default::default()
+        }
+    }
     
     fn inside_proc(&self) -> bool {
         self.current_proc.is_some()
     }
 
+    fn next_irtoken(&mut self) -> Option<IRToken> {
+        self.ir_tokens.pop_front()
+    }
+
     fn parse_tokens(&mut self) -> Result<()> {
-        while let Some(token) = self.ir_tokens.pop_front() {
-            if let Some(op) = self.define_op(token)? {
-                self.program.push(op)
+        while let Some(token) = self.next_irtoken() {
+            if let Some(mut op) = self.define_op(token)? {
+                self.program.append(&mut op)
             }
         }
         Ok(())
     }
 
-    fn define_op(&mut self, tok: IRToken) -> Result<Option<Op>> {
+    fn define_op(&mut self, tok: IRToken) -> Result<Option<Vec<Op>>> {
         ensure!(matches!(tok.typ, TokenType::Keyword | TokenType::Word) || self.inside_proc(),
             "{} Token type cannot be used outside of a procedure: `{:?}", tok.loc, tok.typ);
         
@@ -46,24 +61,24 @@ impl Parser<'_> {
             },
             TokenType::DataPtr(typ) => bail!("{} Data pointer type not valid here: `{:?}`", tok.loc, typ),
             TokenType::Word => {
-                let word = self.word_list.get(tok.operand as usize).expect("unreachable");
+                let word = self.word_list.get(tok.operand as usize).expect("unreachable").to_owned();
                 return choice!(
-                    self.try_get_const_struct(word, tok.loc.to_owned()),
-                    self.try_get_offset(word, tok.operand, tok.loc.to_owned()),
-                    self.try_get_binding(word, tok.loc.to_owned()),
-                    self.try_get_intrinsic(word, tok.loc.to_owned()),
-                    self.try_get_local_mem(word, tok.loc.to_owned()),
-                    self.try_get_global_mem(word, tok.loc.to_owned()),
-                    self.try_get_proc_name(word, tok.loc.to_owned()),
-                    self.try_get_const_name(word, tok.loc.to_owned()),
-                    self.try_get_variable(word, tok.loc.to_owned()),
-                    self.try_define_context(word, tok.loc.to_owned()),
+                    self.get_const_struct(&word, tok.loc.to_owned()),
+                    self.get_offset(&word, tok.operand, tok.loc.to_owned()),
+                    self.get_binding(&word, tok.loc.to_owned()),
+                    self.get_intrinsic(&word, tok.loc.to_owned()),
+                    self.get_local_mem(&word, tok.loc.to_owned()),
+                    self.get_global_mem(&word, tok.loc.to_owned()),
+                    self.get_proc_name(&word, tok.loc.to_owned()),
+                    self.get_const_name(&word, tok.loc.to_owned()),
+                    self.get_variable(&word, tok.loc.to_owned()),
+                    self.define_context(&word, tok.loc.to_owned()),
                     Err(anyhow!("{} Word was not declared on the program: `{}`", tok.loc, word)))
             },
         }).into()
     }
 
-    fn define_keyword_op(&mut self, operand: i32, loc: Loc) -> Result<Option<Op>> {
+    fn define_keyword_op(&mut self, operand: i32, loc: Loc) -> Result<Option<Vec<Op>>> {
         let key = FromPrimitive::from_i32(operand).expect("unreachable, lexer error");
 
         match key {
@@ -127,43 +142,101 @@ impl Parser<'_> {
         op
     }
 
-    fn try_get_const_struct(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
+    fn get_intrinsic(&self, word: &str, loc: Loc) -> Option<Vec<Op>> {
+        self.get_intrinsic_type(word)
+            .map(|i| vec![(OpType::Intrinsic, i.into(), loc).into()])
+    }
+
+    fn get_intrinsic_type(&self, word: &str) -> Option<IntrinsicType> {
+        Some(match word {
+            "+"   => IntrinsicType::Plus,
+            "-"   => IntrinsicType::Minus,
+            "*"   => IntrinsicType::Times,
+            "%"   => IntrinsicType::Div,
+            ">"   => IntrinsicType::Greater,
+            ">="  => IntrinsicType::GreaterE,
+            "<"   => IntrinsicType::Lesser,
+            "<="  => IntrinsicType::LesserE,
+            "or"  => IntrinsicType::Or,
+            "and" => IntrinsicType::And,
+            "xor" => IntrinsicType::Xor,
+            "@8"  => IntrinsicType::Load8,
+            "!8"  => IntrinsicType::Store8,
+            "@16" => IntrinsicType::Load16,
+            "!16" => IntrinsicType::Store16,
+            "@32" => IntrinsicType::Load32,
+            "!32" => IntrinsicType::Store32,
+            "fd_write" => IntrinsicType::FdWrite,
+            _ => IntrinsicType::Cast(self.parse_cast_type(word.strip_prefix('#')?)?)
+        })
+    }
+    
+    fn parse_cast_type(&self, word: &str) -> Option<i32> {
+        self.parse_data_type(match word.strip_prefix('*') {
+            Some(word) => word,
+            None => word,
+        })
+    }
+    
+    fn parse_data_type(&self, word: &str) -> Option<i32> {
+        self.struct_list.iter()
+            .position(|s| s.name == word)
+            .map(|u| u as i32)
+    }
+
+    #[allow(dead_code)]
+    fn get_type_name(&self, word: &str) -> Option<&StructType> {
+        self.struct_list.iter()
+            .find(|s| s.name == word)
+    }
+
+    fn get_const_struct(&mut self, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+        let ops = self.const_list.iter()
+            .filter(|cnst| cnst.name().starts_with(&format!("{}.", word)))
+            .map(|tword| (tword.clone(), loc.clone()).into())
+            .collect::<Vec<IRToken>>()
+            .into_iter()
+            .filter_map(|tok| self.define_op(tok).transpose())
+            .collect::<Result<Vec<Vec<Op>>>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<Op>>();
+
+        Ok(match ops.is_empty() {
+            true => None,
+            _    => Some(ops)
+        })
+    }
+
+    fn get_offset(&self, _word: &str, _operand: i32, _loc: Loc) -> Result<Option<Vec<Op>>> {
         todo!()
     }
 
-    fn try_get_offset(&self, _word: &str, _operand: i32, _loc: Loc) -> Result<Option<Op>> {
+    fn get_binding(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
         todo!()
     }
 
-    fn try_get_binding(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
+    fn get_local_mem(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
         todo!()
     }
 
-    fn try_get_local_mem(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
+    fn get_global_mem(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
         todo!()
     }
 
-    fn try_get_intrinsic(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
+    fn get_proc_name(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
         todo!()
     }
 
-    fn try_get_global_mem(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
+    fn get_const_name(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
+        todo!()
+    }
+    
+    fn get_variable(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
         todo!()
     }
 
-    fn try_get_proc_name(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
-        todo!()
-    }
-
-    fn try_get_const_name(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
-        todo!()
-    }
-
-    fn try_get_variable(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
-        todo!()
-    }
-
-    fn try_define_context(&self, _word: &str, _loc: Loc) -> Result<Option<Op>> {
+    fn define_context(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
         todo!()
     }
 
