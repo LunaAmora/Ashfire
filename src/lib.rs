@@ -1,35 +1,45 @@
 use anyhow::{Result, Context};
-use std::path::Path;
+use std::{path::Path, ops::Deref};
 
-pub struct OptionErr<T> (Result<Option<T>>);
+pub struct OptionErr<T> {
+    value: Result<Option<T>>
+}
+
+impl<T> Deref for OptionErr<T> {
+    type Target = Result<Option<T>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
+}
 
 impl<T> From<OptionErr<T>> for Result<Option<T>> {
     fn from(val: OptionErr<T>) -> Self {
-        val.0
+        val.value
     }
 }
 
 impl<T> From<Result<Option<T>>> for OptionErr<T> {
-    fn from(opt: Result<Option<T>>) -> Self {
-        Self(opt)
+    fn from(value: Result<Option<T>>) -> Self {
+        Self {value}
     }
 }
 
 impl<T> From<Option<T>> for OptionErr<T> {
-    fn from(opt: Option<T>) -> Self {
-        Self(Ok(opt))
+    fn from(value: Option<T>) -> Self {
+        Self {value: Ok(value)}
     }
 }
 
 impl<T> From<T> for OptionErr<T> {
-    fn from(opt: T) -> Self {
-        Self(Ok(Some(opt)))
+    fn from(value: T) -> Self {
+        Self {value: Ok(Some(value))}
     }
 }
 
 impl<T> OptionErr<T> {
     pub fn or_else(mut self, f: impl FnOnce() -> OptionErr<T>) -> Self {
-        if let Ok(None) = self.0 {
+        if let Ok(None) = *self {
             self = f();
         }
         self
@@ -54,4 +64,12 @@ pub trait ExpectBy<T> {
 pub fn get_dir(current: &Path) -> Result<&Path> {
     current.ancestors()
         .nth(1).with_context(|| "failed to get file directory path")
+}
+
+pub fn empty_or_some<T>(vec: Vec<T>) -> Option<Vec<T>> {
+    if vec.is_empty() {
+        None
+    } else {
+        Some(vec)
+    }
 }

@@ -191,7 +191,8 @@ impl Parser<'_> {
     }
 
     fn get_const_struct(&mut self, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
-        let ops = self.const_list.iter()
+        Ok(empty_or_some(
+            self.const_list.iter()
             .filter(|cnst| cnst.name().starts_with(&format!("{}.", word)))
             .map(|tword| (tword.clone(), loc.clone()).into())
             .collect::<Vec<IRToken>>()
@@ -200,12 +201,7 @@ impl Parser<'_> {
             .collect::<Result<Vec<Vec<Op>>>>()?
             .into_iter()
             .flatten()
-            .collect::<Vec<Op>>();
-
-        Ok(match ops.is_empty() {
-            true => None,
-            _    => Some(ops)
-        })
+            .collect()))
     }
 
     fn get_offset(&self, _word: &str, _operand: i32, _loc: Loc) -> Result<Option<Vec<Op>>> {
