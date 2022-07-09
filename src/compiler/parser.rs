@@ -259,7 +259,8 @@ impl Parser<'_> {
             let tok = lex.lex_next_token(self)?
                 .expect_by(|t| -> bool {t.typ == TokenType::Str}, "include file name")?;
                 
-            let include = get_dir(&current)?
+            let include = get_dir(&current)
+                .with_context(|| "failed to get file directory path")?
                 .join(self.data_list.get(tok.operand as usize)
                 .expect("unreachable, lexer error")
                 .word.name.as_str());

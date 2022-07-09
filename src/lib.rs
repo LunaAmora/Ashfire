@@ -1,4 +1,4 @@
-use anyhow::{Result, Context};
+use anyhow::Result;
 use std::{path::Path, ops::Deref};
 
 pub struct OptionErr<T> {
@@ -61,9 +61,8 @@ pub trait ExpectBy<T> {
     fn expect_by(self, pred: impl FnOnce(&T) -> bool, desc: &str) -> Result<T>;
 }
 
-pub fn get_dir(current: &Path) -> Result<&Path> {
-    current.ancestors()
-        .nth(1).with_context(|| "failed to get file directory path")
+pub fn get_dir(current: &Path) -> Option<&Path> {
+    current.ancestors().nth(1)
 }
 
 pub fn empty_or_some<T>(vec: Vec<T>) -> Option<Vec<T>> {
