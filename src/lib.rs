@@ -73,3 +73,7 @@ pub fn empty_or_some<T>(vec: Vec<T>) -> Option<Vec<T>> {
         Some(vec)
     }
 }
+
+pub fn flatten<T>(vec: Vec<Vec<T>>) -> Vec<T> {
+    vec.into_iter().flatten().collect()
+}
