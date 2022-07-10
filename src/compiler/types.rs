@@ -2,8 +2,10 @@ use std::fmt::{Display, Formatter, Result, write, self};
 use num::FromPrimitive;
 
 pub struct Proc {
-    name: String,
-    contract: Contract,
+    pub name: String,
+    pub contract: Contract,
+    pub bindings: Vec<String>,
+    pub local_mem_names: Vec<Word>,
 }
 
 pub struct Contract {
@@ -80,6 +82,7 @@ impl Display for IRToken {
     }
 }
 
+#[derive(Clone)]
 pub struct StructType {
     pub name:    String,
     pub members: Vec<StructMember>
@@ -91,6 +94,7 @@ impl From<(&str, ValueType)> for StructType {
     }
 }
 
+#[derive(Clone)]
 pub struct StructMember {
     name: String,
     typ:  TokenType,

@@ -149,9 +149,10 @@ fn parse_number(tok: &Token) -> Option<IRToken> {
 fn try_parse_char(tok: &Token) -> Result<Option<IRToken>> {
     tok.name
         .strip_prefix('\'').map_or_else(|| Ok(None), |word| word
-        .strip_suffix('\'').with_context(|| format!("{} Missing closing `\'` in char literal", tok.loc))?
+        .strip_suffix('\'').map_or_else(|| 
+            bail!("{} Missing closing `\'` in char literal", tok.loc), |word| word
         .strip_prefix('\\').map_or_else(|| {
-            ensure!(word.len() == 2, "{} Char literals cannot contain more than one char: `{word}", tok.loc);
+            ensure!(word.len() == 1, "{} Char literals cannot contain more than one char: `{word}", tok.loc);
             Ok(Some(word.chars().next().unwrap() as i32))
         }, |escaped| Ok(
             match escaped {
@@ -163,11 +164,10 @@ fn try_parse_char(tok: &Token) -> Result<Option<IRToken>> {
                 _ if escaped.len() == 2 => try_parse_hex(escaped),
                 _ => bail!("{} Invalid escaped character sequence found on char literal: `{escaped}`", tok.loc),
             }
-        ))
+        ))))
         .map(|o| o.map(|operand|
             IRToken{ typ: TokenType::DataType(ValueType::Int), operand, loc: tok.loc.to_owned() }
         ))
-    )
 }
 
 fn try_parse_hex(word: &str) ->  Option<i32> {

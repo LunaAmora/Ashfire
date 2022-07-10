@@ -15,6 +15,8 @@ pub struct Parser<'a> {
     program:   Vec<Op>,
     op_blocks: Vec<Op>,
     current_proc: Option<&'a Proc>,
+    mem_list: Vec<Word>,
+    proc_list: Vec<Proc>,
 }
 
 impl Parser<'_> {
@@ -79,7 +81,7 @@ impl Parser<'_> {
     }
 
     fn define_keyword_op(&mut self, operand: i32, loc: Loc) -> Result<Option<Vec<Op>>> {
-        let key = FromPrimitive::from_i32(operand).expect("unreachable, lexer error");
+        let key = from_primitive(operand);
 
         match key {
             KeywordType::Dup   => (OpType::Dup, loc).into(),
@@ -184,10 +186,13 @@ impl Parser<'_> {
             .map(|u| u as i32)
     }
 
-    #[allow(dead_code)]
     fn get_type_name(&self, word: &str) -> Option<&StructType> {
         self.struct_list.iter()
             .find(|s| s.name == word)
+    }
+
+    fn get_data_pointer(&self, _found_word: &str) -> Option<Vec<Op>> {
+        todo!()
     }
 
     fn get_const_struct(&mut self, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
@@ -211,35 +216,160 @@ impl Parser<'_> {
             .collect()
     }
 
-    fn get_offset(&self, _word: &str, _operand: i32, _loc: Loc) -> Result<Option<Vec<Op>>> {
-        todo!()
+    fn get_offset(&self, word: &str, operand: i32, loc: Loc) -> Option<Vec<Op>> {
+        word.strip_prefix('.').map(|word| Op::from(
+            word.strip_prefix('*').map_or_else(|| 
+                (OpType::OffsetLoad, operand, loc.clone()), |_|
+                (OpType::Offset, operand, loc.clone())
+            )
+        ).into())
     }
 
-    fn get_binding(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
-        todo!()
+    fn get_binding(&self, word: &str, loc: Loc) -> Option<Vec<Op>> {
+        self.current_proc
+            .and_then(|proc| proc.bindings.iter().position(|bind| bind.eq(word))
+            .map(|index| (proc.bindings.len() - 1 - index) as i32))
+            .map(|index| Op::from((OpType::PushBind, index, loc)).into())
     }
 
-    fn get_local_mem(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
-        todo!()
+    fn get_local_mem(&self, word: &str, loc: Loc) -> Option<Vec<Op>> {
+        self.current_proc
+            .and_then(|proc| proc.local_mem_names.iter().find(|mem| mem.name.eq(word)))
+            .map(|local| Op::from((OpType::PushLocalMem, local.value, loc)).into())
     }
 
-    fn get_global_mem(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
-        todo!()
+    fn get_global_mem(&self, word: &str, loc: Loc) -> Option<Vec<Op>> {
+        self.mem_list.iter()
+            .find(|mem| mem.name.eq(word))
+            .map(|global| Op::from((OpType::PushGlobalMem, global.value, loc)).into())
     }
 
-    fn get_proc_name(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
-        todo!()
+    fn get_proc_name(&self, word: &str, loc: Loc) -> Option<Vec<Op>> {
+        self.proc_list.iter()
+            .position(|proc| proc.name.eq(word))
+            .map(|index| Op::from((OpType::Call, index as i32, loc)).into())
     }
 
-    fn get_const_name(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
-        todo!()
+    fn get_const_name(&mut self, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+        self.const_list.iter()
+            .find(|cnst| cnst.name().eq(word))
+            .map(|tword| (tword.clone(), loc).into())
+            .map_or_else(|| Ok(None), |tok| self.define_op(tok))
     }
     
     fn get_variable(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
         todo!()
     }
 
-    fn define_context(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
+    fn define_context(&mut self, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+        let mut i = 0;
+        let mut colon_count = 0;
+
+        while let Some(tok) = self.ir_tokens.get(i) { i += 1;
+            match (colon_count, &tok.typ) {
+                (0, _) => {
+                    if tok.typ == TokenType::Word {
+                        if let Some(stk) = self.get_type_name(self.get_word(tok.operand)).cloned() {
+                            let operand = tok.operand;
+                            self.next_irtoken();
+                            return self.parse_const_or_var(word, loc, operand, stk);
+                        }
+                    }
+                    return Ok(None);
+                },
+                (1, TokenType::DataType(ValueType::Int)) => {
+                    return self.parse_context(KeywordType::Mem, word, loc)
+                },
+                (1, TokenType::Word) => {
+                    let found_word = self.get_word(tok.operand);
+
+                    if self.get_type_name(found_word).is_some() ||
+                        self.get_data_pointer(found_word).is_some() {
+                        return self.parse_context(KeywordType::Proc, word, loc)
+                    }
+                    
+                    if let (Some(n1), Some(n2)) = (self.ir_tokens.get(i+1), self.ir_tokens.get(i+2)){
+                        if n1.typ == TokenType::Word && self.get_type_name(self.get_word(n1.operand)).is_some() &&
+                            ((n2.typ == TokenType::Keyword && KeywordType::End == from_primitive(n2.operand)) ||
+                                n2.typ == TokenType::Word) {
+                            return self.parse_context(KeywordType::Struct, word, loc)
+                        }
+                    }
+
+                    return self.invalid_token(tok, "context declaration");
+                },
+                (_, TokenType::Keyword) => {
+                    let context = from_primitive(tok.operand);
+                    match context {
+                        KeywordType::Proc | KeywordType::Mem | KeywordType::Struct if colon_count == 0 => {
+                            self.next_irtoken();
+                            return self.parse_context(context, word, loc)
+                        },
+                        KeywordType::End => {
+                            bail!("{} Missing body or contract necessary to infer the type of the word: `{word}`", loc)
+                        },
+                        KeywordType::Equal if colon_count == 1 =>
+                        {
+                            // self.next_irtoken();
+                            // self.next_irtoken();
+                            todo!("Compile eval");
+                            // return self.invalid_token(token, "context declaration");
+                        },
+                        KeywordType::Colon => colon_count += 1,
+                        _ => {}
+                    }
+
+                    if colon_count == 2 {
+                        if i != 1 {
+                            return self.parse_context(KeywordType::Proc, word, loc)
+                        }
+
+                        // self.next_irtoken();
+                        // self.next_irtoken();
+                        todo!("Compile eval or proc definition");
+                    }
+                },
+                _ => return self.invalid_token(tok, "context declaration")
+            }
+        }
+        Ok(None)
+    }
+
+    fn invalid_token(&self, tok: &IRToken, error_context: &str) -> Result<Option<Vec<Op>>> {
+        let (found_desc, found_name) = match tok.typ {
+            TokenType::Keyword => ("keyword", format!("{:?}", from_primitive::<KeywordType>(tok.operand))),
+            TokenType::Word    => ("word or intrinsic", self.get_word(tok.operand).to_owned()),
+            _ => ("token", format!("{:?}", tok.typ))
+        };
+        bail!("{} Invalid {found_desc} found on {error_context}: `{found_name}`", tok.loc)
+    }
+
+    fn get_word(&self, value: i32) -> &String {
+        self.word_list.get(value as usize).expect("unreachable, lexer error")
+    }
+
+    fn parse_context(&mut self, context: KeywordType, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+        match context {
+            KeywordType::Proc   => self.parse_procedure(word, Op::from((OpType::PrepProc, loc))),
+            KeywordType::Mem    => self.parse_memory(word, loc),
+            KeywordType::Struct => self.parse_struct(word, loc),
+            _ => Ok(None)
+        }
+    }
+
+    fn parse_procedure(&self, _word: &str, _loc: Op) -> Result<Option<Vec<Op>>> {
+        todo!()
+    }
+
+    fn parse_memory(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
+        todo!()
+    }
+
+    fn parse_struct(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
+        todo!()
+    }
+
+    fn parse_const_or_var(&mut self, _word: &str, _loc: Loc, _operand: i32, _stk: StructType) -> Result<Option<Vec<Op>>> {
         todo!()
     }
 
@@ -270,6 +400,10 @@ impl Parser<'_> {
         };
         Ok(self)
     }
+}
+
+fn from_primitive<T: FromPrimitive>(value: i32) -> T {
+    FromPrimitive::from_i32(value).expect("unreachable, lexer error")
 }
 
 impl ExpectBy<IRToken> for Option<IRToken> {
