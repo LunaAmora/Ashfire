@@ -1,16 +1,25 @@
 use std::fmt::{Display, Formatter, Result, write, self};
 use num::FromPrimitive;
 
+#[derive(Default)]
 pub struct Proc {
     pub name: String,
     pub contract: Contract,
     pub bindings: Vec<String>,
+    pub local_vars: Vec<TypedWord>,
     pub local_mem_names: Vec<Word>,
 }
 
+impl Proc {
+    pub fn new(name: String, contract: Contract) -> Self {
+        Self { name, contract, ..Default::default() }
+    }
+}
+
+#[derive(Default)]
 pub struct Contract {
-    ins:  Vec<TokenType>,
-    outs: Vec<TokenType>,
+    pub ins:  Vec<TokenType>,
+    pub outs: Vec<TokenType>,
 }
 
 #[derive(Clone)]
@@ -20,9 +29,9 @@ pub struct Op {
     pub loc:     Loc,
 }
 
-impl From<Op> for Vec<Op> {
-    fn from(op: Op) -> Self {
-        vec![op]
+impl Op {
+    pub fn new(typ: OpType, operand: i32, loc: Loc) -> Self {
+        Self { typ, operand, loc }
     }
 }
 
@@ -31,9 +40,16 @@ impl From<(OpType, i32, Loc)> for Op {
         Self { typ: tuple.0, operand: tuple.1, loc: tuple.2 }
     }
 }
+
 impl From<(OpType, Loc)> for Op {
     fn from(tuple: (OpType, Loc)) -> Self {
         Self { typ: tuple.0, operand: 0, loc: tuple.1 }
+    }
+}
+
+impl From<Op> for Vec<Op> {
+    fn from(op: Op) -> Self {
+        vec![op]
     }
 }
 
@@ -44,7 +60,7 @@ impl From<Op> for anyhow::Result<Option<Vec<Op>>> {
 }
 
 #[derive(Clone)]
-pub struct Loc { //does not change
+pub struct Loc {
     pub file: String,
     pub line: i32,
     pub col:  i32
@@ -56,6 +72,7 @@ impl Display for Loc {
     }
 }
 
+#[derive(Clone)]
 pub struct IRToken  {
     pub typ: TokenType,
     pub operand: i32,
@@ -73,6 +90,14 @@ impl IRToken {
     pub fn is_keyword(&self, expected: KeywordType) -> bool{
         self.typ == TokenType::Keyword &&
         expected == FromPrimitive::from_i32(self.operand).expect("unreachable")
+    }
+
+    pub fn get_keyword(&self) -> Option<KeywordType> {
+        if self.typ == TokenType::Keyword {
+            FromPrimitive::from_i32(self.operand)
+        } else {
+            None
+        }
     }
 }
 
@@ -96,9 +121,9 @@ impl From<(&str, ValueType)> for StructType {
 
 #[derive(Clone)]
 pub struct StructMember {
-    name: String,
-    typ:  TokenType,
-    default_value: i32
+    pub name: String,
+    pub typ:  TokenType,
+    pub default_value: i32
 }
 
 impl From<(String, TokenType)> for StructMember {
@@ -140,6 +165,12 @@ impl From<Word> for SizedWord {
 pub struct TypedWord {
     pub word: Word,
     pub typ:  TokenType
+}
+
+impl From<(String, i32, TokenType)> for TypedWord {
+    fn from(tuple: (String, i32, TokenType)) -> Self {
+        Self { word: Word { name: tuple.0, value: tuple.1 }, typ: tuple.2 }
+    }
 }
 
 impl TypedWord {

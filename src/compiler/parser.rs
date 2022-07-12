@@ -5,21 +5,23 @@ use num::FromPrimitive;
 use firelib::*;
 
 #[derive(Default)]
-pub struct Parser<'a> {
+pub struct Parser {
     pub word_list: Vec<String>,
     pub data_list: Vec<SizedWord>,
     pub total_data_size: i32,
-    pub struct_list : Vec<StructType>,
-    ir_tokens:  VecDeque<IRToken>,
-    const_list: Vec<TypedWord>,
-    program:   Vec<Op>,
-    op_blocks: Vec<Op>,
-    current_proc: Option<&'a Proc>,
-    mem_list: Vec<Word>,
-    proc_list: Vec<Proc>,
+    pub struct_list: Vec<StructType>,
+    ir_tokens:    VecDeque<IRToken>,
+    const_list:   Vec<TypedWord>,
+    global_vars:  Vec<TypedWord>,
+    program:      Vec<Op>,
+    op_blocks:    Vec<Op>,
+    struct_names: Vec<Word>,
+    mem_list:     Vec<Word>,
+    proc_list:    Vec<Proc>,
+    current_proc: Option<usize>,
 }
 
-impl Parser<'_> {
+impl Parser {
     pub fn new() -> Self {
         Self {
             struct_list : vec![
@@ -35,8 +37,24 @@ impl Parser<'_> {
         self.current_proc.is_some()
     }
 
+    fn current_proc(&self) -> Option<&Proc> {
+        self.current_proc.and_then(|index| self.proc_list.get(index))
+    }
+
+    fn current_proc_mut(&mut self) -> Option<&mut Proc> {
+        self.current_proc.and_then(|index| self.proc_list.get_mut(index))
+    }
+
     fn next_irtoken(&mut self) -> Option<IRToken> {
         self.ir_tokens.pop_front()
+    }
+
+    fn next_irtokens(&mut self, n: usize) -> Option<IRToken> {
+        let mut result = None;
+        for _ in 0..n {
+            result = self.ir_tokens.pop_front()
+        }
+        result
     }
 
     fn parse_tokens(&mut self) -> Result<()> {
@@ -185,13 +203,33 @@ impl Parser<'_> {
             .position(|s| s.name == word)
             .map(|u| u as i32)
     }
+    
+    fn get_word(&self, value: i32) -> &String {
+        self.word_list.get(value as usize).expect("unreachable, lexer error")
+    }
+
+    fn try_get_word(&self, tok: &IRToken) -> Option<&String> {
+        if tok.typ == TokenType::Word {
+            Some(self.get_word(tok.operand))
+        } else {
+            None
+        }
+    }
 
     fn get_type_name(&self, word: &str) -> Option<&StructType> {
         self.struct_list.iter()
             .find(|s| s.name == word)
     }
 
-    fn get_data_pointer(&self, _found_word: &str) -> Option<Vec<Op>> {
+    fn get_struct_type(&self, tok: &IRToken) -> Option<&StructType> {
+        if tok.typ == TokenType::Word {
+            self.get_type_name(self.get_word(tok.operand))
+        } else {
+            None
+        }
+    }
+
+    fn get_data_pointer(&self, _found_word: &str) -> Option<TokenType> {
         todo!()
     }
 
@@ -226,28 +264,28 @@ impl Parser<'_> {
     }
 
     fn get_binding(&self, word: &str, loc: Loc) -> Option<Vec<Op>> {
-        self.current_proc
+        self.current_proc()
             .and_then(|proc| proc.bindings.iter().position(|bind| bind.eq(word))
             .map(|index| (proc.bindings.len() - 1 - index) as i32))
-            .map(|index| Op::from((OpType::PushBind, index, loc)).into())
+            .map(|index| Op::new(OpType::PushBind, index, loc).into())
     }
 
     fn get_local_mem(&self, word: &str, loc: Loc) -> Option<Vec<Op>> {
-        self.current_proc
+        self.current_proc()
             .and_then(|proc| proc.local_mem_names.iter().find(|mem| mem.name.eq(word)))
-            .map(|local| Op::from((OpType::PushLocalMem, local.value, loc)).into())
+            .map(|local| Op::new(OpType::PushLocalMem, local.value, loc).into())
     }
 
     fn get_global_mem(&self, word: &str, loc: Loc) -> Option<Vec<Op>> {
         self.mem_list.iter()
             .find(|mem| mem.name.eq(word))
-            .map(|global| Op::from((OpType::PushGlobalMem, global.value, loc)).into())
+            .map(|global| Op::new(OpType::PushGlobalMem, global.value, loc).into())
     }
 
     fn get_proc_name(&self, word: &str, loc: Loc) -> Option<Vec<Op>> {
         self.proc_list.iter()
             .position(|proc| proc.name.eq(word))
-            .map(|index| Op::from((OpType::Call, index as i32, loc)).into())
+            .map(|index| Op::new(OpType::Call, index as i32, loc).into())
     }
 
     fn get_const_name(&mut self, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
@@ -269,73 +307,104 @@ impl Parser<'_> {
             match (colon_count, &tok.typ) {
                 (0, _) => {
                     if tok.typ == TokenType::Word {
-                        if let Some(stk) = self.get_type_name(self.get_word(tok.operand)).cloned() {
+                        if let Some(stk) = self.get_struct_type(tok).cloned() {
                             let operand = tok.operand;
                             self.next_irtoken();
-                            return self.parse_const_or_var(word, loc, operand, stk);
+                            return map_res(self.parse_const_or_var(word, loc, operand, stk));
                         }
                     }
                     return Ok(None);
                 },
                 (1, TokenType::DataType(ValueType::Int)) => {
-                    return self.parse_context(KeywordType::Mem, word, loc)
+                    return self.parse_memory(word, loc);
                 },
                 (1, TokenType::Word) => {
                     let found_word = self.get_word(tok.operand);
 
                     if self.get_type_name(found_word).is_some() ||
                         self.get_data_pointer(found_word).is_some() {
-                        return self.parse_context(KeywordType::Proc, word, loc)
+                        return self.parse_procedure(word, loc);
                     }
                     
-                    if let (Some(n1), Some(n2)) = (self.ir_tokens.get(i+1), self.ir_tokens.get(i+2)){
-                        if n1.typ == TokenType::Word && self.get_type_name(self.get_word(n1.operand)).is_some() &&
-                            ((n2.typ == TokenType::Keyword && KeywordType::End == from_primitive(n2.operand)) ||
-                                n2.typ == TokenType::Word) {
-                            return self.parse_context(KeywordType::Struct, word, loc)
+                    if let (Some(n1), Some(n2)) = (self.ir_tokens.get(i+1), self.ir_tokens.get(i+2)) {
+                        if self.get_struct_type(n1).is_some() &&
+                           (n2.is_keyword(KeywordType::End) || n2.typ == TokenType::Word) {
+                            return self.parse_struct(word, loc);
                         }
                     }
 
-                    return self.invalid_token(tok, "context declaration");
+                    return map_res(self.invalid_token(tok, "context declaration"));
                 },
                 (_, TokenType::Keyword) => {
                     let context = from_primitive(tok.operand);
-                    match context {
-                        KeywordType::Proc | KeywordType::Mem | KeywordType::Struct if colon_count == 0 => {
+                    match (colon_count, context) {
+                        (0, KeywordType::Mem)  => {
                             self.next_irtoken();
-                            return self.parse_context(context, word, loc)
+                            return self.parse_memory(word, loc);
                         },
-                        KeywordType::End => {
+                        (0, KeywordType::Struct)  => {
+                            self.next_irtoken();
+                            return self.parse_struct(word, loc);
+                        },
+                        (0, KeywordType::Proc)  => {
+                            self.next_irtoken();
+                            return self.parse_procedure(word, loc);
+                        },
+                        (1, KeywordType::Equal) =>
+                        {
+                            let token = &tok.clone();
+                            self.next_irtokens(2);
+
+                            if let Some((eval, skip)) = self.compile_eval() {
+                                ensure!(eval.typ != TokenType::DataType(ValueType::Any),
+                                    "{} Undefined variable value is not allowed", loc);
+                                self.next_irtokens(skip);
+                                self.register_var((word.to_string(), eval.operand, eval.typ).into());
+                                return map_res(Ok(()));
+                            }
+                            return map_res(self.invalid_token(token, "context declaration"));
+                        },
+                        (_, KeywordType::Colon) => colon_count += 1,
+                        (_, KeywordType::End) => {
                             bail!("{} Missing body or contract necessary to infer the type of the word: `{word}`", loc)
                         },
-                        KeywordType::Equal if colon_count == 1 =>
-                        {
-                            // self.next_irtoken();
-                            // self.next_irtoken();
-                            todo!("Compile eval");
-                            // return self.invalid_token(token, "context declaration");
-                        },
-                        KeywordType::Colon => colon_count += 1,
                         _ => {}
                     }
 
                     if colon_count == 2 {
                         if i != 1 {
-                            return self.parse_context(KeywordType::Proc, word, loc)
+                            return self.parse_procedure(word, loc);
                         }
 
-                        // self.next_irtoken();
-                        // self.next_irtoken();
-                        todo!("Compile eval or proc definition");
+                        self.next_irtokens(2);
+                        if let Some((eval, skip)) = self.compile_eval() {
+                            if eval.typ != TokenType::DataType(ValueType::Any) {
+                                self.next_irtokens(skip);
+                                self.const_list.push((word.to_string(), eval.operand, eval.typ).into());
+                                return map_res(Ok(()));
+                            }
+                        }
+
+                        return map_res_t(self.define_proc(word, loc, Contract::default()));
                     }
                 },
-                _ => return self.invalid_token(tok, "context declaration")
+                _ => return map_res(self.invalid_token(tok, "context declaration"))
             }
         }
         Ok(None)
     }
 
-    fn invalid_token(&self, tok: &IRToken, error_context: &str) -> Result<Option<Vec<Op>>> {
+    fn compile_eval_n(&mut self, _n: usize) -> Option<(Vec<IRToken>, usize)> {
+        warn!("Todo: Compile time evaluation not implemented yet");
+        None
+    }
+    
+    fn compile_eval(&mut self) -> Option<(IRToken, usize)> {
+        warn!("Todo: Compile time evaluation not implemented yet");
+        None
+    }
+    
+    fn invalid_token(&self, tok: &IRToken, error_context: &str) -> Result<()> {
         let (found_desc, found_name) = match tok.typ {
             TokenType::Keyword => ("keyword", format!("{:?}", from_primitive::<KeywordType>(tok.operand))),
             TokenType::Word    => ("word or intrinsic", self.get_word(tok.operand).to_owned()),
@@ -344,33 +413,146 @@ impl Parser<'_> {
         bail!("{} Invalid {found_desc} found on {error_context}: `{found_name}`", tok.loc)
     }
 
-    fn get_word(&self, value: i32) -> &String {
-        self.word_list.get(value as usize).expect("unreachable, lexer error")
+    fn parse_procedure(&mut self, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+        let mut ins  = Vec::new();
+        let mut outs = Vec::new();
+        let mut found_arrow = false;
+
+        self.expect_keyword(KeywordType::Colon, "`:` after keyword `proc`", loc.clone())?;
+        let error_text = "Expected proc contract or `:` after procedure definition, but found";
+
+        while let Some(tok) = self.next_irtoken() {
+            if let Some(key) = tok.get_keyword() {
+                match key {
+                    KeywordType::Arrow => {
+                        ensure!(!found_arrow, "{} Duplicated `->` found on procedure definition", loc);
+                        found_arrow = true;
+                    },
+                    KeywordType::Colon => {
+                        return map_res_t(self.define_proc(word, loc, Contract {ins, outs}));
+                    },
+                    _ => bail!("{}, {}: `{:?}`", loc, error_text, key),
+                }
+            } else if let Some(found_word) = self.try_get_word(&tok) {
+                if let Some(stk) = self.get_type_name(found_word) {
+                    for member in stk.members.iter() {
+                        push_by_condition(found_arrow, member.typ.clone(), &mut outs, &mut ins);
+                    }
+                } else if let Some(type_ptr) = self.get_data_pointer(found_word) {
+                    push_by_condition(found_arrow, type_ptr, &mut outs, &mut ins);
+                } else {
+                    bail!("{}, {} the Word: `{:?}`", loc, error_text, found_word);
+                }
+            } else {
+                bail!("{}, {}: `{:?}`", loc, error_text, tok.typ);
+            }
+        }
+        bail!("{}, {} nothing", loc, error_text);
     }
 
-    fn parse_context(&mut self, context: KeywordType, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
-        match context {
-            KeywordType::Proc   => self.parse_procedure(word, Op::from((OpType::PrepProc, loc))),
-            KeywordType::Mem    => self.parse_memory(word, loc),
-            KeywordType::Struct => self.parse_struct(word, loc),
-            _ => Ok(None)
+    fn expect_keyword(&mut self, key: KeywordType, error_text: &str, loc: Loc) -> Result<IRToken> {
+        self.expect_next_by(|tok| tok.is_keyword(key), error_text, loc)
+    }
+
+    fn expect_next_by(&mut self, pred: impl FnOnce(&IRToken) -> bool, error_text: &str, loc: Loc) -> Result<IRToken> {
+        let tok = self.next_irtoken();
+        let none = tok.is_none();
+        tok.expect_by(pred, error_text).map_err(|err| 
+            if none {
+                let context = format!("{} {}", loc, err);
+                err.context(context)
+            } else {
+                err
+            }
+        )
+    }
+
+    fn define_proc(&mut self, name: &str, loc: Loc, contract: Contract) -> Result<Op> {
+        ensure!(self.inside_proc(), "{} Cannot define a procedure inside of another procedure", loc);
+        
+        let proc = Proc::new(name.to_owned(), contract);
+        let operand = self.proc_list.len();
+        self.current_proc = Some(operand);
+        self.proc_list.push(proc);
+
+        Ok(self.push_block(Op::new(OpType::PrepProc, operand  as i32, loc)))
+    }
+
+    fn parse_memory(&mut self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
+        todo!()
+    }
+
+    fn parse_struct(&mut self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
+        todo!()
+    }
+
+    fn parse_const_or_var(&mut self, word: &str, loc: Loc, operand: i32, stk: StructType) -> Result<()> {
+        self.expect_keyword(KeywordType::Colon,  "`:` after variable type definition" , loc.clone())?;
+
+        let assign = self.expect_next_by(|tok|
+            tok.is_keyword(KeywordType::Colon) || tok.is_keyword(KeywordType::Equal),
+            "`:` or `=` after keyword `:`", loc.clone())?
+            .get_keyword().expect("unreachable");
+        
+        
+        let (mut result, skip) = self.compile_eval_n(stk.members.len())
+            .with_context(|| format!("{} Failed to parse an valid struct value at compile-time evaluation", loc))?;
+
+        let end_token = self.next_irtokens(skip).expect("unreachable");
+        let mut members = stk.members;
+        members.reverse();
+
+        if result.len() == 1 {
+            if let Some(eval) = result.pop() {
+                if eval.typ == TokenType::DataType(ValueType::Any) {
+                    for member in members {
+                        let name = format!("{word}.{}", member.name);
+                        let struct_word = (name.to_string(), member.default_value, member.typ).into();
+                        self.register_typed_word(&assign, struct_word);
+                    }
+                } else {
+                    let member_type = members.pop().expect("unreachable").typ;
+                    ensure!(member_type == TokenType::DataType(ValueType::Any) || member_type == eval.typ,
+                            "{} Expected type `{:?}` on the stack at the end of the compile-time evaluation, but found: `{:?}`",
+                            end_token.loc, member_type, eval.typ);
+                    
+                    let struct_word = (word.to_string(), eval.operand, member_type).into();
+                    self.register_typed_word(&assign, struct_word);
+                }
+            }
+        } else {
+            warn!("Todo: Typechecking stack elements is not implemented yet");
+
+            if !self.inside_proc() {
+                members.reverse();
+                result.reverse();
+            }
+
+            for index in 0..members.len() {
+                if let (Some(member), Some(item)) = (members.get(index), result.get(index)) {
+                    let name = format!("{word}.{}", member.name);
+                    let struct_word = (name, item.operand, item.typ.to_owned()).into();
+                    self.register_typed_word(&assign, struct_word);
+                }
+            }
+        }
+    
+        self.struct_names.push(Word { name: word.to_string(), value: operand });
+        Ok(())
+    }
+
+    fn register_typed_word(&mut self, assign: &KeywordType, struct_word: TypedWord) {
+        match assign {
+            KeywordType::Colon => self.const_list.push(struct_word),
+            _                  => self.register_var(struct_word),
         }
     }
 
-    fn parse_procedure(&self, _word: &str, _loc: Op) -> Result<Option<Vec<Op>>> {
-        todo!()
-    }
-
-    fn parse_memory(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
-        todo!()
-    }
-
-    fn parse_struct(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
-        todo!()
-    }
-
-    fn parse_const_or_var(&mut self, _word: &str, _loc: Loc, _operand: i32, _stk: StructType) -> Result<Option<Vec<Op>>> {
-        todo!()
+    fn register_var(&mut self, struct_word: TypedWord) {
+        match self.current_proc_mut() {
+            Some(proc) => proc.local_vars.push(struct_word),
+            _          => self.global_vars.push(struct_word)
+        }
     }
 
     fn lex_file(&mut self, path: PathBuf) -> Result<&mut Self> {

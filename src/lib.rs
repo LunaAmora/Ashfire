@@ -76,3 +76,18 @@ pub fn empty_or_some<T>(vec: Vec<T>) -> Option<Vec<T>> {
 pub fn flatten<T>(vec: Vec<Vec<T>>) -> Vec<T> {
     vec.into_iter().flatten().collect()
 }
+
+pub fn map_res<T>(res: Result<()>) -> Result<Option<Vec<T>>> {
+    res.map(|_| Some(vec![]))
+}
+
+pub fn map_res_t<T>(res: Result<T>) -> Result<Option<Vec<T>>> {
+    res.map(|t| Some(vec![t]))
+}
+
+pub fn push_by_condition<T>(cond: bool, value: T, if_true: &mut Vec<T>, if_false: &mut Vec<T>) {
+    match cond {
+        true => if_true.push(value),
+        _   => if_false.push(value),
+    }
+}
