@@ -57,6 +57,13 @@ macro_rules! choice {
     }
 }
 
+#[macro_export]
+macro_rules! equals_any {
+    ($expression:expr, $( $equal:expr ),+) => {
+        ($($expression == $equal)||*)
+    };
+}
+
 pub trait ExpectBy<T> {
     fn expect_by(self, pred: impl FnOnce(&T) -> bool, desc: &str) -> Result<T>;
 }

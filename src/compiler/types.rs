@@ -73,27 +73,15 @@ impl Display for Loc {
 }
 
 #[derive(Clone)]
-pub struct IRToken  {
+pub struct IRToken {
     pub typ: TokenType,
     pub operand: i32,
     pub loc: Loc
 }
 
-impl From<(TypedWord, Loc)> for IRToken {
-    fn from(tuple: (TypedWord, Loc)) -> Self {
-        let (typ, operand, loc) = (tuple.0.typ, tuple.0.word.value, tuple.1);
-        Self { typ, operand, loc }
-    }
-}
-
 impl IRToken {
-    pub fn is_keyword(&self, expected: KeywordType) -> bool{
-        self.typ == TokenType::Keyword &&
-        expected == FromPrimitive::from_i32(self.operand).expect("unreachable")
-    }
-
     pub fn get_keyword(&self) -> Option<KeywordType> {
-        if self.typ == TokenType::Keyword {
+        if self == TokenType::Keyword {
             FromPrimitive::from_i32(self.operand)
         } else {
             None
@@ -104,6 +92,26 @@ impl IRToken {
 impl Display for IRToken {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{:?} [{}]", self.typ, self.operand)
+    }
+}
+
+impl PartialEq<KeywordType> for &IRToken {
+    fn eq(&self, other: &KeywordType) -> bool {
+        self.typ == TokenType::Keyword &&
+        other == &FromPrimitive::from_i32(self.operand).expect("unreachable")
+    }
+}
+
+impl PartialEq<TokenType> for &IRToken {
+    fn eq(&self, other: &TokenType) -> bool {
+        &self.typ == other
+    }
+}
+
+impl From<(TypedWord, Loc)> for IRToken {
+    fn from(tuple: (TypedWord, Loc)) -> Self {
+        let (typ, operand, loc) = (tuple.0.typ, tuple.0.word.value, tuple.1);
+        Self { typ, operand, loc }
     }
 }
 
@@ -167,15 +175,15 @@ pub struct TypedWord {
     pub typ:  TokenType
 }
 
-impl From<(String, i32, TokenType)> for TypedWord {
-    fn from(tuple: (String, i32, TokenType)) -> Self {
-        Self { word: Word { name: tuple.0, value: tuple.1 }, typ: tuple.2 }
-    }
-}
-
 impl TypedWord {
     pub fn name(&self) -> &str {
         self.word.name.as_str()
+    }
+}
+
+impl From<(String, i32, TokenType)> for TypedWord {
+    fn from(tuple: (String, i32, TokenType)) -> Self {
+        Self { word: Word { name: tuple.0, value: tuple.1 }, typ: tuple.2 }
     }
 }
 
@@ -196,6 +204,15 @@ pub enum TokenType {
     Str,
     DataType(ValueType),
     DataPtr(ValueType),
+}
+
+impl PartialEq<ValueType> for TokenType {
+    fn eq(&self, other: &ValueType) -> bool {
+        match (self, other) {
+            (Self::DataType(typ), _) => typ == other,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

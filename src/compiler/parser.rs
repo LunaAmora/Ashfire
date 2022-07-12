@@ -209,7 +209,7 @@ impl Parser {
     }
 
     fn try_get_word(&self, tok: &IRToken) -> Option<&String> {
-        if tok.typ == TokenType::Word {
+        if tok == TokenType::Word {
             Some(self.get_word(tok.operand))
         } else {
             None
@@ -222,7 +222,7 @@ impl Parser {
     }
 
     fn get_struct_type(&self, tok: &IRToken) -> Option<&StructType> {
-        if tok.typ == TokenType::Word {
+        if tok == TokenType::Word {
             self.get_type_name(self.get_word(tok.operand))
         } else {
             None
@@ -306,7 +306,7 @@ impl Parser {
         while let Some(tok) = self.ir_tokens.get(i) { i += 1;
             match (colon_count, &tok.typ) {
                 (0, _) => {
-                    if tok.typ == TokenType::Word {
+                    if tok == TokenType::Word {
                         if let Some(stk) = self.get_struct_type(tok).cloned() {
                             let operand = tok.operand;
                             self.next_irtoken();
@@ -328,7 +328,7 @@ impl Parser {
                     
                     if let (Some(n1), Some(n2)) = (self.ir_tokens.get(i+1), self.ir_tokens.get(i+2)) {
                         if self.get_struct_type(n1).is_some() &&
-                           (n2.is_keyword(KeywordType::End) || n2.typ == TokenType::Word) {
+                            equals_any!(n2, KeywordType::End, TokenType::Word) {
                             return self.parse_struct(word, loc);
                         }
                     }
@@ -356,7 +356,7 @@ impl Parser {
                             self.next_irtokens(2);
 
                             if let Some((eval, skip)) = self.compile_eval() {
-                                ensure!(eval.typ != TokenType::DataType(ValueType::Any),
+                                ensure!(eval.typ != ValueType::Any,
                                     "{} Undefined variable value is not allowed", loc);
                                 self.next_irtokens(skip);
                                 self.register_var((word.to_string(), eval.operand, eval.typ).into());
@@ -378,7 +378,7 @@ impl Parser {
 
                         self.next_irtokens(2);
                         if let Some((eval, skip)) = self.compile_eval() {
-                            if eval.typ != TokenType::DataType(ValueType::Any) {
+                            if eval.typ != ValueType::Any {
                                 self.next_irtokens(skip);
                                 self.const_list.push((word.to_string(), eval.operand, eval.typ).into());
                                 return map_res(Ok(()));
@@ -451,7 +451,7 @@ impl Parser {
     }
 
     fn expect_keyword(&mut self, key: KeywordType, error_text: &str, loc: Loc) -> Result<IRToken> {
-        self.expect_next_by(|tok| tok.is_keyword(key), error_text, loc)
+        self.expect_next_by(|tok| tok == key, error_text, loc)
     }
 
     fn expect_next_by(&mut self, pred: impl FnOnce(&IRToken) -> bool, error_text: &str, loc: Loc) -> Result<IRToken> {
@@ -490,7 +490,7 @@ impl Parser {
         self.expect_keyword(KeywordType::Colon,  "`:` after variable type definition" , loc.clone())?;
 
         let assign = self.expect_next_by(|tok|
-            tok.is_keyword(KeywordType::Colon) || tok.is_keyword(KeywordType::Equal),
+            equals_any!(tok, KeywordType::Colon, KeywordType::Equal),
             "`:` or `=` after keyword `:`", loc.clone())?
             .get_keyword().expect("unreachable");
         
@@ -504,7 +504,7 @@ impl Parser {
 
         if result.len() == 1 {
             if let Some(eval) = result.pop() {
-                if eval.typ == TokenType::DataType(ValueType::Any) {
+                if eval.typ == ValueType::Any {
                     for member in members {
                         let name = format!("{word}.{}", member.name);
                         let struct_word = (name.to_string(), member.default_value, member.typ).into();
@@ -512,7 +512,7 @@ impl Parser {
                     }
                 } else {
                     let member_type = members.pop().expect("unreachable").typ;
-                    ensure!(member_type == TokenType::DataType(ValueType::Any) || member_type == eval.typ,
+                    ensure!(equals_any!(member_type, ValueType::Any, eval.typ),
                             "{} Expected type `{:?}` on the stack at the end of the compile-time evaluation, but found: `{:?}`",
                             end_token.loc, member_type, eval.typ);
                     
@@ -563,13 +563,13 @@ impl Parser {
         let mut lex = Lexer::new(reader, path);
 
         while let Some(token) = lex.lex_next_token(self)? {
-            if !token.is_keyword(KeywordType::Include) {
+            if &token != KeywordType::Include {
                 self.ir_tokens.push_back(token);
                 continue;
             }
 
             let tok = lex.lex_next_token(self)?
-                .expect_by(|t| -> bool {t.typ == TokenType::Str}, "include file name")?;
+                .expect_by(|tok| tok == TokenType::Str, "include file name")?;
                 
             let include = get_dir(&current)
                 .with_context(|| "failed to get file directory path")?

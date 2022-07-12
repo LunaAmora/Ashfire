@@ -83,7 +83,7 @@ impl Lexer {
 
     fn next_token(&mut self) -> Option<Token> {
         if !self.trim_left() && !self.read_line() {return None}
-        let pred = |c: char| c == ' ' || c == ':';
+        let pred = |c: char| matches!(c, ' ' | ':');
         let name = self.read_by_predicate(pred);
         let file = self.file.as_path().display().to_string();
         let loc = Loc { file, line: self.line_num, col: self.col_num as i32 + 1};
