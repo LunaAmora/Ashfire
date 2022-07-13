@@ -298,18 +298,22 @@ impl Parser {
     }
     
     fn get_variable(&mut self, loc_word: &LocWord) -> Result<Option<Vec<Op>>> {
-        let (word, word_type) =
-            loc_word.strip_prefix('!').map_or_else(|| 
-            loc_word.strip_prefix('*').map_or_else(|| 
-                (loc_word.as_str(), None), |word|
-                (word, Some(VarWordType::Pointer))), |word|
-                (word, Some(VarWordType::Store)));
+        let (word, word_type) = 
+            match loc_word.strip_prefix('!') {
+                Some(word) => (word, Some(VarWordType::Store)),
+                _ => match loc_word.strip_prefix('*') {
+                    Some(word) => (word, Some(VarWordType::Pointer)),
+                    None       => (loc_word.as_str(), None),
+                },
+            };
         
-        choice!(self.current_proc()
-                .map(|proc| proc.local_vars.clone())
-                .map_or(Ok(None),|proc_vars|
-            self.try_get_var(word, &loc_word.loc, proc_vars, true, word_type)),
-            self.try_get_var(word, &loc_word.loc, self.global_vars.clone(), false, word_type))
+        choice!(
+            self.current_proc().map(|proc| proc.local_vars.clone())
+                .map_or(Ok(None),
+                    |proc_vars| self.try_get_var(word, &loc_word.loc, proc_vars, true, word_type)
+                ),
+            self.try_get_var(word, &loc_word.loc, self.global_vars.clone(), false, word_type)
+        )
     }
 
     fn try_get_var(&mut self, _word: &str, _loc: &Loc, _vars: Vec<TypedWord>, _local: bool, _word_type: Option<VarWordType>) -> Result<Option<Vec<Op>>> {
@@ -329,8 +333,8 @@ impl Parser {
                     map_res(self.invalid_token(tok, "context declaration"))
                 ),
                 (_, TokenType::Keyword) => match choice!(
-                            self.parse_keyword_ctx(&mut colons, word, tok),
-                            self.parse_end_ctx(colons, i, word)) {
+                    self.parse_keyword_ctx(&mut colons, word, tok),
+                    self.parse_end_ctx(colons, i, word)) {
                         Ok(None) => {},
                         result => return result
                 },
@@ -523,9 +527,10 @@ impl Parser {
         let loc = &word.loc;
         self.expect_keyword(KeywordType::Colon,  "`:` after variable type definition" , loc)?;
 
-        let assign = self.expect_next_by(|tok|
-            equals_any!(tok, KeywordType::Colon, KeywordType::Equal),
-            "`:` or `=` after keyword `:`", loc)?
+        let assign =
+            self.expect_next_by(|tok|
+                equals_any!(tok, KeywordType::Colon, KeywordType::Equal),
+                "`:` or `=` after keyword `:`", loc)?
             .get_keyword().expect("unreachable");
         
         
