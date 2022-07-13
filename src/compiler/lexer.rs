@@ -18,11 +18,11 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    pub fn new(reader: BufReader<File>, file: PathBuf,) -> Self {
+    pub fn new(reader: BufReader<File>, file: &PathBuf,) -> Self {
         Self {
             buffer: Vec::new(),
             reader,
-            file,
+            file: file.to_owned(),
             lex_pos: 0,
             col_num: 0,
             line_num: 0
@@ -90,15 +90,15 @@ impl Lexer {
         Some(Token { name, loc })
     }
 
-    fn try_parse_string(&mut self, token: &Token, parser: &mut Parser) -> Result<Option<IRToken>> {
-        token.name
+    fn try_parse_string(&mut self, tok: &Token, parser: &mut Parser) -> Result<Option<IRToken>> {
+        tok.name
             .strip_prefix('\"').map_or_else(|| Ok(None), |word| {word
             .strip_suffix('\"').map_or_else(|| {
                 self.advance_by_predicate(|c: char| c == '\"');
                 Ok(self.read_by_predicate(|c: char| c == ' ')
                     .strip_prefix('\"').unwrap()
                     .strip_suffix('\"')
-                    .with_context(|| format!("{} Missing closing `\"` in string literal", token.loc))?
+                    .with_context(|| format!("{} Missing closing `\"` in string literal", tok.loc))?
                     .to_string())
             }, |word| Ok(word.to_string()))
             .map(|name| {
@@ -106,7 +106,7 @@ impl Lexer {
                 parser.data_list.push((Word { name, value: length as i32}).into());
 
                 let operand = parser.data_list.len() as i32 - 1;
-                Some(IRToken{ typ: TokenType::Str, operand, loc: token.loc.to_owned() })
+                Some(IRToken::new(TokenType::Str, operand, &tok.loc))
             })
         })
     }
@@ -126,7 +126,7 @@ impl Lexer {
 }
 
 fn parse_word(tok: Token, parser: &mut Parser) -> IRToken {
-    IRToken{ typ: TokenType::Word, operand: define_word(tok.name, parser), loc: tok.loc}
+    IRToken::new(TokenType::Word, define_word(tok.name, parser), &tok.loc)
 }
 
 fn define_word(name: String, parser: &mut Parser) -> i32 {
@@ -143,7 +143,7 @@ fn strip_trailing_newline(input: &str) -> &str {
 
 fn parse_number(tok: &Token) -> Option<IRToken> {
     tok.name.parse::<i32>().ok().map(|operand| 
-        IRToken{ typ: TokenType::DataType(ValueType::Int), operand, loc: tok.loc.to_owned() })
+        IRToken::new(TokenType::DataType(ValueType::Int), operand, &tok.loc))
 }
 
 fn try_parse_char(tok: &Token) -> Result<Option<IRToken>> {
@@ -166,7 +166,7 @@ fn try_parse_char(tok: &Token) -> Result<Option<IRToken>> {
             }
         ))))
         .map(|o| o.map(|operand|
-            IRToken{ typ: TokenType::DataType(ValueType::Int), operand, loc: tok.loc.to_owned() }
+            IRToken::new(TokenType::DataType(ValueType::Int), operand, &tok.loc)
         ))
 }
 
@@ -198,5 +198,5 @@ fn parse_keyword(tok: &Token) -> Option<IRToken> {
         "include" => KeywordType::Include,
         _ => return None
     }.into();
-    Some(IRToken{ typ: TokenType::Keyword, operand, loc: tok.loc.to_owned() })
+    Some(IRToken::new(TokenType::Keyword, operand, &tok.loc))
 }

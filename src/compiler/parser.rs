@@ -81,19 +81,20 @@ impl Parser {
             },
             TokenType::DataPtr(typ) => bail!("{} Data pointer type not valid here: `{:?}`", tok.loc, typ),
             TokenType::Word => {
-                let word = self.word_list.get(tok.operand as usize).expect("unreachable").to_owned();
+                let word = &self.word_list.get(tok.operand as usize).expect("unreachable").to_owned();
+                let loc = &tok.loc;
                 return choice!(
-                    self.get_const_struct(&word, tok.loc.to_owned()),
-                    self.get_offset(&word, tok.operand, tok.loc.to_owned()),
-                    self.get_binding(&word, tok.loc.to_owned()),
-                    self.get_intrinsic(&word, tok.loc.to_owned()),
-                    self.get_local_mem(&word, tok.loc.to_owned()),
-                    self.get_global_mem(&word, tok.loc.to_owned()),
-                    self.get_proc_name(&word, tok.loc.to_owned()),
-                    self.get_const_name(&word, tok.loc.to_owned()),
-                    self.get_variable(&word, tok.loc.to_owned()),
-                    self.define_context(&word, tok.loc.to_owned()),
-                    Err(anyhow!("{} Word was not declared on the program: `{}`", tok.loc, word)))
+                    self.get_const_struct(word, loc),
+                    self.get_offset(word, tok.operand, loc),
+                    self.get_binding(word, loc),
+                    self.get_intrinsic(word, loc),
+                    self.get_local_mem(word, loc),
+                    self.get_global_mem(word, loc),
+                    self.get_proc_name(word, loc),
+                    self.get_const_name(word, loc),
+                    self.get_variable(word, loc),
+                    self.define_context(word, loc),
+                    Err(anyhow!("{} Word was not declared on the program: `{}`", loc, word)))
             },
         }).into()
     }
@@ -162,9 +163,9 @@ impl Parser {
         op
     }
 
-    fn get_intrinsic(&self, word: &str, loc: Loc) -> Option<Vec<Op>> {
+    fn get_intrinsic(&self, word: &str, loc: &Loc) -> Option<Vec<Op>> {
         self.get_intrinsic_type(word)
-            .map(|i| vec![(OpType::Intrinsic, i.into(), loc).into()])
+            .map(|i| vec![Op::new(OpType::Intrinsic, i.into(), loc)])
     }
 
     fn get_intrinsic_type(&self, word: &str) -> Option<IntrinsicType> {
@@ -204,11 +205,11 @@ impl Parser {
             .map(|u| u as i32)
     }
     
-    fn get_word(&self, value: i32) -> &String {
-        self.word_list.get(value as usize).expect("unreachable, lexer error")
+    fn get_word(&self, value: i32) -> String {
+        self.word_list.get(value as usize).expect("unreachable, lexer error").to_owned()
     }
 
-    fn try_get_word(&self, tok: &IRToken) -> Option<&String> {
+    fn try_get_word(&self, tok: &IRToken) -> Option<String> {
         if tok == TokenType::Word {
             Some(self.get_word(tok.operand))
         } else {
@@ -223,7 +224,7 @@ impl Parser {
 
     fn get_struct_type(&self, tok: &IRToken) -> Option<&StructType> {
         if tok == TokenType::Word {
-            self.get_type_name(self.get_word(tok.operand))
+            self.get_type_name(&self.get_word(tok.operand))
         } else {
             None
         }
@@ -233,7 +234,7 @@ impl Parser {
         todo!()
     }
 
-    fn get_const_struct(&mut self, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+    fn get_const_struct(&mut self, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
         Ok(empty_or_some(
             flatten(
                 self.def_ops_from_fields(self.get_const_struct_fields(word, loc))?
@@ -241,10 +242,10 @@ impl Parser {
         ))
     }
 
-    fn get_const_struct_fields(&self, word: &str, loc: Loc) -> Vec<IRToken> {
+    fn get_const_struct_fields(&self, word: &str, loc: &Loc) -> Vec<IRToken> {
         self.const_list.iter()
             .filter(|cnst| cnst.name().starts_with(&format!("{}.", word)))
-            .map(|tword| (tword.clone(), loc.clone()).into())
+            .map(|tword| (tword, loc).into())
             .collect()
     }
 
@@ -254,7 +255,7 @@ impl Parser {
             .collect()
     }
 
-    fn get_offset(&self, word: &str, operand: i32, loc: Loc) -> Option<Vec<Op>> {
+    fn get_offset(&self, word: &str, operand: i32, loc: &Loc) -> Option<Vec<Op>> {
         word.strip_prefix('.').map(|word| Op::from(
             word.strip_prefix('*').map_or_else(|| 
                 (OpType::OffsetLoad, operand, loc.clone()), |_|
@@ -263,73 +264,84 @@ impl Parser {
         ).into())
     }
 
-    fn get_binding(&self, word: &str, loc: Loc) -> Option<Vec<Op>> {
+    fn get_binding(&self, word: &str, loc: &Loc) -> Option<Vec<Op>> {
         self.current_proc()
             .and_then(|proc| proc.bindings.iter().position(|bind| bind.eq(word))
             .map(|index| (proc.bindings.len() - 1 - index) as i32))
             .map(|index| Op::new(OpType::PushBind, index, loc).into())
     }
 
-    fn get_local_mem(&self, word: &str, loc: Loc) -> Option<Vec<Op>> {
+    fn get_local_mem(&self, word: &str, loc: &Loc) -> Option<Vec<Op>> {
         self.current_proc()
             .and_then(|proc| proc.local_mem_names.iter().find(|mem| mem.name.eq(word)))
             .map(|local| Op::new(OpType::PushLocalMem, local.value, loc).into())
     }
 
-    fn get_global_mem(&self, word: &str, loc: Loc) -> Option<Vec<Op>> {
+    fn get_global_mem(&self, word: &str, loc: &Loc) -> Option<Vec<Op>> {
         self.mem_list.iter()
             .find(|mem| mem.name.eq(word))
             .map(|global| Op::new(OpType::PushGlobalMem, global.value, loc).into())
     }
 
-    fn get_proc_name(&self, word: &str, loc: Loc) -> Option<Vec<Op>> {
+    fn get_proc_name(&self, word: &str, loc: &Loc) -> Option<Vec<Op>> {
         self.proc_list.iter()
             .position(|proc| proc.name.eq(word))
             .map(|index| Op::new(OpType::Call, index as i32, loc).into())
     }
 
-    fn get_const_name(&mut self, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+    fn get_const_name(&mut self, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
         self.const_list.iter()
             .find(|cnst| cnst.name().eq(word))
-            .map(|tword| (tword.clone(), loc).into())
+            .map(|tword| (tword, loc).into())
             .map_or_else(|| Ok(None), |tok| self.define_op(tok))
     }
     
-    fn get_variable(&self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
+    fn get_variable(&mut self, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
+        let (word, word_type) =
+            word.strip_prefix('!').map_or_else(|| 
+            word.strip_prefix('*').map_or_else(|| 
+                (word, None), |word|
+                (word, Some(VarWordType::Pointer))), |word|
+                (word, Some(VarWordType::Store)));
+        
+        choice!(self.current_proc()
+                .map(|proc| proc.local_vars.clone())
+                .map_or(Ok(None),|proc_vars|
+            self.try_get_var(word, loc, proc_vars, true, word_type)),
+            self.try_get_var(word, loc, self.global_vars.clone(), false, word_type))
+    }
+
+    fn try_get_var(&mut self, _word: &str, _loc: &Loc, _vars: Vec<TypedWord>, _local: bool, _word_type: Option<VarWordType>) -> Result<Option<Vec<Op>>> {
         todo!()
     }
 
-    fn define_context(&mut self, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+    fn define_context(&mut self, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
         let mut i = 0;
         let mut colons = 0;
 
         while let Some(tok) = self.ir_tokens.get(i).cloned() { i += 1;
             match (colons, &tok.typ) {
-                (1, TokenType::DataType(ValueType::Int)) => {
-                    return self.parse_memory(word, loc);
-                },
-                (1, TokenType::Word) => { return choice!(
-                    self.parse_proc_ctx(self.get_word(tok.operand).clone(), word, loc.clone()),
+                (1, TokenType::DataType(ValueType::Int))
+                    => return self.parse_memory(word, loc),
+                (1, TokenType::Word) => return choice!(
+                    self.parse_proc_ctx(self.get_word(tok.operand), word, loc),
                     self.parse_struct_ctx(i, word, loc),
-                    map_res(self.invalid_token(tok, "context declaration")));
-                },
-                (_, TokenType::Keyword) => { match choice!(
-                            self.parse_keyword_ctx(&mut colons, word, tok, loc.clone()),
-                            self.parse_end_ctx(colons, i, word, loc.clone())) {
+                    map_res(self.invalid_token(tok, "context declaration"))
+                ),
+                (_, TokenType::Keyword) => match choice!(
+                            self.parse_keyword_ctx(&mut colons, word, tok, loc),
+                            self.parse_end_ctx(colons, i, word, loc)) {
                         Ok(None) => {},
                         result => return result
-                    }
                 },
-                (0, _) => {
-                    return self.parse_word_ctx(&tok, word, loc)
-                }
+                (0, _) => return self.parse_word_ctx(&tok, word, loc),
                 _ => return map_res(self.invalid_token(tok, "context declaration"))
             }
         }
         Ok(None)
     }
 
-    fn parse_proc_ctx(&mut self, found_word: String, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_proc_ctx(&mut self, found_word: String, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
         if self.get_type_name(&found_word).is_some() ||
             self.get_data_pointer(&found_word).is_some() {
             return self.parse_procedure(word, loc);
@@ -337,7 +349,7 @@ impl Parser {
         Ok(None)
     }
 
-    fn parse_struct_ctx(&mut self, top_index: usize, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_struct_ctx(&mut self, top_index: usize, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
         if let (Some(n1), Some(n2)) = (self.ir_tokens.get(top_index+1), self.ir_tokens.get(top_index+2)) {
             if self.get_struct_type(n1).is_some() &&
                 equals_any!(n2, KeywordType::End, TokenType::Word) {
@@ -347,7 +359,7 @@ impl Parser {
         Ok(None)
     }
 
-    fn parse_keyword_ctx(&mut self, colons: &mut i32, word: &str, tok: IRToken, loc: Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_keyword_ctx(&mut self, colons: &mut i32, word: &str, tok: IRToken, loc: &Loc) -> Result<Option<Vec<Op>>> {
         match (*colons, from_primitive(tok.operand)) {
             (0, KeywordType::Mem) => {
                 self.next_irtoken();
@@ -366,7 +378,7 @@ impl Parser {
                 if let Some((eval, skip)) = self.compile_eval() {
                     ensure!(eval.typ != ValueType::Any, "{} Undefined variable value is not allowed", loc);
                     self.next_irtokens(skip);
-                    self.register_var((word.to_string(), eval.operand, eval.typ).into());
+                    self.register_var((word, eval.operand, eval.typ).into());
                     return map_res(Ok(()))
                 }
                 map_res(self.invalid_token(tok, "context declaration")) 
@@ -382,13 +394,13 @@ impl Parser {
         }
     }
 
-    fn parse_end_ctx(&mut self, colons: i32, ctx_size: usize, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_end_ctx(&mut self, colons: i32, ctx_size: usize, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
         if colons != 2 { return Ok(None)}
-        choice!(self.parse_static_ctx(ctx_size, word, loc.clone()),
+        choice!(self.parse_static_ctx(ctx_size, word, loc),
             map_res_t(self.define_proc(word, loc, Contract::default())))
     }
 
-    fn parse_static_ctx(&mut self, ctx_size: usize, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_static_ctx(&mut self, ctx_size: usize, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
         if ctx_size != 1 {
             return self.parse_procedure(word, loc);
         }
@@ -397,28 +409,27 @@ impl Parser {
         if let Some((eval, skip)) = self.compile_eval() {
             if eval.typ != ValueType::Any {
                 self.next_irtokens(skip);
-                self.const_list.push((word.to_string(), eval.operand, eval.typ).into());
+                self.const_list.push((word, eval.operand, eval.typ).into());
                 return map_res(Ok(()));
             }
         }
         Ok(None)
     }
 
-    fn parse_word_ctx(&mut self, tok: &IRToken, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_word_ctx(&mut self, tok: &IRToken, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
         if tok == TokenType::Word {
             if let Some(stk) = self.get_struct_type(tok).cloned() {
-                let operand = tok.operand;
                 self.next_irtoken();
-                return map_res(self.parse_const_or_var(word, loc, operand, stk));
+                return map_res(self.parse_const_or_var(word, loc, tok.operand, stk));
             }
         }
         Ok(None)
     }
 
-    fn define_proc(&mut self, name: &str, loc: Loc, contract: Contract) -> Result<Op> {
+    fn define_proc(&mut self, name: &str, loc: &Loc, contract: Contract) -> Result<Op> {
         ensure!(self.inside_proc(), "{} Cannot define a procedure inside of another procedure", loc);
         
-        let proc = Proc::new(name.to_owned(), contract);
+        let proc = Proc::new(name, contract);
         let operand = self.proc_list.len();
         self.current_proc = Some(operand);
         self.proc_list.push(proc);
@@ -439,18 +450,18 @@ impl Parser {
     fn invalid_token(&self, tok: IRToken, error_context: &str) -> Result<()> {
         let (found_desc, found_name) = match tok.typ {
             TokenType::Keyword => ("keyword", format!("{:?}", from_primitive::<KeywordType>(tok.operand))),
-            TokenType::Word    => ("word or intrinsic", self.get_word(tok.operand).to_owned()),
+            TokenType::Word    => ("word or intrinsic", self.get_word(tok.operand)),
             _ => ("token", format!("{:?}", tok.typ))
         };
         bail!("{} Invalid {found_desc} found on {error_context}: `{found_name}`", tok.loc)
     }
 
-    fn parse_procedure(&mut self, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_procedure(&mut self, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
         let mut ins  = Vec::new();
         let mut outs = Vec::new();
         let mut found_arrow = false;
 
-        self.expect_keyword(KeywordType::Colon, "`:` after keyword `proc`", loc.clone())?;
+        self.expect_keyword(KeywordType::Colon, "`:` after keyword `proc`", loc)?;
         let error_text = "Expected proc contract or `:` after procedure definition, but found";
 
         while let Some(tok) = self.next_irtoken() {
@@ -466,11 +477,11 @@ impl Parser {
                     _ => bail!("{}, {}: `{:?}`", loc, error_text, key),
                 }
             } else if let Some(found_word) = self.try_get_word(&tok) {
-                if let Some(stk) = self.get_type_name(found_word) {
+                if let Some(stk) = self.get_type_name(&found_word) {
                     for member in stk.members.iter() {
-                        push_by_condition(found_arrow, member.typ.clone(), &mut outs, &mut ins);
+                        push_by_condition(found_arrow, member.typ, &mut outs, &mut ins);
                     }
-                } else if let Some(type_ptr) = self.get_data_pointer(found_word) {
+                } else if let Some(type_ptr) = self.get_data_pointer(&found_word) {
                     push_by_condition(found_arrow, type_ptr, &mut outs, &mut ins);
                 } else {
                     bail!("{}, {} the Word: `{:?}`", loc, error_text, found_word);
@@ -482,11 +493,11 @@ impl Parser {
         bail!("{}, {} nothing", loc, error_text);
     }
 
-    fn expect_keyword(&mut self, key: KeywordType, error_text: &str, loc: Loc) -> Result<IRToken> {
+    fn expect_keyword(&mut self, key: KeywordType, error_text: &str, loc: &Loc) -> Result<IRToken> {
         self.expect_next_by(|tok| tok == key, error_text, loc)
     }
 
-    fn expect_next_by(&mut self, pred: impl FnOnce(&IRToken) -> bool, error_text: &str, loc: Loc) -> Result<IRToken> {
+    fn expect_next_by(&mut self, pred: impl FnOnce(&IRToken) -> bool, error_text: &str, loc: &Loc) -> Result<IRToken> {
         let tok = self.next_irtoken();
         let none = tok.is_none();
         tok.expect_by(pred, error_text).map_err(|err| 
@@ -499,20 +510,20 @@ impl Parser {
         )
     }
 
-    fn parse_memory(&mut self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_memory(&mut self, _word: &str, _loc: &Loc) -> Result<Option<Vec<Op>>> {
         todo!()
     }
 
-    fn parse_struct(&mut self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_struct(&mut self, _word: &str, _loc: &Loc) -> Result<Option<Vec<Op>>> {
         todo!()
     }
 
-    fn parse_const_or_var(&mut self, word: &str, loc: Loc, operand: i32, stk: StructType) -> Result<()> {
-        self.expect_keyword(KeywordType::Colon,  "`:` after variable type definition" , loc.clone())?;
+    fn parse_const_or_var(&mut self, word: &str, loc: &Loc, operand: i32, stk: StructType) -> Result<()> {
+        self.expect_keyword(KeywordType::Colon,  "`:` after variable type definition" , loc)?;
 
         let assign = self.expect_next_by(|tok|
             equals_any!(tok, KeywordType::Colon, KeywordType::Equal),
-            "`:` or `=` after keyword `:`", loc.clone())?
+            "`:` or `=` after keyword `:`", loc)?
             .get_keyword().expect("unreachable");
         
         
@@ -528,7 +539,7 @@ impl Parser {
                 if eval.typ == ValueType::Any {
                     for member in members {
                         let name = format!("{word}.{}", member.name);
-                        let struct_word = (name.to_string(), member.default_value, member.typ).into();
+                        let struct_word = (name.as_str(), member.default_value, member.typ).into();
                         self.register_typed_word(&assign, struct_word);
                     }
                 } else {
@@ -537,7 +548,7 @@ impl Parser {
                             "{} Expected type `{:?}` on the stack at the end of the compile-time evaluation, but found: `{:?}`",
                             end_token.loc, member_type, eval.typ);
                     
-                    let struct_word = (word.to_string(), eval.operand, member_type).into();
+                    let struct_word = (word, eval.operand, member_type).into();
                     self.register_typed_word(&assign, struct_word);
                 }
             }
@@ -552,13 +563,13 @@ impl Parser {
             for index in 0..members.len() {
                 if let (Some(member), Some(item)) = (members.get(index), result.get(index)) {
                     let name = format!("{word}.{}", member.name);
-                    let struct_word = (name, item.operand, item.typ.to_owned()).into();
+                    let struct_word = (name.as_str(), item.operand, item.typ).into();
                     self.register_typed_word(&assign, struct_word);
                 }
             }
         }
     
-        self.struct_names.push(Word { name: word.to_string(), value: operand });
+        self.struct_names.push(Word::new(word, operand));
         Ok(())
     }
 
@@ -579,9 +590,7 @@ impl Parser {
     fn lex_file(&mut self, path: PathBuf) -> Result<&mut Self> {
         let reader = BufReader::new(File::open(&path)
             .with_context(|| format!("could not read file `{:?}`", &path))?);
-
-        let current = path.to_owned();
-        let mut lex = Lexer::new(reader, path);
+        let mut lex = Lexer::new(reader, &path);
 
         while let Some(token) = lex.lex_next_token(self)? {
             if &token != KeywordType::Include {
@@ -592,7 +601,7 @@ impl Parser {
             let tok = lex.lex_next_token(self)?
                 .expect_by(|tok| tok == TokenType::Str, "include file name")?;
                 
-            let include = get_dir(&current)
+            let include = get_dir(&path)
                 .with_context(|| "failed to get file directory path")?
                 .join(self.data_list.get(tok.operand as usize)
                 .expect("unreachable, lexer error")

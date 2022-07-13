@@ -11,8 +11,8 @@ pub struct Proc {
 }
 
 impl Proc {
-    pub fn new(name: String, contract: Contract) -> Self {
-        Self { name, contract, ..Default::default() }
+    pub fn new(name: &str, contract: Contract) -> Self {
+        Self { name: name.to_owned(), contract, ..Default::default() }
     }
 }
 
@@ -30,8 +30,8 @@ pub struct Op {
 }
 
 impl Op {
-    pub fn new(typ: OpType, operand: i32, loc: Loc) -> Self {
-        Self { typ, operand, loc }
+    pub fn new(typ: OpType, operand: i32, loc: &Loc) -> Self {
+        Self { typ, operand, loc: loc.clone() }
     }
 }
 
@@ -80,6 +80,10 @@ pub struct IRToken {
 }
 
 impl IRToken {
+    pub fn new(typ: TokenType, operand: i32, loc: &Loc) -> Self {
+        Self { typ, operand, loc: loc.to_owned() }
+    }
+
     pub fn get_keyword(&self) -> Option<KeywordType> {
         if self == TokenType::Keyword {
             FromPrimitive::from_i32(self.operand)
@@ -108,10 +112,10 @@ impl PartialEq<TokenType> for &IRToken {
     }
 }
 
-impl From<(TypedWord, Loc)> for IRToken {
-    fn from(tuple: (TypedWord, Loc)) -> Self {
+impl From<(&TypedWord, &Loc)> for IRToken {
+    fn from(tuple: (&TypedWord, &Loc)) -> Self {
         let (typ, operand, loc) = (tuple.0.typ, tuple.0.word.value, tuple.1);
-        Self { typ, operand, loc }
+        Self { typ, operand, loc: loc.to_owned() }
     }
 }
 
@@ -152,6 +156,12 @@ pub struct Word {
     pub value: i32
 }
 
+impl Word {
+    pub fn new(name: &str, value: i32) -> Self {
+        Self { name: name.to_owned(), value }
+    }
+}
+
 pub struct SizedWord {
     pub word:   Word,
     pub offset: i32
@@ -181,9 +191,9 @@ impl TypedWord {
     }
 }
 
-impl From<(String, i32, TokenType)> for TypedWord {
-    fn from(tuple: (String, i32, TokenType)) -> Self {
-        Self { word: Word { name: tuple.0, value: tuple.1 }, typ: tuple.2 }
+impl From<(&str, i32, TokenType)> for TypedWord {
+    fn from(tuple: (&str, i32, TokenType)) -> Self {
+        Self { word: Word::new(tuple.0, tuple.1), typ: tuple.2 }
     }
 }
 
@@ -197,7 +207,7 @@ pub struct CaseOption {
     values: Vec<i32>
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum TokenType {
     Keyword,
     Word,
@@ -215,7 +225,7 @@ impl PartialEq<ValueType> for TokenType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum ValueType {
     Int,
     Bool,
@@ -351,4 +361,10 @@ pub enum CaseType {
     GreaterE,
     BitAnd,
     Default,
+}
+
+#[derive(Clone, Copy)]
+pub enum VarWordType {
+    Store,
+    Pointer,
 }
