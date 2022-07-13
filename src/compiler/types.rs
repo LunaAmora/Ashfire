@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter, Result, write, self};
+use std::{fmt::{Display, Formatter, Result, write, self}, ops::Deref};
 use num::FromPrimitive;
 
 #[derive(Default)]
@@ -157,8 +157,8 @@ pub struct Word {
 }
 
 impl Word {
-    pub fn new(name: &str, value: i32) -> Self {
-        Self { name: name.to_owned(), value }
+    pub fn new(name: String, value: i32) -> Self {
+        Self { name, value }
     }
 }
 
@@ -191,10 +191,39 @@ impl TypedWord {
     }
 }
 
-impl From<(&str, i32, TokenType)> for TypedWord {
-    fn from(tuple: (&str, i32, TokenType)) -> Self {
+impl From<(String, i32, TokenType)> for TypedWord {
+    fn from(tuple: (String, i32, TokenType)) -> Self {
         Self { word: Word::new(tuple.0, tuple.1), typ: tuple.2 }
     }
+}
+
+pub struct LocWord {
+    pub value: String,
+    pub loc:  Loc
+}
+
+impl PartialEq<String> for LocWord {
+    fn eq(&self, other: &String) -> bool {
+        self.value == *other
+    }
+}
+
+impl PartialEq<str> for LocWord {
+    fn eq(&self, other: &str) -> bool {
+        self.value == other
+    }
+}
+
+impl Deref for LocWord {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
+}
+
+impl LocWord {
+    pub fn new(loc: Loc, value: String) -> Self { Self { value, loc } }
 }
 
 pub struct TypeFrame {

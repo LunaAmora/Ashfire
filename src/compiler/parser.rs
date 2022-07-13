@@ -81,20 +81,21 @@ impl Parser {
             },
             TokenType::DataPtr(typ) => bail!("{} Data pointer type not valid here: `{:?}`", tok.loc, typ),
             TokenType::Word => {
-                let word = &self.word_list.get(tok.operand as usize).expect("unreachable").to_owned();
-                let loc = &tok.loc;
+                let loc_word = &LocWord::new(tok.loc,
+                    self.word_list.get(tok.operand as usize)
+                    .expect("unreachable").to_owned());
                 return choice!(
-                    self.get_const_struct(word, loc),
-                    self.get_offset(word, tok.operand, loc),
-                    self.get_binding(word, loc),
-                    self.get_intrinsic(word, loc),
-                    self.get_local_mem(word, loc),
-                    self.get_global_mem(word, loc),
-                    self.get_proc_name(word, loc),
-                    self.get_const_name(word, loc),
-                    self.get_variable(word, loc),
-                    self.define_context(word, loc),
-                    Err(anyhow!("{} Word was not declared on the program: `{}`", loc, word)))
+                    self.get_const_struct(loc_word),
+                    self.get_offset(loc_word, tok.operand),
+                    self.get_binding(loc_word),
+                    self.get_intrinsic(loc_word),
+                    self.get_local_mem(loc_word),
+                    self.get_global_mem(loc_word),
+                    self.get_proc_name(loc_word),
+                    self.get_const_name(loc_word),
+                    self.get_variable(loc_word),
+                    self.define_context(loc_word),
+                    Err(anyhow!("{} Word was not declared on the program: `{}`", loc_word.loc, loc_word.value)))
             },
         }).into()
     }
@@ -163,9 +164,9 @@ impl Parser {
         op
     }
 
-    fn get_intrinsic(&self, word: &str, loc: &Loc) -> Option<Vec<Op>> {
+    fn get_intrinsic(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.get_intrinsic_type(word)
-            .map(|i| vec![Op::new(OpType::Intrinsic, i.into(), loc)])
+            .map(|i| vec![Op::new(OpType::Intrinsic, i.into(), &word.loc)])
     }
 
     fn get_intrinsic_type(&self, word: &str) -> Option<IntrinsicType> {
@@ -234,18 +235,18 @@ impl Parser {
         todo!()
     }
 
-    fn get_const_struct(&mut self, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
+    fn get_const_struct(&mut self, word: &LocWord) -> Result<Option<Vec<Op>>> {
         Ok(empty_or_some(
             flatten(
-                self.def_ops_from_fields(self.get_const_struct_fields(word, loc))?
+                self.def_ops_from_fields(self.get_const_struct_fields(word))?
             )
         ))
     }
 
-    fn get_const_struct_fields(&self, word: &str, loc: &Loc) -> Vec<IRToken> {
+    fn get_const_struct_fields(&self, word: &LocWord) -> Vec<IRToken> {
         self.const_list.iter()
-            .filter(|cnst| cnst.name().starts_with(&format!("{}.", word)))
-            .map(|tword| (tword, loc).into())
+            .filter(|cnst| cnst.name().starts_with(&format!("{}.", word.value)))
+            .map(|tword| (tword, &word.loc).into())
             .collect()
     }
 
@@ -255,130 +256,129 @@ impl Parser {
             .collect()
     }
 
-    fn get_offset(&self, word: &str, operand: i32, loc: &Loc) -> Option<Vec<Op>> {
-        word.strip_prefix('.').map(|word| Op::from(
-            word.strip_prefix('*').map_or_else(|| 
-                (OpType::OffsetLoad, operand, loc.clone()), |_|
-                (OpType::Offset, operand, loc.clone())
+    fn get_offset(&self, word: &LocWord, operand: i32) -> Option<Vec<Op>> {
+        word.strip_prefix('.').map(|strip| Op::from(
+            strip.strip_prefix('*').map_or_else(|| 
+                (OpType::OffsetLoad, operand, word.loc.clone()), |_|
+                (OpType::Offset, operand, word.loc.clone())
             )
         ).into())
     }
 
-    fn get_binding(&self, word: &str, loc: &Loc) -> Option<Vec<Op>> {
+    fn get_binding(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.current_proc()
-            .and_then(|proc| proc.bindings.iter().position(|bind| bind.eq(word))
+            .and_then(|proc| proc.bindings.iter().position(|bind| word == bind)
             .map(|index| (proc.bindings.len() - 1 - index) as i32))
-            .map(|index| Op::new(OpType::PushBind, index, loc).into())
+            .map(|index| Op::new(OpType::PushBind, index, &word.loc).into())
     }
 
-    fn get_local_mem(&self, word: &str, loc: &Loc) -> Option<Vec<Op>> {
+    fn get_local_mem(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.current_proc()
-            .and_then(|proc| proc.local_mem_names.iter().find(|mem| mem.name.eq(word)))
-            .map(|local| Op::new(OpType::PushLocalMem, local.value, loc).into())
+            .and_then(|proc| proc.local_mem_names.iter().find(|mem| word == &mem.name))
+            .map(|local| Op::new(OpType::PushLocalMem, local.value, &word.loc).into())
     }
 
-    fn get_global_mem(&self, word: &str, loc: &Loc) -> Option<Vec<Op>> {
+    fn get_global_mem(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.mem_list.iter()
-            .find(|mem| mem.name.eq(word))
-            .map(|global| Op::new(OpType::PushGlobalMem, global.value, loc).into())
+            .find(|mem| word == &mem.name)
+            .map(|global| Op::new(OpType::PushGlobalMem, global.value, &word.loc).into())
     }
 
-    fn get_proc_name(&self, word: &str, loc: &Loc) -> Option<Vec<Op>> {
+    fn get_proc_name(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.proc_list.iter()
-            .position(|proc| proc.name.eq(word))
-            .map(|index| Op::new(OpType::Call, index as i32, loc).into())
+            .position(|proc| word == &proc.name)
+            .map(|index| Op::new(OpType::Call, index as i32, &word.loc).into())
     }
 
-    fn get_const_name(&mut self, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
+    fn get_const_name(&mut self, word: &LocWord) -> Result<Option<Vec<Op>>> {
         self.const_list.iter()
-            .find(|cnst| cnst.name().eq(word))
-            .map(|tword| (tword, loc).into())
+            .find(|cnst| word == cnst.name())
+            .map(|tword| (tword, &word.loc).into())
             .map_or_else(|| Ok(None), |tok| self.define_op(tok))
     }
     
-    fn get_variable(&mut self, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
+    fn get_variable(&mut self, loc_word: &LocWord) -> Result<Option<Vec<Op>>> {
         let (word, word_type) =
-            word.strip_prefix('!').map_or_else(|| 
-            word.strip_prefix('*').map_or_else(|| 
-                (word, None), |word|
+            loc_word.strip_prefix('!').map_or_else(|| 
+            loc_word.strip_prefix('*').map_or_else(|| 
+                (loc_word.as_str(), None), |word|
                 (word, Some(VarWordType::Pointer))), |word|
                 (word, Some(VarWordType::Store)));
         
         choice!(self.current_proc()
                 .map(|proc| proc.local_vars.clone())
                 .map_or(Ok(None),|proc_vars|
-            self.try_get_var(word, loc, proc_vars, true, word_type)),
-            self.try_get_var(word, loc, self.global_vars.clone(), false, word_type))
+            self.try_get_var(word, &loc_word.loc, proc_vars, true, word_type)),
+            self.try_get_var(word, &loc_word.loc, self.global_vars.clone(), false, word_type))
     }
 
     fn try_get_var(&mut self, _word: &str, _loc: &Loc, _vars: Vec<TypedWord>, _local: bool, _word_type: Option<VarWordType>) -> Result<Option<Vec<Op>>> {
         todo!()
     }
 
-    fn define_context(&mut self, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
+    fn define_context(&mut self, word: &LocWord) -> Result<Option<Vec<Op>>> {
         let mut i = 0;
         let mut colons = 0;
-
         while let Some(tok) = self.ir_tokens.get(i).cloned() { i += 1;
             match (colons, &tok.typ) {
                 (1, TokenType::DataType(ValueType::Int))
-                    => return self.parse_memory(word, loc),
+                    => return self.parse_memory(word),
                 (1, TokenType::Word) => return choice!(
-                    self.parse_proc_ctx(self.get_word(tok.operand), word, loc),
-                    self.parse_struct_ctx(i, word, loc),
+                    self.parse_proc_ctx(self.get_word(tok.operand), word),
+                    self.parse_struct_ctx(i, word),
                     map_res(self.invalid_token(tok, "context declaration"))
                 ),
                 (_, TokenType::Keyword) => match choice!(
-                            self.parse_keyword_ctx(&mut colons, word, tok, loc),
-                            self.parse_end_ctx(colons, i, word, loc)) {
+                            self.parse_keyword_ctx(&mut colons, word, tok),
+                            self.parse_end_ctx(colons, i, word)) {
                         Ok(None) => {},
                         result => return result
                 },
-                (0, _) => return self.parse_word_ctx(&tok, word, loc),
+                (0, _) => return self.parse_word_ctx(&tok, word),
                 _ => return map_res(self.invalid_token(tok, "context declaration"))
             }
         }
         Ok(None)
     }
 
-    fn parse_proc_ctx(&mut self, found_word: String, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_proc_ctx(&mut self, found_word: String, word: &LocWord) -> Result<Option<Vec<Op>>> {
         if self.get_type_name(&found_word).is_some() ||
             self.get_data_pointer(&found_word).is_some() {
-            return self.parse_procedure(word, loc);
+            return self.parse_procedure(word);
         }
         Ok(None)
     }
 
-    fn parse_struct_ctx(&mut self, top_index: usize, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_struct_ctx(&mut self, top_index: usize, word: &LocWord) -> Result<Option<Vec<Op>>> {
         if let (Some(n1), Some(n2)) = (self.ir_tokens.get(top_index+1), self.ir_tokens.get(top_index+2)) {
             if self.get_struct_type(n1).is_some() &&
                 equals_any!(n2, KeywordType::End, TokenType::Word) {
-                return self.parse_struct(word, loc);
+                return self.parse_struct(word);
             }
         }
         Ok(None)
     }
 
-    fn parse_keyword_ctx(&mut self, colons: &mut i32, word: &str, tok: IRToken, loc: &Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_keyword_ctx(&mut self, colons: &mut i32, word: &LocWord, tok: IRToken) -> Result<Option<Vec<Op>>> {
         match (*colons, from_primitive(tok.operand)) {
             (0, KeywordType::Mem) => {
                 self.next_irtoken();
-                self.parse_memory(word, loc)
+                self.parse_memory(word)
             },
             (0, KeywordType::Struct) => {
                 self.next_irtoken();
-                self.parse_struct(word, loc)
+                self.parse_struct(word)
             },
             (0, KeywordType::Proc) => {
                 self.next_irtoken();
-                self.parse_procedure(word, loc)
+                self.parse_procedure(word)
             },
             (1, KeywordType::Equal) => {
                 self.next_irtokens(2);
                 if let Some((eval, skip)) = self.compile_eval() {
-                    ensure!(eval.typ != ValueType::Any, "{} Undefined variable value is not allowed", loc);
+                    ensure!(eval.typ != ValueType::Any, "{} Undefined variable value is not allowed", &word.loc);
                     self.next_irtokens(skip);
-                    self.register_var((word, eval.operand, eval.typ).into());
+                    self.register_var((word.to_string(), eval.operand, eval.typ).into());
                     return map_res(Ok(()))
                 }
                 map_res(self.invalid_token(tok, "context declaration")) 
@@ -388,53 +388,53 @@ impl Parser {
                 Ok(None)
             },
             (_, KeywordType::End) => {
-                bail!("{} Missing body or contract necessary to infer the type of the word: `{word}`", loc)
+                bail!("{} Missing body or contract necessary to infer the type of the word: `{}`", word.loc, word.value)
             },
             _ => Ok(None)
         }
     }
 
-    fn parse_end_ctx(&mut self, colons: i32, ctx_size: usize, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_end_ctx(&mut self, colons: i32, ctx_size: usize, word: &LocWord) -> Result<Option<Vec<Op>>> {
         if colons != 2 { return Ok(None)}
-        choice!(self.parse_static_ctx(ctx_size, word, loc),
-            map_res_t(self.define_proc(word, loc, Contract::default())))
+        choice!(self.parse_static_ctx(ctx_size, word),
+            map_res_t(self.define_proc(word, Contract::default())))
     }
 
-    fn parse_static_ctx(&mut self, ctx_size: usize, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_static_ctx(&mut self, ctx_size: usize, word: &LocWord) -> Result<Option<Vec<Op>>> {
         if ctx_size != 1 {
-            return self.parse_procedure(word, loc);
+            return self.parse_procedure(word);
         }
         
         self.next_irtokens(2);
         if let Some((eval, skip)) = self.compile_eval() {
             if eval.typ != ValueType::Any {
                 self.next_irtokens(skip);
-                self.const_list.push((word, eval.operand, eval.typ).into());
+                self.const_list.push((word.to_string(), eval.operand, eval.typ).into());
                 return map_res(Ok(()));
             }
         }
         Ok(None)
     }
 
-    fn parse_word_ctx(&mut self, tok: &IRToken, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_word_ctx(&mut self, tok: &IRToken, word: &LocWord) -> Result<Option<Vec<Op>>> {
         if tok == TokenType::Word {
             if let Some(stk) = self.get_struct_type(tok).cloned() {
                 self.next_irtoken();
-                return map_res(self.parse_const_or_var(word, loc, tok.operand, stk));
+                return map_res(self.parse_const_or_var(word, tok.operand, stk));
             }
         }
         Ok(None)
     }
 
-    fn define_proc(&mut self, name: &str, loc: &Loc, contract: Contract) -> Result<Op> {
-        ensure!(self.inside_proc(), "{} Cannot define a procedure inside of another procedure", loc);
+    fn define_proc(&mut self, name: &LocWord, contract: Contract) -> Result<Op> {
+        ensure!(self.inside_proc(), "{} Cannot define a procedure inside of another procedure", &name.loc);
         
         let proc = Proc::new(name, contract);
         let operand = self.proc_list.len();
         self.current_proc = Some(operand);
         self.proc_list.push(proc);
 
-        Ok(self.push_block(Op::new(OpType::PrepProc, operand  as i32, loc)))
+        Ok(self.push_block(Op::new(OpType::PrepProc, operand  as i32, &name.loc)))
     }
 
     fn compile_eval_n(&mut self, _n: usize) -> Option<(Vec<IRToken>, usize)> {
@@ -456,10 +456,11 @@ impl Parser {
         bail!("{} Invalid {found_desc} found on {error_context}: `{found_name}`", tok.loc)
     }
 
-    fn parse_procedure(&mut self, word: &str, loc: &Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_procedure(&mut self, word: &LocWord) -> Result<Option<Vec<Op>>> {
         let mut ins  = Vec::new();
         let mut outs = Vec::new();
         let mut found_arrow = false;
+        let loc = &word.loc;
 
         self.expect_keyword(KeywordType::Colon, "`:` after keyword `proc`", loc)?;
         let error_text = "Expected proc contract or `:` after procedure definition, but found";
@@ -472,7 +473,7 @@ impl Parser {
                         found_arrow = true;
                     },
                     KeywordType::Colon => {
-                        return map_res_t(self.define_proc(word, loc, Contract {ins, outs}));
+                        return map_res_t(self.define_proc(word, Contract {ins, outs}));
                     },
                     _ => bail!("{}, {}: `{:?}`", loc, error_text, key),
                 }
@@ -510,15 +511,16 @@ impl Parser {
         )
     }
 
-    fn parse_memory(&mut self, _word: &str, _loc: &Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_memory(&mut self, _word: &LocWord) -> Result<Option<Vec<Op>>> {
         todo!()
     }
 
-    fn parse_struct(&mut self, _word: &str, _loc: &Loc) -> Result<Option<Vec<Op>>> {
+    fn parse_struct(&mut self, _word: &LocWord) -> Result<Option<Vec<Op>>> {
         todo!()
     }
 
-    fn parse_const_or_var(&mut self, word: &str, loc: &Loc, operand: i32, stk: StructType) -> Result<()> {
+    fn parse_const_or_var(&mut self, word: &LocWord, operand: i32, stk: StructType) -> Result<()> {
+        let loc = &word.loc;
         self.expect_keyword(KeywordType::Colon,  "`:` after variable type definition" , loc)?;
 
         let assign = self.expect_next_by(|tok|
@@ -538,8 +540,8 @@ impl Parser {
             if let Some(eval) = result.pop() {
                 if eval.typ == ValueType::Any {
                     for member in members {
-                        let name = format!("{word}.{}", member.name);
-                        let struct_word = (name.as_str(), member.default_value, member.typ).into();
+                        let name = format!("{}.{}", word.value, member.name);
+                        let struct_word = (name, member.default_value, member.typ).into();
                         self.register_typed_word(&assign, struct_word);
                     }
                 } else {
@@ -548,7 +550,7 @@ impl Parser {
                             "{} Expected type `{:?}` on the stack at the end of the compile-time evaluation, but found: `{:?}`",
                             end_token.loc, member_type, eval.typ);
                     
-                    let struct_word = (word, eval.operand, member_type).into();
+                    let struct_word = (word.to_string(), eval.operand, member_type).into();
                     self.register_typed_word(&assign, struct_word);
                 }
             }
@@ -562,14 +564,14 @@ impl Parser {
 
             for index in 0..members.len() {
                 if let (Some(member), Some(item)) = (members.get(index), result.get(index)) {
-                    let name = format!("{word}.{}", member.name);
-                    let struct_word = (name.as_str(), item.operand, item.typ).into();
+                    let name = format!("{}.{}", word.value, member.name);
+                    let struct_word = (name, item.operand, item.typ).into();
                     self.register_typed_word(&assign, struct_word);
                 }
             }
         }
     
-        self.struct_names.push(Word::new(word, operand));
+        self.struct_names.push(Word::new(word.to_string(), operand));
         Ok(())
     }
 
