@@ -301,97 +301,129 @@ impl Parser {
 
     fn define_context(&mut self, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
         let mut i = 0;
-        let mut colon_count = 0;
+        let mut colons = 0;
 
-        while let Some(tok) = self.ir_tokens.get(i) { i += 1;
-            match (colon_count, &tok.typ) {
-                (0, _) => {
-                    if tok == TokenType::Word {
-                        if let Some(stk) = self.get_struct_type(tok).cloned() {
-                            let operand = tok.operand;
-                            self.next_irtoken();
-                            return map_res(self.parse_const_or_var(word, loc, operand, stk));
-                        }
-                    }
-                    return Ok(None);
-                },
+        while let Some(tok) = self.ir_tokens.get(i).cloned() { i += 1;
+            match (colons, &tok.typ) {
                 (1, TokenType::DataType(ValueType::Int)) => {
                     return self.parse_memory(word, loc);
                 },
-                (1, TokenType::Word) => {
-                    let found_word = self.get_word(tok.operand);
-
-                    if self.get_type_name(found_word).is_some() ||
-                        self.get_data_pointer(found_word).is_some() {
-                        return self.parse_procedure(word, loc);
-                    }
-                    
-                    if let (Some(n1), Some(n2)) = (self.ir_tokens.get(i+1), self.ir_tokens.get(i+2)) {
-                        if self.get_struct_type(n1).is_some() &&
-                            equals_any!(n2, KeywordType::End, TokenType::Word) {
-                            return self.parse_struct(word, loc);
-                        }
-                    }
-
-                    return map_res(self.invalid_token(tok, "context declaration"));
+                (1, TokenType::Word) => { return choice!(
+                    self.parse_proc_ctx(self.get_word(tok.operand).clone(), word, loc.clone()),
+                    self.parse_struct_ctx(i, word, loc),
+                    map_res(self.invalid_token(tok, "context declaration")));
                 },
-                (_, TokenType::Keyword) => {
-                    let context = from_primitive(tok.operand);
-                    match (colon_count, context) {
-                        (0, KeywordType::Mem)  => {
-                            self.next_irtoken();
-                            return self.parse_memory(word, loc);
-                        },
-                        (0, KeywordType::Struct)  => {
-                            self.next_irtoken();
-                            return self.parse_struct(word, loc);
-                        },
-                        (0, KeywordType::Proc)  => {
-                            self.next_irtoken();
-                            return self.parse_procedure(word, loc);
-                        },
-                        (1, KeywordType::Equal) =>
-                        {
-                            let token = &tok.clone();
-                            self.next_irtokens(2);
-
-                            if let Some((eval, skip)) = self.compile_eval() {
-                                ensure!(eval.typ != ValueType::Any,
-                                    "{} Undefined variable value is not allowed", loc);
-                                self.next_irtokens(skip);
-                                self.register_var((word.to_string(), eval.operand, eval.typ).into());
-                                return map_res(Ok(()));
-                            }
-                            return map_res(self.invalid_token(token, "context declaration"));
-                        },
-                        (_, KeywordType::Colon) => colon_count += 1,
-                        (_, KeywordType::End) => {
-                            bail!("{} Missing body or contract necessary to infer the type of the word: `{word}`", loc)
-                        },
-                        _ => {}
-                    }
-
-                    if colon_count == 2 {
-                        if i != 1 {
-                            return self.parse_procedure(word, loc);
-                        }
-
-                        self.next_irtokens(2);
-                        if let Some((eval, skip)) = self.compile_eval() {
-                            if eval.typ != ValueType::Any {
-                                self.next_irtokens(skip);
-                                self.const_list.push((word.to_string(), eval.operand, eval.typ).into());
-                                return map_res(Ok(()));
-                            }
-                        }
-
-                        return map_res_t(self.define_proc(word, loc, Contract::default()));
+                (_, TokenType::Keyword) => { match choice!(
+                            self.parse_keyword_ctx(&mut colons, word, tok, loc.clone()),
+                            self.parse_end_ctx(colons, i, word, loc.clone())) {
+                        Ok(None) => {},
+                        result => return result
                     }
                 },
+                (0, _) => {
+                    return self.parse_word_ctx(&tok, word, loc)
+                }
                 _ => return map_res(self.invalid_token(tok, "context declaration"))
             }
         }
         Ok(None)
+    }
+
+    fn parse_proc_ctx(&mut self, found_word: String, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+        if self.get_type_name(&found_word).is_some() ||
+            self.get_data_pointer(&found_word).is_some() {
+            return self.parse_procedure(word, loc);
+        }
+        Ok(None)
+    }
+
+    fn parse_struct_ctx(&mut self, top_index: usize, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+        if let (Some(n1), Some(n2)) = (self.ir_tokens.get(top_index+1), self.ir_tokens.get(top_index+2)) {
+            if self.get_struct_type(n1).is_some() &&
+                equals_any!(n2, KeywordType::End, TokenType::Word) {
+                return self.parse_struct(word, loc);
+            }
+        }
+        Ok(None)
+    }
+
+    fn parse_keyword_ctx(&mut self, colons: &mut i32, word: &str, tok: IRToken, loc: Loc) -> Result<Option<Vec<Op>>> {
+        match (*colons, from_primitive(tok.operand)) {
+            (0, KeywordType::Mem) => {
+                self.next_irtoken();
+                self.parse_memory(word, loc)
+            },
+            (0, KeywordType::Struct) => {
+                self.next_irtoken();
+                self.parse_struct(word, loc)
+            },
+            (0, KeywordType::Proc) => {
+                self.next_irtoken();
+                self.parse_procedure(word, loc)
+            },
+            (1, KeywordType::Equal) => {
+                self.next_irtokens(2);
+                if let Some((eval, skip)) = self.compile_eval() {
+                    ensure!(eval.typ != ValueType::Any, "{} Undefined variable value is not allowed", loc);
+                    self.next_irtokens(skip);
+                    self.register_var((word.to_string(), eval.operand, eval.typ).into());
+                    return map_res(Ok(()))
+                }
+                map_res(self.invalid_token(tok, "context declaration")) 
+            },
+            (_, KeywordType::Colon) => {
+                *colons += 1;
+                Ok(None)
+            },
+            (_, KeywordType::End) => {
+                bail!("{} Missing body or contract necessary to infer the type of the word: `{word}`", loc)
+            },
+            _ => Ok(None)
+        }
+    }
+
+    fn parse_end_ctx(&mut self, colons: i32, ctx_size: usize, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+        if colons != 2 { return Ok(None)}
+        choice!(self.parse_static_ctx(ctx_size, word, loc.clone()),
+            map_res_t(self.define_proc(word, loc, Contract::default())))
+    }
+
+    fn parse_static_ctx(&mut self, ctx_size: usize, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+        if ctx_size != 1 {
+            return self.parse_procedure(word, loc);
+        }
+        
+        self.next_irtokens(2);
+        if let Some((eval, skip)) = self.compile_eval() {
+            if eval.typ != ValueType::Any {
+                self.next_irtokens(skip);
+                self.const_list.push((word.to_string(), eval.operand, eval.typ).into());
+                return map_res(Ok(()));
+            }
+        }
+        Ok(None)
+    }
+
+    fn parse_word_ctx(&mut self, tok: &IRToken, word: &str, loc: Loc) -> Result<Option<Vec<Op>>> {
+        if tok == TokenType::Word {
+            if let Some(stk) = self.get_struct_type(tok).cloned() {
+                let operand = tok.operand;
+                self.next_irtoken();
+                return map_res(self.parse_const_or_var(word, loc, operand, stk));
+            }
+        }
+        Ok(None)
+    }
+
+    fn define_proc(&mut self, name: &str, loc: Loc, contract: Contract) -> Result<Op> {
+        ensure!(self.inside_proc(), "{} Cannot define a procedure inside of another procedure", loc);
+        
+        let proc = Proc::new(name.to_owned(), contract);
+        let operand = self.proc_list.len();
+        self.current_proc = Some(operand);
+        self.proc_list.push(proc);
+
+        Ok(self.push_block(Op::new(OpType::PrepProc, operand  as i32, loc)))
     }
 
     fn compile_eval_n(&mut self, _n: usize) -> Option<(Vec<IRToken>, usize)> {
@@ -404,7 +436,7 @@ impl Parser {
         None
     }
     
-    fn invalid_token(&self, tok: &IRToken, error_context: &str) -> Result<()> {
+    fn invalid_token(&self, tok: IRToken, error_context: &str) -> Result<()> {
         let (found_desc, found_name) = match tok.typ {
             TokenType::Keyword => ("keyword", format!("{:?}", from_primitive::<KeywordType>(tok.operand))),
             TokenType::Word    => ("word or intrinsic", self.get_word(tok.operand).to_owned()),
@@ -465,17 +497,6 @@ impl Parser {
                 err
             }
         )
-    }
-
-    fn define_proc(&mut self, name: &str, loc: Loc, contract: Contract) -> Result<Op> {
-        ensure!(self.inside_proc(), "{} Cannot define a procedure inside of another procedure", loc);
-        
-        let proc = Proc::new(name.to_owned(), contract);
-        let operand = self.proc_list.len();
-        self.current_proc = Some(operand);
-        self.proc_list.push(proc);
-
-        Ok(self.push_block(Op::new(OpType::PrepProc, operand  as i32, loc)))
     }
 
     fn parse_memory(&mut self, _word: &str, _loc: Loc) -> Result<Option<Vec<Op>>> {
