@@ -108,7 +108,7 @@ impl Parser {
                     Err(anyhow!(
                         "{} Word was not declared on the program: `{}`",
                         loc_word.loc,
-                        loc_word.value
+                        loc_word.name
                     ))
                 );
             }
@@ -274,7 +274,7 @@ impl Parser {
     fn get_const_struct_fields(&self, word: &LocWord) -> Vec<IRToken> {
         self.const_list
             .iter()
-            .filter(|cnst| cnst.name().starts_with(&format!("{}.", word.value)))
+            .filter(|cnst| cnst.starts_with(&format!("{}.", word.name)))
             .map(|tword| (tword, &word.loc).into())
             .collect()
     }
@@ -329,37 +329,30 @@ impl Parser {
     fn get_const_name(&mut self, word: &LocWord) -> Result<Option<Vec<Op>>> {
         self.const_list
             .iter()
-            .find(|cnst| word == cnst.name())
+            .find(|cnst| word == cnst.as_str())
             .map(|tword| (tword, &word.loc).into())
             .map_or_else(|| Ok(None), |tok| self.define_op(tok))
     }
 
     fn get_variable(&mut self, loc_word: &LocWord) -> Result<Option<Vec<Op>>> {
-        let (word, word_type) = match loc_word.strip_prefix('!') {
-            Some(word) => (word, Some(VarWordType::Store)),
-            _ => match loc_word.strip_prefix('*') {
-                Some(word) => (word, Some(VarWordType::Pointer)),
-                None => (loc_word.as_str(), None),
-            },
+        let (word, var_typ) = match loc_word.split_at(1) {
+            ("!", rest) => (rest, Some(VarWordType::Store)),
+            ("*", rest) => (rest, Some(VarWordType::Pointer)),
+            _ => (loc_word.as_str(), None),
         };
 
+        let loc = &loc_word.loc;
         choice!(
             self.current_proc()
                 .map(|proc| proc.local_vars.clone())
-                .map_or(Ok(None), |proc_vars| self.try_get_var(
-                    word,
-                    &loc_word.loc,
-                    proc_vars,
-                    true,
-                    word_type
-                )),
-            self.try_get_var(word, &loc_word.loc, self.global_vars.clone(), false, word_type)
+                .map_or(Ok(None), |vars| self.try_get_var(word, loc, vars, true, var_typ)),
+            self.try_get_var(word, loc, self.global_vars.clone(), false, var_typ)
         )
     }
 
     fn try_get_var(
         &mut self, _word: &str, _loc: &Loc, _vars: Vec<TypedWord>, _local: bool,
-        _word_type: Option<VarWordType>,
+        _var_typ: Option<VarWordType>,
     ) -> Result<Option<Vec<Op>>> {
         todo!()
     }
@@ -450,7 +443,7 @@ impl Parser {
                 bail!(
                     "{} Missing body or contract necessary to infer the type of the word: `{}`",
                     word.loc,
-                    word.value
+                    word.name
                 )
             }
             _ => Ok(None),
@@ -534,43 +527,40 @@ impl Parser {
     fn parse_procedure(&mut self, word: &LocWord) -> Result<Option<Vec<Op>>> {
         let mut ins = Vec::new();
         let mut outs = Vec::new();
-        let mut found_arrow = false;
+        let mut arrow = false;
         let loc = &word.loc;
 
         self.expect_keyword(KeywordType::Colon, "`:` after keyword `proc`", loc)?;
-        let error_text = "Expected proc contract or `:` after procedure definition, but found";
+        let error_text =
+            format!("{loc} Expected proc contract or `:` after procedure definition, but found");
 
         while let Some(tok) = self.next_irtoken() {
             if let Some(key) = tok.get_keyword() {
                 match key {
                     KeywordType::Arrow => {
-                        ensure!(
-                            !found_arrow,
-                            "{} Duplicated `->` found on procedure definition",
-                            loc
-                        );
-                        found_arrow = true;
+                        ensure!(!arrow, "{loc} Duplicated `->` found on procedure definition");
+                        arrow = true;
                     }
                     KeywordType::Colon => {
                         return map_res_t(self.define_proc(word, Contract { ins, outs }));
                     }
-                    _ => bail!("{}, {}: `{:?}`", loc, error_text, key),
+                    _ => bail!("{loc}, {error_text}: `{:?}`", key),
                 }
             } else if let Some(found_word) = self.try_get_word(&tok) {
                 if let Some(stk) = self.get_type_name(&found_word) {
                     for member in stk.members.iter() {
-                        push_by_condition(found_arrow, member.typ, &mut outs, &mut ins);
+                        push_by_condition(arrow, member.typ, &mut outs, &mut ins);
                     }
                 } else if let Some(type_ptr) = self.get_data_pointer(&found_word) {
-                    push_by_condition(found_arrow, type_ptr, &mut outs, &mut ins);
+                    push_by_condition(arrow, type_ptr, &mut outs, &mut ins);
                 } else {
-                    bail!("{}, {} the Word: `{:?}`", loc, error_text, found_word);
+                    bail!("{error_text} the Word: `{found_word}`");
                 }
             } else {
-                bail!("{}, {}: `{:?}`", loc, error_text, tok.typ);
+                bail!("{error_text}: `{:?}`", tok.typ);
             }
         }
-        bail!("{}, {} nothing", loc, error_text);
+        bail!("{error_text} nothing");
     }
 
     fn expect_keyword(&mut self, key: KeywordType, error_text: &str, loc: &Loc) -> Result<IRToken> {
@@ -614,7 +604,7 @@ impl Parser {
             .expect("unreachable");
 
         let (mut result, skip) = self.compile_eval_n(stk.members.len()).with_context(|| {
-            format!("{} Failed to parse an valid struct value at compile-time evaluation", loc)
+            format!("{loc} Failed to parse an valid struct value at compile-time evaluation")
         })?;
 
         let end_token = self.next_irtokens(skip).expect("unreachable");
@@ -625,7 +615,7 @@ impl Parser {
             if let Some(eval) = result.pop() {
                 if eval.typ == ValueType::Any {
                     for member in members {
-                        let name = format!("{}.{}", word.value, member.name);
+                        let name = format!("{}.{}", word.name, member.name);
                         let struct_word = (name, member.default_value, member.typ).into();
                         self.register_typed_word(&assign, struct_word);
                     }
@@ -654,14 +644,14 @@ impl Parser {
 
             for index in 0..members.len() {
                 if let (Some(member), Some(item)) = (members.get(index), result.get(index)) {
-                    let name = format!("{}.{}", word.value, member.name);
+                    let name = format!("{}.{}", word.name, member.name);
                     let struct_word = (name, item.operand, item.typ).into();
                     self.register_typed_word(&assign, struct_word);
                 }
             }
         }
 
-        self.struct_names.push(Word::new(word.to_string(), operand));
+        self.struct_names.push(Word::new(word, operand));
         Ok(())
     }
 
@@ -695,16 +685,15 @@ impl Parser {
                 .lex_next_token(self)?
                 .expect_by(|tok| tok == TokenType::Str, "include file name")?;
 
+            let include_path = self
+                .data_list
+                .get(tok.operand as usize)
+                .expect("unreachable, lexer error")
+                .as_str();
+
             let include = get_dir(&path)
                 .with_context(|| "failed to get file directory path")?
-                .join(
-                    self.data_list
-                        .get(tok.operand as usize)
-                        .expect("unreachable, lexer error")
-                        .word
-                        .name
-                        .as_str(),
-                );
+                .join(include_path);
 
             info!("Including file: {:?}", include);
             self.lex_file(include)?;

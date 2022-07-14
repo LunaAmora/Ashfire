@@ -109,52 +109,48 @@ impl Lexer {
             || Ok(None),
             |word| {
                 word.strip_suffix('\"')
-                    .map_or_else(
-                        || {
-                            self.advance_by_predicate(|c| c == '\"');
-                            Ok(self
-                                .read_by_predicate(|c| c == ' ')
-                                .strip_prefix('\"')
-                                .unwrap()
-                                .strip_suffix('\"')
-                                .with_context(|| {
-                                    format!("{} Missing closing `\"` in string literal", tok.loc)
-                                })?
-                                .to_string())
-                        },
-                        |word| Ok(word.to_string()),
-                    )
+                    .map_or_else(|| self.read_string_literal(&tok.loc), |word| Ok(word.to_string()))
                     .map(|name| {
-                        let length = name.len() -
-                            name.chars()
-                                .filter(|c| c.eq(&'\\'))
-                                .collect::<String>()
-                                .len();
-                        parser
-                            .data_list
-                            .push((Word { name, value: length as i32 }).into());
-
-                        let operand = parser.data_list.len() as i32 - 1;
+                        (Word::new(&name, scapped_len(&name) as i32), parser.data_list.len() as i32)
+                    })
+                    .map(|(word, operand)| {
+                        parser.data_list.push(word.into());
                         Some(IRToken::new(TokenType::Str, operand, &tok.loc))
                     })
             },
         )
     }
 
+    fn read_string_literal(&mut self, loc: &Loc) -> Result<String> {
+        self.advance_by_predicate(|c| c == '\"');
+        Ok(self
+            .read_by_predicate(|c| c == ' ')
+            .strip_prefix('\"')
+            .expect("unreachable")
+            .strip_suffix('\"')
+            .with_context(|| format!("{loc} Missing closing `\"` in string literal"))?
+            .to_string())
+    }
+
     pub fn lex_next_token(&mut self, parser: &mut Parser) -> Result<Option<IRToken>> {
         match self.next_token() {
-            Some(tok) => {
-                choice!(
-                    self.try_parse_string(&tok, parser),
-                    try_parse_char(&tok),
-                    parse_keyword(&tok),
-                    parse_number(&tok),
-                    parse_word(tok, parser)
-                )
-            }
+            Some(tok) => choice!(
+                self.try_parse_string(&tok, parser),
+                try_parse_char(&tok),
+                parse_keyword(&tok),
+                parse_number(&tok),
+                parse_word(tok, parser)
+            ),
             None => Ok(None),
         }
     }
+}
+
+fn scapped_len(name: &str) -> usize {
+    name.chars()
+        .filter(|c| c.eq(&'\\'))
+        .collect::<String>()
+        .len()
 }
 
 fn parse_word(tok: Token, parser: &mut Parser) -> IRToken {
@@ -181,46 +177,40 @@ fn parse_number(tok: &Token) -> Option<IRToken> {
 }
 
 fn try_parse_char(tok: &Token) -> Result<Option<IRToken>> {
-    tok.name
-        .strip_prefix('\'')
-        .map_or_else(
-            || Ok(None),
-            |word| {
-                word.strip_suffix('\'').map_or_else(
-                    || bail!("{} Missing closing `\'` in char literal", tok.loc),
-                    |word| {
-                        word.strip_prefix('\\').map_or_else(
-                            || {
-                                ensure!(
-                                    word.len() == 1,
-                                    "{} Char literals cannot contain more than one char: `{word}",
-                                    tok.loc
-                                );
-                                Ok(Some(word.chars().next().unwrap() as i32))
-                            },
-                            |escaped| {
-                                Ok(match escaped {
-                                    "t" => Some('\t' as i32),
-                                    "n" => Some('\n' as i32),
-                                    "r" => Some('\r' as i32),
-                                    "\'" => Some('\'' as i32),
-                                    "\\" => Some('\\' as i32),
-                                    _ if escaped.len() == 2 => try_parse_hex(escaped),
-                                    _ => bail!(
-                                        "{} Invalid escaped character sequence found on char \
-                                         literal: `{escaped}`",
-                                        tok.loc
-                                    ),
-                                })
-                            },
-                        )
-                    },
-                )
-            },
-        )
-        .map(|o| {
-            o.map(|operand| IRToken::new(TokenType::DataType(ValueType::Int), operand, &tok.loc))
-        })
+    let loc = &tok.loc;
+    Ok(match tok.name.strip_prefix('\'') {
+        Some(word) => match word.strip_suffix('\'') {
+            Some(word) => parse_char(word, loc),
+            None => bail!("{loc} Missing closing `\'` in char literal"),
+        }?
+        .map(|operand| (operand, loc.clone()).into()),
+        None => None,
+    })
+}
+
+fn parse_char(word: &str, loc: &Loc) -> Result<Option<i32>> {
+    match word.strip_prefix('\\') {
+        Some(escaped) => parse_scaped(escaped, loc),
+        None => {
+            ensure!(
+                word.len() == 1,
+                "{loc} Char literals cannot contain more than one char: `{word}"
+            );
+            Ok(Some(word.chars().next().unwrap() as i32))
+        }
+    }
+}
+
+fn parse_scaped(escaped: &str, loc: &Loc) -> Result<Option<i32>> {
+    Ok(match escaped {
+        "t" => Some('\t' as i32),
+        "n" => Some('\n' as i32),
+        "r" => Some('\r' as i32),
+        "\'" => Some('\'' as i32),
+        "\\" => Some('\\' as i32),
+        _ if escaped.len() == 2 => try_parse_hex(escaped),
+        _ => bail!("{loc} Invalid escaped character sequence found on char literal: `{escaped}`"),
+    })
 }
 
 fn try_parse_hex(word: &str) -> Option<i32> {

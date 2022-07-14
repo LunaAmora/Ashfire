@@ -86,6 +86,17 @@ pub struct IRToken {
     pub loc: Loc,
 }
 
+impl From<(i32, Loc)> for IRToken {
+    fn from(tuple: (i32, Loc)) -> Self {
+        let (operand, loc) = tuple;
+        Self {
+            typ: TokenType::DataType(ValueType::Int),
+            operand,
+            loc,
+        }
+    }
+}
+
 impl IRToken {
     pub fn new(typ: TokenType, operand: i32, loc: &Loc) -> Self {
         Self { typ, operand, loc: loc.to_owned() }
@@ -167,14 +178,30 @@ pub struct Word {
 }
 
 impl Word {
-    pub fn new(name: String, value: i32) -> Self {
-        Self { name, value }
+    pub fn new(name: &str, value: i32) -> Self {
+        Self { name: name.to_string(), value }
+    }
+}
+
+impl Deref for Word {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.name
     }
 }
 
 pub struct SizedWord {
     pub word: Word,
     pub offset: i32,
+}
+
+impl Deref for SizedWord {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.word
+    }
 }
 
 impl SizedWord {
@@ -195,32 +222,37 @@ pub struct TypedWord {
     pub typ: TokenType,
 }
 
-impl TypedWord {
-    pub fn name(&self) -> &str {
-        self.word.name.as_str()
+impl Deref for TypedWord {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.word
     }
 }
 
 impl From<(String, i32, TokenType)> for TypedWord {
     fn from(tuple: (String, i32, TokenType)) -> Self {
-        Self { word: Word::new(tuple.0, tuple.1), typ: tuple.2 }
+        Self {
+            word: Word { name: tuple.0, value: tuple.1 },
+            typ: tuple.2,
+        }
     }
 }
 
 pub struct LocWord {
-    pub value: String,
+    pub name: String,
     pub loc: Loc,
 }
 
 impl PartialEq<String> for LocWord {
     fn eq(&self, other: &String) -> bool {
-        self.value == *other
+        self.name == *other
     }
 }
 
 impl PartialEq<str> for LocWord {
     fn eq(&self, other: &str) -> bool {
-        self.value == other
+        self.name == other
     }
 }
 
@@ -228,13 +260,13 @@ impl Deref for LocWord {
     type Target = String;
 
     fn deref(&self) -> &Self::Target {
-        &self.value
+        &self.name
     }
 }
 
 impl LocWord {
-    pub fn new(loc: Loc, value: String) -> Self {
-        Self { value, loc }
+    pub fn new(loc: Loc, name: String) -> Self {
+        Self { name, loc }
     }
 }
 
