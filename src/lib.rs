@@ -1,8 +1,8 @@
 use anyhow::Result;
-use std::{path::Path, ops::Deref};
+use std::{ops::Deref, path::Path};
 
 pub struct OptionErr<T> {
-    value: Result<Option<T>>
+    value: Result<Option<T>>,
 }
 
 impl<T> Deref for OptionErr<T> {
@@ -21,19 +21,19 @@ impl<T> From<OptionErr<T>> for Result<Option<T>> {
 
 impl<T> From<Result<Option<T>>> for OptionErr<T> {
     fn from(value: Result<Option<T>>) -> Self {
-        Self {value}
+        Self { value }
     }
 }
 
 impl<T> From<Option<T>> for OptionErr<T> {
     fn from(value: Option<T>) -> Self {
-        Self {value: Ok(value)}
+        Self { value: Ok(value) }
     }
 }
 
 impl<T> From<T> for OptionErr<T> {
     fn from(value: T) -> Self {
-        Self {value: Ok(Some(value))}
+        Self { value: Ok(Some(value)) }
     }
 }
 
@@ -95,6 +95,6 @@ pub fn map_res_t<T>(res: Result<T>) -> Result<Option<Vec<T>>> {
 pub fn push_by_condition<T>(cond: bool, value: T, if_true: &mut Vec<T>, if_false: &mut Vec<T>) {
     match cond {
         true => if_true.push(value),
-        _   => if_false.push(value),
+        _ => if_false.push(value),
     }
 }

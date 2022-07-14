@@ -3,13 +3,13 @@
 extern crate env_logger;
 extern crate num;
 
-mod logger;
 mod compiler;
+mod logger;
 use crate::compiler::parser::*;
 
+use clap::{Parser, Subcommand};
+use clap_verbosity_flag::{InfoLevel, Verbosity};
 use std::path::PathBuf;
-use clap_verbosity_flag::{Verbosity, InfoLevel};
-use clap::{Subcommand, Parser};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -27,8 +27,8 @@ enum Commands {
         #[clap(parse(from_os_str))]
         path: PathBuf,
         #[clap(short, long)]
-        output: Option<PathBuf>
-    }
+        output: Option<PathBuf>,
+    },
 }
 
 fn main() {
@@ -40,10 +40,9 @@ fn main() {
     }
 
     match args.command {
-        Commands::Com { path, output: _ } => {
+        Commands::Com { path, output: _ } =>
             if let Err(err) = compile_file(path) {
                 error!("{:#}", err);
-            }
-        },
+            },
     };
 }
