@@ -143,6 +143,12 @@ pub struct StructType {
     pub members: Vec<StructMember>,
 }
 
+impl StructType {
+    pub fn new(name: String, members: Vec<StructMember>) -> Self {
+        Self { name, members }
+    }
+}
+
 impl From<(&str, ValueType)> for StructType {
     fn from(tuple: (&str, ValueType)) -> Self {
         Self {

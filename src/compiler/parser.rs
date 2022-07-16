@@ -688,11 +688,62 @@ impl Parser {
     }
 
     fn parse_memory(&mut self, _word: &LocWord) -> Result<Option<Vec<Op>>> {
-        todo!()
+        warn!("Todo: Memory parsing not implemented yet");
+        Ok(None)
     }
 
-    fn parse_struct(&mut self, _word: &LocWord) -> Result<Option<Vec<Op>>> {
-        todo!()
+    fn parse_struct(&mut self, word: &LocWord) -> Result<Option<Vec<Op>>> {
+        let mut members = Vec::new();
+        let loc = &word.loc;
+        self.expect_keyword(KeywordType::Colon, "`:` after keyword `struct`", loc)?;
+        let error_text = "Expected struct member type but found";
+
+        while let Some(tok) = self.ir_tokens.get(0) {
+            if tok.typ == TokenType::Keyword {
+                self.expect_keyword(KeywordType::End, "`end` after struct declaration", loc)?;
+                self.struct_list
+                    .push(StructType::new(word.to_string(), members));
+                return map_res(Ok(()));
+            }
+
+            let next =
+                self.expect_next_by(|n| n.typ == TokenType::Word, "struct member name", loc)?;
+
+            let found_word = self
+                .word_list
+                .get(next.operand as usize)
+                .expect("unreachable")
+                .to_owned();
+
+            if let Some(name_type) = self.next_irtoken() {
+                if name_type.typ == TokenType::Word {
+                    let found_type = self
+                        .word_list
+                        .get(name_type.operand as usize)
+                        .expect("unreachable");
+
+                    if let Some(stk_typ) = self.get_type_name(found_type) {
+                        if stk_typ.members.len() == 1 {
+                            let typ = stk_typ.members.first().expect("unreachable").typ;
+                            members.push((found_word, typ).into());
+                        } else {
+                            for member in &stk_typ.members {
+                                let member_name = format!("{found_word}.{}", member.name);
+                                members.push((member_name, member.typ).into());
+                            }
+                        }
+                    } else if let Some(typ_ptr) = self.get_data_pointer(found_type) {
+                        members.push((found_word, typ_ptr).into());
+                    } else {
+                        bail!("{loc} {error_text} the Word: `{found_type}`");
+                    }
+                } else {
+                    bail!("{loc} {error_text}: {}", name_type);
+                }
+            }
+        }
+
+        bail!("{loc} Expected struct members or `end` after struct declaration");
     }
 
     fn parse_const_or_var(&mut self, word: &LocWord, operand: i32, stk: StructType) -> Result<()> {
