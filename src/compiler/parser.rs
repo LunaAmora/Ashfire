@@ -866,7 +866,7 @@ impl ExpectBy<IRToken> for Option<IRToken> {
     fn expect_by(self, pred: impl FnOnce(&IRToken) -> bool, desc: &str) -> Result<IRToken> {
         match self {
             Some(tok) if pred(&tok) => Ok(tok),
-            Some(tok) => bail!("{} Expected to find {}, but found: `{}`", tok.loc, desc, tok),
+            Some(tok) => bail!("{} Expected to find {}, but found: {}", tok.loc, desc, tok),
             None => bail!("Expected to find {}, but found nothing", desc),
         }
     }

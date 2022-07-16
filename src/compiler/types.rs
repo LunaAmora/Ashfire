@@ -113,7 +113,13 @@ impl IRToken {
 
 impl Display for IRToken {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{:?} [{}]", self.typ, self.operand)
+        match self.typ {
+            TokenType::Keyword => {
+                let key: KeywordType = FromPrimitive::from_i32(self.operand).expect("unreachable");
+                write!(f, "{:?} {:?}", self.typ, key)
+            }
+            _ => write!(f, "{:?} [{}]", self.typ, self.operand),
+        }
     }
 }
 
