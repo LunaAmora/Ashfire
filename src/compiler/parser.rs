@@ -158,7 +158,8 @@ impl Parser {
                 Op { typ: OpType::Do, .. } => (OpType::EndWhile, loc).into(),
                 Op { typ: OpType::BindStack, .. } => todo!(),
                 Op { typ: OpType::CaseOption, .. } => todo!(),
-                Op { typ: OpType::PrepProc, operand, .. } => (OpType::EndProc, operand, loc).into(),
+                Op { typ: OpType::PrepProc, operand, .. } =>
+                    self.exit_proc((OpType::EndProc, operand, loc).into()),
                 block => invalid_block(&loc, block, "Expected `end` to close a valid block")?,
             },
             KeywordType::Include |
@@ -188,6 +189,11 @@ impl Parser {
 
     fn push_block(&mut self, op: Op) -> Op {
         self.op_blocks.push(op.clone());
+        op
+    }
+
+    fn exit_proc(&mut self, op: Op) -> Op {
+        self.current_proc = None;
         op
     }
 
@@ -225,13 +231,11 @@ impl Parser {
             Some(word) => word,
             None => word,
         })
+        .map(|u| -(u as i32))
     }
 
-    fn parse_data_type(&self, word: &str) -> Option<i32> {
-        self.struct_list
-            .iter()
-            .position(|s| s.name == word)
-            .map(|u| u as i32)
+    fn parse_data_type(&self, word: &str) -> Option<usize> {
+        self.struct_list.iter().position(|s| s.name == word)
     }
 
     fn get_word(&self, value: i32) -> String {
@@ -261,8 +265,10 @@ impl Parser {
         }
     }
 
-    fn get_data_pointer(&self, _found_word: &str) -> Option<TokenType> {
-        todo!()
+    fn get_data_pointer(&self, word: &str) -> Option<TokenType> {
+        word.strip_prefix('*')
+            .and_then(|word| self.parse_data_type(word))
+            .map(|i| TokenType::DataPtr(ValueType::from(i)))
     }
 
     fn get_const_struct(&mut self, word: &LocWord) -> Result<Option<Vec<Op>>> {
@@ -341,27 +347,125 @@ impl Parser {
             _ => (loc_word.as_str(), None),
         };
 
-        let loc = &loc_word.loc;
+        let word = LocWord { name: word.to_string(), loc: loc_word.loc.clone() };
         choice!(
             self.current_proc()
                 .map(|proc| proc.local_vars.clone())
-                .map_or(Ok(None), |vars| self.try_get_var(word, loc, vars, true, var_typ)),
-            self.try_get_var(word, loc, self.global_vars.clone(), false, var_typ)
+                .map_or(Ok(None), |vars| self.try_get_var(&word, vars, true, var_typ)),
+            self.try_get_var(&word, self.global_vars.clone(), false, var_typ)
         )
     }
 
     fn try_get_var(
-        &mut self, _word: &str, _loc: &Loc, _vars: Vec<TypedWord>, _local: bool,
-        _var_typ: Option<VarWordType>,
+        &mut self, word: &LocWord, vars: Vec<TypedWord>, local: bool, var_typ: Option<VarWordType>,
     ) -> Result<Option<Vec<Op>>> {
-        todo!()
+        let mut result = Vec::new();
+        let loc = &word.loc;
+
+        let push_type = if local {
+            OpType::PushLocal
+        } else {
+            OpType::PushGlobal
+        };
+
+        let (store, pointer) = match var_typ {
+            Some(VarWordType::Store) => (true, false),
+            Some(VarWordType::Pointer) => (false, true),
+            _ => Default::default(),
+        };
+
+        if let Some(index) = vars.iter().position(|name| *word == **name) {
+            let typ = vars.get(index).expect("unreachable").typ;
+            if store {
+                result.push(Op::new(OpType::ExpectType, typ.into(), loc))
+            }
+
+            result.push(Op::new(push_type, index as i32, loc));
+
+            if store {
+                result.push(Op::new(OpType::Intrinsic, IntrinsicType::Store32.into(), loc))
+            } else if pointer {
+                let ptr_typ = IntrinsicType::Cast(-i32::from(typ));
+                result.push(Op::new(OpType::Intrinsic, ptr_typ.into(), loc));
+            } else {
+                let data_typ = IntrinsicType::Cast(typ.into());
+                result.push(Op::new(OpType::Intrinsic, IntrinsicType::Load32.into(), loc));
+                result.push(Op::new(OpType::Intrinsic, data_typ.into(), loc));
+            }
+
+            return Ok(Some(result));
+        }
+
+        if let Some(struct_type) = self.try_get_struct_type(word) {
+            let mut member = struct_type.members.first().expect("unreachable");
+            if pointer {
+                let pattern = &format!("{}.{}", word.name, member.name);
+                let index = vars
+                    .iter()
+                    .position(|name| name.eq(pattern))
+                    .expect("unreachable");
+
+                let stk_id = self
+                    .parse_data_type(struct_type.name.as_str())
+                    .expect("unreachable");
+
+                let ptr_typ = IntrinsicType::Cast(-(stk_id as i32));
+
+                result.push(Op::new(push_type, index as i32, loc));
+                result.push(Op::new(OpType::Intrinsic, ptr_typ.into(), loc));
+            } else {
+                let mut members = struct_type.members.clone();
+                if store {
+                    members.reverse();
+                    member = struct_type.members.last().expect("unreachable");
+                }
+
+                let pattern = &format!("{}.{}", word.name, member.name);
+                let index = vars
+                    .iter()
+                    .position(|name| name.eq(pattern))
+                    .expect("unreachable") as i32;
+
+                for (i, member) in (0_i32..).zip(members.into_iter()) {
+                    let operand = index + if local == store { i } else { -i };
+
+                    if store {
+                        result.push(Op::new(OpType::ExpectType, member.typ.into(), loc))
+                    }
+
+                    result.push(Op::new(push_type, operand, loc));
+
+                    if store {
+                        result.push(Op::new(OpType::Intrinsic, IntrinsicType::Store32.into(), loc))
+                    } else {
+                        let data_typ = IntrinsicType::Cast(member.typ.into());
+                        result.push(Op::new(OpType::Intrinsic, IntrinsicType::Load32.into(), loc));
+                        result.push(Op::new(OpType::Intrinsic, data_typ.into(), loc));
+                    }
+                }
+            }
+
+            return Ok(Some(result));
+        }
+
+        Ok(None)
+    }
+
+    fn try_get_struct_type(&self, word: &LocWord) -> Option<&StructType> {
+        self.struct_names
+            .iter()
+            .find(|stk| *word == stk.name)
+            .and_then(|stk| {
+                self.word_list
+                    .get(stk.value as usize)
+                    .and_then(|stk| self.get_type_name(stk))
+            })
     }
 
     fn define_context(&mut self, word: &LocWord) -> Result<Option<Vec<Op>>> {
         let mut i = 0;
         let mut colons = 0;
         while let Some(tok) = self.ir_tokens.get(i).cloned() {
-            i += 1;
             match (colons, &tok.typ) {
                 (1, TokenType::DataType(ValueType::Int)) => return self.parse_memory(word),
                 (1, TokenType::Word) =>
@@ -380,6 +484,7 @@ impl Parser {
                 (0, _) => return self.parse_word_ctx(&tok, word),
                 _ => return map_res(self.invalid_token(tok, "context declaration")),
             }
+            i += 1;
         }
         Ok(None)
     }
@@ -491,7 +596,7 @@ impl Parser {
 
     fn define_proc(&mut self, name: &LocWord, contract: Contract) -> Result<Op> {
         ensure!(
-            self.inside_proc(),
+            !self.inside_proc(),
             "{} Cannot define a procedure inside of another procedure",
             &name.loc
         );
@@ -505,7 +610,7 @@ impl Parser {
     }
 
     fn compile_eval_n(&mut self, _n: usize) -> Option<(Vec<IRToken>, usize)> {
-        warn!("Todo: Compile time evaluation not implemented yet");
+        warn!("Todo: Compile time evaluation_n not implemented yet");
         None
     }
 

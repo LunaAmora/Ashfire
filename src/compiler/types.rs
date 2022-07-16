@@ -298,6 +298,18 @@ impl PartialEq<ValueType> for TokenType {
     }
 }
 
+impl From<TokenType> for i32 {
+    fn from(tok: TokenType) -> Self {
+        match tok {
+            TokenType::Keyword => 0,
+            TokenType::Word => 1,
+            TokenType::Str => 2,
+            TokenType::DataType(value) => 3 + i32::from(value),
+            TokenType::DataPtr(value) => -(3 + i32::from(value)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum ValueType {
     Int,
@@ -306,8 +318,31 @@ pub enum ValueType {
     Any,
     Type(i32),
 }
+impl From<usize> for ValueType {
+    fn from(value: usize) -> Self {
+        match value {
+            0 => ValueType::Int,
+            1 => ValueType::Bool,
+            2 => ValueType::Ptr,
+            3 => ValueType::Any,
+            i => ValueType::Type(i as i32),
+        }
+    }
+}
 
-#[derive(Debug, Clone)]
+impl From<ValueType> for i32 {
+    fn from(value: ValueType) -> Self {
+        match value {
+            ValueType::Int => 0,
+            ValueType::Bool => 1,
+            ValueType::Ptr => 2,
+            ValueType::Any => 3,
+            ValueType::Type(i) => 4 + i,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum OpType {
     PushData(ValueType),
     PushStr,
@@ -388,7 +423,7 @@ impl From<IntrinsicType> for i32 {
             IntrinsicType::Load32 => 16,
             IntrinsicType::Store32 => 17,
             IntrinsicType::FdWrite => 19,
-            IntrinsicType::Cast(n) => 20 + n,
+            IntrinsicType::Cast(n) => n + if n >= 0 { 20 } else { -20 },
         }
     }
 }
