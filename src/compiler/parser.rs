@@ -88,29 +88,23 @@ impl Parser {
             TokenType::DataPtr(typ) =>
                 bail!("{} Data pointer type not valid here: `{:?}`", tok.loc, typ),
             TokenType::Word => {
-                let loc_word = &LocWord::new(
-                    tok.loc,
-                    self.word_list
-                        .get(tok.operand as usize)
-                        .expect("unreachable")
-                        .to_owned(),
-                );
+                let word = &LocWord::new(tok.loc, self.get_word(tok.operand));
                 return choice!(
                     OptionErr,
-                    self.get_const_struct(loc_word),
-                    self.get_offset(loc_word, tok.operand),
-                    self.get_binding(loc_word),
-                    self.get_intrinsic(loc_word),
-                    self.get_local_mem(loc_word),
-                    self.get_global_mem(loc_word),
-                    self.get_proc_name(loc_word),
-                    self.get_const_name(loc_word),
-                    self.get_variable(loc_word),
-                    self.define_context(loc_word),
+                    self.get_const_struct(word),
+                    self.get_offset(word, tok.operand),
+                    self.get_binding(word),
+                    self.get_intrinsic(word),
+                    self.get_local_mem(word),
+                    self.get_global_mem(word),
+                    self.get_proc_name(word),
+                    self.get_const_name(word),
+                    self.get_variable(word),
+                    self.define_context(word),
                     Err(anyhow!(
                         "{} Word was not declared on the program: `{}`",
-                        loc_word.loc,
-                        loc_word.name
+                        word.loc,
+                        word.name
                     ))
                 );
             }
@@ -252,6 +246,12 @@ impl Parser {
         } else {
             None
         }
+    }
+
+    fn get_data(&mut self, operand: i32) -> &SizedWord {
+        self.data_list
+            .get(operand as usize)
+            .expect("unreachable, lexer error")
     }
 
     fn get_type_name(&self, word: &str) -> Option<&StructType> {
@@ -648,7 +648,7 @@ impl Parser {
     fn eval_token(&mut self, tok: IRToken, result: &mut Vec<IRToken>) -> Result<(), IRToken> {
         match tok.typ {
             TokenType::Keyword => {
-                let key = FromPrimitive::from_i32(tok.operand).expect("unreachable");
+                let key = from_primitive(tok.operand);
                 match key {
                     KeywordType::Dup => todo!(),
                     KeywordType::Drop => todo!(),
@@ -660,12 +660,7 @@ impl Parser {
                 }
             }
             TokenType::Word => {
-                let word = self
-                    .word_list
-                    .get(tok.operand as usize)
-                    .expect("unreachable");
-
-                let loc_word = LocWord::new(tok.loc.clone(), word.to_string());
+                let loc_word = LocWord::new(tok.loc.clone(), self.get_word(tok.operand));
                 match self.get_intrinsic_type(&loc_word) {
                     Some(intrinsic) => match intrinsic {
                         IntrinsicType::Plus => todo!(),
@@ -692,21 +687,10 @@ impl Parser {
             }
             TokenType::Str => {
                 self.register_string(tok.operand);
-                let data = self
-                    .data_list
-                    .get(tok.operand as usize)
-                    .expect("unreachable");
+                let data = self.get_data(tok.operand);
 
-                result.push(IRToken::new(
-                    TokenType::DataType(ValueType::Int),
-                    data.size(),
-                    &tok.loc,
-                ));
-                result.push(IRToken::new(
-                    TokenType::DataType(ValueType::Ptr),
-                    data.offset,
-                    &tok.loc,
-                ));
+                result.push(IRToken::new(ValueType::Int.into(), data.size(), &tok.loc));
+                result.push(IRToken::new(ValueType::Ptr.into(), data.offset, &tok.loc));
             }
             TokenType::DataType(value) => match value {
                 ValueType::Int | ValueType::Bool | ValueType::Ptr => result.push(tok),
@@ -821,18 +805,11 @@ impl Parser {
             let next =
                 self.expect_next_by(|n| n.typ == TokenType::Word, "struct member name", loc)?;
 
-            let found_word = self
-                .word_list
-                .get(next.operand as usize)
-                .expect("unreachable")
-                .to_owned();
+            let found_word = self.get_word(next.operand);
 
             if let Some(name_type) = self.next_irtoken() {
                 if name_type.typ == TokenType::Word {
-                    let found_type = self
-                        .word_list
-                        .get(name_type.operand as usize)
-                        .expect("unreachable");
+                    let found_type = &self.get_word(name_type.operand);
 
                     if let Some(stk_typ) = self.get_type_name(found_type) {
                         if stk_typ.members.len() == 1 {
@@ -955,11 +932,7 @@ impl Parser {
                 .lex_next_token(self)?
                 .expect_by(|tok| tok == TokenType::Str, "include file name")?;
 
-            let include_path = self
-                .data_list
-                .get(tok.operand as usize)
-                .expect("unreachable, lexer error")
-                .as_str();
+            let include_path = self.get_data(tok.operand).as_str();
 
             let include = get_dir(&path)
                 .with_context(|| "failed to get file directory path")?
