@@ -119,18 +119,6 @@ impl IRToken {
     }
 }
 
-impl Display for IRToken {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self.typ {
-            TokenType::Keyword => {
-                let key: KeywordType = FromPrimitive::from_i32(self.operand).expect("unreachable");
-                write!(f, "{:?} {:?}", self.typ, key)
-            }
-            _ => write!(f, "{:?} [{}]", self.typ, self.operand),
-        }
-    }
-}
-
 impl PartialEq<KeywordType> for &IRToken {
     fn eq(&self, other: &KeywordType) -> bool {
         self.typ == TokenType::Keyword &&
@@ -285,8 +273,8 @@ impl Deref for LocWord {
 }
 
 impl LocWord {
-    pub fn new(loc: Loc, name: String) -> Self {
-        Self { name, loc }
+    pub fn new(name: &String, loc: Loc) -> Self {
+        Self { name: name.to_owned(), loc }
     }
 }
 

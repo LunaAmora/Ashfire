@@ -88,7 +88,7 @@ impl Parser {
             TokenType::DataPtr(typ) =>
                 bail!("{} Data pointer type not valid here: `{:?}`", tok.loc, typ),
             TokenType::Word => {
-                let word = &LocWord::new(tok.loc, self.get_word(tok.operand));
+                let word = &LocWord::new(self.get_word(tok.operand), tok.loc);
                 return choice!(
                     OptionErr,
                     self.get_const_struct(word),
@@ -113,8 +113,7 @@ impl Parser {
     }
 
     fn define_keyword_op(&mut self, operand: i32, loc: Loc) -> Result<Option<Vec<Op>>> {
-        let key = from_primitive(operand);
-
+        let key = from_i32(operand);
         match key {
             KeywordType::Dup => (OpType::Dup, loc).into(),
             KeywordType::Drop => (OpType::Drop, loc).into(),
@@ -233,21 +232,16 @@ impl Parser {
         self.struct_list.iter().position(|s| s.name == word)
     }
 
-    fn get_word(&self, value: i32) -> String {
-        self.word_list
-            .get(value as usize)
-            .expect("unreachable, lexer error")
-            .to_owned()
+    fn get_word(&self, index: i32) -> &String {
+        expect_get(&self.word_list, index as usize)
     }
 
-    fn try_get_word(&self, tok: &IRToken) -> Option<String> {
+    fn get_string(&self, index: i32) -> &SizedWord {
+        expect_get(&self.data_list, index as usize)
+    }
+
+    fn try_get_word(&self, tok: &IRToken) -> Option<&String> {
         map_bool!(tok == TokenType::Word, Some(self.get_word(tok.operand)))
-    }
-
-    fn get_data(&mut self, operand: i32) -> &SizedWord {
-        self.data_list
-            .get(operand as usize)
-            .expect("unreachable, lexer error")
     }
 
     fn get_type_name(&self, word: &str) -> Option<&StructType> {
@@ -255,7 +249,7 @@ impl Parser {
     }
 
     fn get_struct_type(&self, tok: &IRToken) -> Option<&StructType> {
-        map_bool!(tok == TokenType::Word, self.get_type_name(&self.get_word(tok.operand)))
+        map_bool!(tok == TokenType::Word, self.get_type_name(self.get_word(tok.operand)))
     }
 
     fn get_data_pointer(&self, word: &str) -> Option<TokenType> {
@@ -367,7 +361,7 @@ impl Parser {
         };
 
         if let Some(index) = vars.iter().position(|name| *word == **name) {
-            let typ = vars.get(index).expect("unreachable").typ;
+            let typ = expect_get(&vars, index).typ;
             if store {
                 result.push(Op::new(OpType::ExpectType, typ.into(), loc))
             }
@@ -392,10 +386,7 @@ impl Parser {
             let mut member = struct_type.members.first().expect("unreachable");
             if pointer {
                 let pattern = &format!("{}.{}", word.name, member.name);
-                let index = vars
-                    .iter()
-                    .position(|name| name.eq(pattern))
-                    .expect("unreachable");
+                let index = expect_index(&vars, |name| name.eq(pattern));
 
                 let stk_id = self
                     .parse_data_type(struct_type.name.as_str())
@@ -413,10 +404,7 @@ impl Parser {
                 }
 
                 let pattern = &format!("{}.{}", word.name, member.name);
-                let index = vars
-                    .iter()
-                    .position(|name| name.eq(pattern))
-                    .expect("unreachable") as i32;
+                let index = expect_index(&vars, |name| name.eq(pattern)) as i32;
 
                 for (i, member) in (0_i32..).zip(members.into_iter()) {
                     let operand = index + map_bool!(local == store, i, -i);
@@ -464,7 +452,7 @@ impl Parser {
                 (1, TokenType::Word) =>
                     return choice!(
                         OptionErr,
-                        self.parse_proc_ctx(self.get_word(tok.operand), word),
+                        self.parse_proc_ctx(self.get_word(tok.operand).to_owned(), word),
                         self.parse_struct_ctx(i, word),
                         map_res(self.invalid_token(tok, "context declaration"))
                     ),
@@ -508,7 +496,7 @@ impl Parser {
     fn parse_keyword_ctx(
         &mut self, colons: &mut i32, word: &LocWord, tok: IRToken,
     ) -> Result<Option<Vec<Op>>> {
-        match (*colons, from_primitive(tok.operand)) {
+        match (*colons, from_i32(tok.operand)) {
             (0, KeywordType::Mem) => {
                 self.next_irtoken();
                 map_res(self.parse_memory(word))
@@ -621,7 +609,7 @@ impl Parser {
                 if result.is_empty() && i == 0 {
                     result.push(IRToken::new(ValueType::Any.into(), 0, &tok.loc));
                 } else if result.len() != n {
-                    todo!("Handle mismath of expected types")
+                    todo!("handle mismath of expected types")
                 }
                 break;
             }
@@ -636,7 +624,7 @@ impl Parser {
     fn eval_token(&mut self, tok: IRToken, result: &mut Vec<IRToken>) -> Result<(), IRToken> {
         match tok.typ {
             TokenType::Keyword => {
-                let key = from_primitive(tok.operand);
+                let key = from_i32(tok.operand);
                 match key {
                     KeywordType::Dup => todo!(),
                     KeywordType::Drop => todo!(),
@@ -648,7 +636,7 @@ impl Parser {
                 }
             }
             TokenType::Word => {
-                let loc_word = LocWord::new(tok.loc.clone(), self.get_word(tok.operand));
+                let loc_word = LocWord::new(self.get_word(tok.operand), tok.loc.clone());
                 match self.get_intrinsic_type(&loc_word) {
                     Some(intrinsic) => match intrinsic {
                         IntrinsicType::Plus => todo!(),
@@ -658,7 +646,7 @@ impl Parser {
                             let cast = if n >= 0 {
                                 ValueType::from(n as usize).into()
                             } else {
-                                todo!("Todo:: casting to ptr type not implemented yet");
+                                todo!("casting to ptr type not implemented yet");
                             };
 
                             result.push(IRToken::new(cast, a.operand, &tok.loc));
@@ -675,7 +663,7 @@ impl Parser {
             }
             TokenType::Str => {
                 self.register_string(tok.operand);
-                let data = self.get_data(tok.operand);
+                let data = self.get_string(tok.operand);
 
                 result.push(IRToken::new(ValueType::Int.into(), data.size(), &tok.loc));
                 result.push(IRToken::new(ValueType::Ptr.into(), data.offset, &tok.loc));
@@ -690,13 +678,43 @@ impl Parser {
     }
 
     fn invalid_token(&self, tok: IRToken, error_context: &str) -> Result<()> {
-        let (found_desc, found_name) = match tok.typ {
+        let (desc, name) = self.token_display(&tok);
+        bail!("{} Invalid `{desc}` found on {error_context}: `{name}`", tok.loc)
+    }
+
+    fn token_display(&self, tok: &IRToken) -> (String, String) {
+        let (desc, name) = match tok.typ {
             TokenType::Keyword =>
-                ("keyword", format!("{:?}", from_primitive::<KeywordType>(tok.operand))),
-            TokenType::Word => ("word or intrinsic", self.get_word(tok.operand)),
-            _ => ("token", format!("{:?}", tok.typ)),
+                ("Keyword", format!("{:?}", from_i32::<KeywordType>(tok.operand))),
+            TokenType::Word => ("Word or Intrinsic", self.get_word(tok.operand).to_owned()),
+            TokenType::DataType(value) => return self.value_display(value, tok.operand),
+            TokenType::DataPtr(value) => {
+                let (desc, name) = self.value_display(value, tok.operand);
+                return (desc + " Pointer", name);
+            }
+            TokenType::Str =>
+                ("String", expect_get(&self.data_list, tok.operand as usize).to_string()),
         };
-        bail!("{} Invalid {found_desc} found on {error_context}: `{found_name}`", tok.loc)
+        (desc.to_owned(), name)
+    }
+
+    fn value_display(&self, value: ValueType, operand: i32) -> (String, String) {
+        let (desc, name) = match value {
+            ValueType::Int => ("Integer", operand.to_string()),
+            ValueType::Bool => ("Boolean", map_bool!(operand != 0, "True", "False").to_owned()),
+            ValueType::Ptr => ("Pointer", format!("*{}", operand)),
+            ValueType::Any => ("Any", operand.to_string()),
+            ValueType::Type(n) => {
+                let stk = expect_get(&self.struct_list, n as usize);
+                (stk.name.as_str(), operand.to_string())
+            }
+        };
+        (desc.to_owned(), name)
+    }
+
+    fn format_token(&self, tok: IRToken) -> String {
+        let (desc, name) = self.token_display(&tok);
+        format!("{} `{}`", desc, name)
     }
 
     fn parse_procedure(&mut self, word: &LocWord) -> Result<Option<Vec<Op>>> {
@@ -722,11 +740,11 @@ impl Parser {
                     _ => bail!("{loc}, {error_text}: `{:?}`", key),
                 }
             } else if let Some(found_word) = self.try_get_word(&tok) {
-                if let Some(stk) = self.get_type_name(&found_word) {
+                if let Some(stk) = self.get_type_name(found_word) {
                     for member in stk.members.iter() {
                         push_by_condition(arrow, member.typ, &mut outs, &mut ins);
                     }
-                } else if let Some(type_ptr) = self.get_data_pointer(&found_word) {
+                } else if let Some(type_ptr) = self.get_data_pointer(found_word) {
                     push_by_condition(arrow, type_ptr, &mut outs, &mut ins);
                 } else {
                     bail!("{error_text} the Word: `{found_word}`");
@@ -747,14 +765,15 @@ impl Parser {
     ) -> Result<IRToken> {
         let tok = self.next_irtoken();
         let none = tok.is_none();
-        tok.expect_by(pred, error_text).map_err(|err| {
-            if none {
-                let context = format!("{} {}", loc, err);
-                err.context(context)
-            } else {
-                err
-            }
-        })
+        tok.expect_by(pred, error_text, |tok| self.format_token(tok))
+            .map_err(|err| {
+                if none {
+                    let context = format!("{} {}", loc, err);
+                    err.context(context)
+                } else {
+                    err
+                }
+            })
     }
 
     fn parse_memory(&mut self, word: &LocWord) -> Result<()> {
@@ -793,7 +812,7 @@ impl Parser {
             let next =
                 self.expect_next_by(|n| n.typ == TokenType::Word, "struct member name", loc)?;
 
-            let found_word = self.get_word(next.operand);
+            let found_word = self.get_word(next.operand).to_owned();
 
             if let Some(name_type) = self.next_irtoken() {
                 if name_type.typ == TokenType::Word {
@@ -809,17 +828,15 @@ impl Parser {
                                 members.push((member_name, member.typ).into());
                             }
                         }
+                        continue;
                     } else if let Some(typ_ptr) = self.get_data_pointer(found_type) {
                         members.push((found_word, typ_ptr).into());
-                    } else {
-                        bail!("{loc} {error_text} the Word: `{found_type}`");
+                        continue;
                     }
-                } else {
-                    bail!("{loc} {error_text}: {}", name_type);
                 }
+                bail!("{loc} {error_text}: {}", self.format_token(name_type));
             }
         }
-
         bail!("{loc} Expected struct members or `end` after struct declaration");
     }
 
@@ -916,11 +933,13 @@ impl Parser {
                 continue;
             }
 
-            let tok = lex
-                .lex_next_token(self)?
-                .expect_by(|tok| tok == TokenType::Str, "include file name")?;
+            let tok = lex.lex_next_token(self)?.expect_by(
+                |tok| tok == TokenType::Str,
+                "include file name",
+                |tok| self.format_token(tok),
+            )?;
 
-            let include_path = self.get_data(tok.operand).as_str();
+            let include_path = self.get_string(tok.operand).as_str();
 
             let include = get_dir(&path)
                 .with_context(|| "failed to get file directory path")?
@@ -933,15 +952,18 @@ impl Parser {
     }
 }
 
-fn from_primitive<T: FromPrimitive>(value: i32) -> T {
+fn from_i32<T: FromPrimitive>(value: i32) -> T {
     FromPrimitive::from_i32(value).expect("unreachable, lexer error")
 }
 
 impl ExpectBy<IRToken> for Option<IRToken> {
-    fn expect_by(self, pred: impl FnOnce(&IRToken) -> bool, desc: &str) -> Result<IRToken> {
+    fn expect_by(
+        self, pred: impl FnOnce(&IRToken) -> bool, desc: &str, fmt: impl FnOnce(IRToken) -> String,
+    ) -> Result<IRToken> {
         match self {
             Some(tok) if pred(&tok) => Ok(tok),
-            Some(tok) => bail!("{} Expected to find {}, but found: {}", tok.loc, desc, tok),
+            Some(tok) =>
+                bail!("{} Expected to find {}, but found: {}", tok.loc.clone(), desc, fmt(tok)),
             None => bail!("Expected to find {}, but found nothing", desc),
         }
     }

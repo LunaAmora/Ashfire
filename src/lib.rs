@@ -83,7 +83,9 @@ macro_rules! map_bool {
 }
 
 pub trait ExpectBy<T> {
-    fn expect_by(self, pred: impl FnOnce(&T) -> bool, desc: &str) -> Result<T>;
+    fn expect_by(
+        self, pred: impl FnOnce(&T) -> bool, desc: &str, fmt: impl FnOnce(T) -> String,
+    ) -> Result<T>;
 }
 
 pub fn get_dir(current: &Path) -> Option<&Path> {
@@ -115,4 +117,14 @@ pub fn push_by_condition<T>(cond: bool, value: T, if_true: &mut Vec<T>, if_false
         true => if_true.push(value),
         _ => if_false.push(value),
     }
+}
+
+pub fn expect_index<T>(vec: &[T], pred: impl FnMut(&T) -> bool) -> usize {
+    vec.iter()
+        .position(pred)
+        .expect("no item matched the given predicate")
+}
+
+pub fn expect_get<T>(vec: &[T], index: usize) -> &T {
+    vec.get(index).expect("index out of bounds")
 }
