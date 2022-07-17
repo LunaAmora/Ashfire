@@ -64,6 +64,24 @@ macro_rules! equals_any {
     };
 }
 
+#[macro_export]
+macro_rules! map_bool {
+    ($expression:expr, $true:expr ) => {
+        if $expression {
+            $true
+        } else {
+            None
+        }
+    };
+    ($expression:expr, $true:expr, $false:expr) => {
+        if $expression {
+            $true
+        } else {
+            $false
+        }
+    };
+}
+
 pub trait ExpectBy<T> {
     fn expect_by(self, pred: impl FnOnce(&T) -> bool, desc: &str) -> Result<T>;
 }

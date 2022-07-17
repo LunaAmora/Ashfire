@@ -241,11 +241,7 @@ impl Parser {
     }
 
     fn try_get_word(&self, tok: &IRToken) -> Option<String> {
-        if tok == TokenType::Word {
-            Some(self.get_word(tok.operand))
-        } else {
-            None
-        }
+        map_bool!(tok == TokenType::Word, Some(self.get_word(tok.operand)))
     }
 
     fn get_data(&mut self, operand: i32) -> &SizedWord {
@@ -259,11 +255,7 @@ impl Parser {
     }
 
     fn get_struct_type(&self, tok: &IRToken) -> Option<&StructType> {
-        if tok == TokenType::Word {
-            self.get_type_name(&self.get_word(tok.operand))
-        } else {
-            None
-        }
+        map_bool!(tok == TokenType::Word, self.get_type_name(&self.get_word(tok.operand)))
     }
 
     fn get_data_pointer(&self, word: &str) -> Option<TokenType> {
@@ -366,11 +358,7 @@ impl Parser {
         let mut result = Vec::new();
         let loc = &word.loc;
 
-        let push_type = if local {
-            OpType::PushLocal
-        } else {
-            OpType::PushGlobal
-        };
+        let push_type = map_bool!(local, OpType::PushLocal, OpType::PushGlobal);
 
         let (store, pointer) = match var_typ {
             Some(VarWordType::Store) => (true, false),
@@ -431,7 +419,7 @@ impl Parser {
                     .expect("unreachable") as i32;
 
                 for (i, member) in (0_i32..).zip(members.into_iter()) {
-                    let operand = index + if local == store { i } else { -i };
+                    let operand = index + map_bool!(local == store, i, -i);
 
                     if store {
                         result.push(Op::new(OpType::ExpectType, member.typ.into(), loc))
