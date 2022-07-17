@@ -96,6 +96,7 @@ impl Parser {
                         .to_owned(),
                 );
                 return choice!(
+                    OptionErr,
                     self.get_const_struct(loc_word),
                     self.get_offset(loc_word, tok.operand),
                     self.get_binding(loc_word),
@@ -351,6 +352,7 @@ impl Parser {
 
         let word = LocWord { name: word.to_string(), loc: loc_word.loc.clone() };
         choice!(
+            OptionErr,
             self.current_proc()
                 .map(|proc| proc.local_vars.clone())
                 .map_or(Ok(None), |vars| self.try_get_var(&word, vars, true, var_typ)),
@@ -473,11 +475,13 @@ impl Parser {
                     return map_res(self.parse_memory(word)),
                 (1, TokenType::Word) =>
                     return choice!(
+                        OptionErr,
                         self.parse_proc_ctx(self.get_word(tok.operand), word),
                         self.parse_struct_ctx(i, word),
                         map_res(self.invalid_token(tok, "context declaration"))
                     ),
                 (_, TokenType::Keyword) => match choice!(
+                    OptionErr,
                     self.parse_keyword_ctx(&mut colons, word, tok),
                     self.parse_end_ctx(colons, i, word)
                 ) {
@@ -565,6 +569,7 @@ impl Parser {
             return Ok(None);
         }
         choice!(
+            OptionErr,
             self.parse_static_ctx(ctx_size, word),
             map_res_t(self.define_proc(word, Contract::default()))
         )

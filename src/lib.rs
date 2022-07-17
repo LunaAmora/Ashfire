@@ -1,16 +1,8 @@
 use anyhow::Result;
-use std::{ops::Deref, path::Path};
+use std::path::Path;
 
 pub struct OptionErr<T> {
     value: Result<Option<T>>,
-}
-
-impl<T> Deref for OptionErr<T> {
-    type Target = Result<Option<T>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.value
-    }
 }
 
 impl<T> From<OptionErr<T>> for Result<Option<T>> {
@@ -38,20 +30,28 @@ impl<T> From<T> for OptionErr<T> {
 }
 
 impl<T> OptionErr<T> {
-    pub fn or_else(mut self, f: impl FnOnce() -> OptionErr<T>) -> Self {
-        if let Ok(None) = *self {
+    pub fn or_else(mut self, f: impl FnOnce() -> Self) -> Self {
+        if let Ok(None) = self.value {
             self = f();
         }
         self
     }
 }
 
+/// Chain `.or_else(mut self, f: impl Fn() -> Self) -> Self` calls.
+///
+/// This attemps to convert every argument expression
+/// to the given type with `type::from(expr)` in a lazy way.
+/// Ending the chain with a call to `.into()`.
+///
+/// # See also
+/// The choice function for Alternatives in haskell.
 #[macro_export]
 macro_rules! choice {
-    ( $i:expr, $( $x:expr ),* ) => {
-        OptionErr::from($i)
+    ( $typ:ident, $i:expr, $( $x:expr ),* ) => {
+        $typ::from($i)
         $(
-            .or_else(|| OptionErr::from($x))
+            .or_else(|| $typ::from($x))
         )*
             .into()
     }

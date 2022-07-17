@@ -138,6 +138,7 @@ impl Lexer {
     pub fn lex_next_token(&mut self, parser: &mut Parser) -> Result<Option<IRToken>> {
         match self.next_token() {
             Some(tok) => choice!(
+                OptionErr,
                 self.try_parse_string(&tok, parser),
                 try_parse_char(&tok),
                 parse_keyword(&tok),
