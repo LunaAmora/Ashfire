@@ -11,6 +11,7 @@ pub struct Proc {
     pub bindings: Vec<String>,
     pub local_vars: Vec<TypedWord>,
     pub local_mem_names: Vec<Word>,
+    pub mem_size: i32,
 }
 
 impl Proc {
@@ -39,6 +40,17 @@ pub struct Op {
 impl Op {
     pub fn new(typ: OpType, operand: i32, loc: &Loc) -> Self {
         Self { typ, operand, loc: loc.clone() }
+    }
+}
+
+impl Display for Op {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self.typ {
+            OpType::Intrinsic => {
+                write!(f, "Intrinsic {:?}", IntrinsicType::from(self.operand))
+            }
+            _ => write!(f, "{:?} [{}]", self.typ, self.operand),
+        }
     }
 }
 
@@ -89,11 +101,7 @@ pub struct IRToken {
 impl From<(i32, Loc)> for IRToken {
     fn from(tuple: (i32, Loc)) -> Self {
         let (operand, loc) = tuple;
-        Self {
-            typ: TokenType::DataType(ValueType::Int),
-            operand,
-            loc,
-        }
+        Self { typ: ValueType::Int.into(), operand, loc }
     }
 }
 
@@ -309,6 +317,11 @@ impl PartialEq<ValueType> for TokenType {
         }
     }
 }
+impl From<ValueType> for TokenType {
+    fn from(value: ValueType) -> Self {
+        TokenType::DataType(value)
+    }
+}
 
 impl From<TokenType> for i32 {
     fn from(tok: TokenType) -> Self {
@@ -392,6 +405,7 @@ pub enum OpType {
     EndCase,
 }
 
+#[derive(Debug)]
 pub enum IntrinsicType {
     Plus,
     Minus,
@@ -412,6 +426,33 @@ pub enum IntrinsicType {
     Store32,
     FdWrite,
     Cast(i32),
+}
+
+impl From<i32> for IntrinsicType {
+    fn from(value: i32) -> Self {
+        match value {
+            0 => IntrinsicType::Plus,
+            1 => IntrinsicType::Minus,
+            2 => IntrinsicType::Times,
+            3 => IntrinsicType::Div,
+            4 => IntrinsicType::Greater,
+            5 => IntrinsicType::GreaterE,
+            6 => IntrinsicType::Lesser,
+            7 => IntrinsicType::LesserE,
+            8 => IntrinsicType::And,
+            9 => IntrinsicType::Or,
+            10 => IntrinsicType::Xor,
+            11 => IntrinsicType::Load8,
+            12 => IntrinsicType::Store8,
+            13 => IntrinsicType::Load16,
+            14 => IntrinsicType::Store16,
+            16 => IntrinsicType::Load32,
+            17 => IntrinsicType::Store32,
+            19 => IntrinsicType::FdWrite,
+            n if n >= 20 => IntrinsicType::Cast(n - 20),
+            n => IntrinsicType::Cast(n + 20),
+        }
+    }
 }
 
 impl From<IntrinsicType> for i32 {

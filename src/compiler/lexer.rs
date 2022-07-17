@@ -111,7 +111,10 @@ impl Lexer {
                 word.strip_suffix('\"')
                     .map_or_else(|| self.read_string_literal(&tok.loc), |word| Ok(word.to_string()))
                     .map(|name| {
-                        (Word::new(&name, scapped_len(&name) as i32), parser.data_list.len() as i32)
+                        (
+                            Word::new(&name, (name.len() - scapped_len(&name)) as i32),
+                            parser.data_list.len() as i32,
+                        )
                     })
                     .map(|(word, operand)| {
                         parser.data_list.push(word.into());
@@ -173,7 +176,7 @@ fn parse_number(tok: &Token) -> Option<IRToken> {
     tok.name
         .parse::<i32>()
         .ok()
-        .map(|operand| IRToken::new(TokenType::DataType(ValueType::Int), operand, &tok.loc))
+        .map(|operand| IRToken::new(ValueType::Int.into(), operand, &tok.loc))
 }
 
 fn try_parse_char(tok: &Token) -> Result<Option<IRToken>> {

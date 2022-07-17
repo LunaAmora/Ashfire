@@ -1,0 +1,7 @@
+include "lib/std.fire"
+
+hello str:: "Hello World!" end
+
+start ::
+  hello println
+end

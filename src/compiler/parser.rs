@@ -8,6 +8,7 @@ use std::{collections::VecDeque, fs::File, io::BufReader, path::PathBuf};
 pub struct Parser {
     pub word_list: Vec<String>,
     pub data_list: Vec<SizedWord>,
+    pub total_mem_size: i32,
     pub total_data_size: i32,
     pub struct_list: Vec<StructType>,
     ir_tokens: VecDeque<IRToken>,
@@ -227,11 +228,10 @@ impl Parser {
     }
 
     fn parse_cast_type(&self, word: &str) -> Option<i32> {
-        self.parse_data_type(match word.strip_prefix('*') {
-            Some(word) => word,
-            None => word,
-        })
-        .map(|u| -(u as i32))
+        match word.strip_prefix('*') {
+            Some(_) => todo!("cast as typed pointer not implemented"),
+            None => self.parse_data_type(word).map(|u| (u as i32)),
+        }
     }
 
     fn parse_data_type(&self, word: &str) -> Option<usize> {
@@ -332,10 +332,12 @@ impl Parser {
             .map(|index| Op::new(OpType::Call, index as i32, &word.loc).into())
     }
 
+    fn try_get_const_name(&self, word: &LocWord) -> Option<&TypedWord> {
+        self.const_list.iter().find(|cnst| word == cnst.as_str())
+    }
+
     fn get_const_name(&mut self, word: &LocWord) -> Result<Option<Vec<Op>>> {
-        self.const_list
-            .iter()
-            .find(|cnst| word == cnst.as_str())
+        self.try_get_const_name(word)
             .map(|tword| (tword, &word.loc).into())
             .map_or_else(|| Ok(None), |tok| self.define_op(tok))
     }
@@ -385,7 +387,7 @@ impl Parser {
             if store {
                 result.push(Op::new(OpType::Intrinsic, IntrinsicType::Store32.into(), loc))
             } else if pointer {
-                let ptr_typ = IntrinsicType::Cast(-i32::from(typ));
+                let ptr_typ = IntrinsicType::Cast(-i32::from(typ) - 1);
                 result.push(Op::new(OpType::Intrinsic, ptr_typ.into(), loc));
             } else {
                 let data_typ = IntrinsicType::Cast(typ.into());
@@ -409,7 +411,7 @@ impl Parser {
                     .parse_data_type(struct_type.name.as_str())
                     .expect("unreachable");
 
-                let ptr_typ = IntrinsicType::Cast(-(stk_id as i32));
+                let ptr_typ = IntrinsicType::Cast(-(stk_id as i32) - 1);
 
                 result.push(Op::new(push_type, index as i32, loc));
                 result.push(Op::new(OpType::Intrinsic, ptr_typ.into(), loc));
@@ -467,7 +469,8 @@ impl Parser {
         let mut colons = 0;
         while let Some(tok) = self.ir_tokens.get(i).cloned() {
             match (colons, &tok.typ) {
-                (1, TokenType::DataType(ValueType::Int)) => return self.parse_memory(word),
+                (1, TokenType::DataType(ValueType::Int)) =>
+                    return map_res(self.parse_memory(word)),
                 (1, TokenType::Word) =>
                     return choice!(
                         self.parse_proc_ctx(self.get_word(tok.operand), word),
@@ -516,7 +519,7 @@ impl Parser {
         match (*colons, from_primitive(tok.operand)) {
             (0, KeywordType::Mem) => {
                 self.next_irtoken();
-                self.parse_memory(word)
+                map_res(self.parse_memory(word))
             }
             (0, KeywordType::Struct) => {
                 self.next_irtoken();
@@ -528,7 +531,7 @@ impl Parser {
             }
             (1, KeywordType::Equal) => {
                 self.next_irtokens(2);
-                if let Some((eval, skip)) = self.compile_eval() {
+                if let Ok((eval, skip)) = self.compile_eval() {
                     ensure!(
                         eval.typ != ValueType::Any,
                         "{} Undefined variable value is not allowed",
@@ -573,7 +576,7 @@ impl Parser {
         }
 
         self.next_irtokens(2);
-        if let Some((eval, skip)) = self.compile_eval() {
+        if let Ok((eval, skip)) = self.compile_eval() {
             if eval.typ != ValueType::Any {
                 self.next_irtokens(skip);
                 self.const_list
@@ -609,14 +612,104 @@ impl Parser {
         Ok(self.push_block(Op::new(OpType::PrepProc, operand as i32, &name.loc)))
     }
 
-    fn compile_eval_n(&mut self, _n: usize) -> Option<(Vec<IRToken>, usize)> {
-        warn!("Todo: Compile time evaluation_n not implemented yet");
-        None
+    fn compile_eval(&mut self) -> Result<(IRToken, usize), IRToken> {
+        match self.compile_eval_n(1) {
+            Ok((mut result, skip)) => Ok((result.pop().expect("unreachable"), skip)),
+            Err(tok) => Err(tok),
+        }
     }
 
-    fn compile_eval(&mut self) -> Option<(IRToken, usize)> {
-        warn!("Todo: Compile time evaluation not implemented yet");
-        None
+    fn compile_eval_n(&mut self, n: usize) -> Result<(Vec<IRToken>, usize), IRToken> {
+        let mut result = Vec::new();
+        let mut i = 0;
+
+        while let Some(tok) = self.ir_tokens.get(i).cloned() {
+            if &tok == KeywordType::End {
+                if result.is_empty() && i == 0 {
+                    result.push(IRToken::new(ValueType::Any.into(), 0, &tok.loc));
+                } else if result.len() != n {
+                    todo!("Handle mismath of expected types")
+                }
+                break;
+            }
+
+            self.eval_token(tok, &mut result)?;
+
+            i += 1;
+        }
+        Ok((result, i + 1))
+    }
+
+    fn eval_token(&mut self, tok: IRToken, result: &mut Vec<IRToken>) -> Result<(), IRToken> {
+        match tok.typ {
+            TokenType::Keyword => {
+                let key = FromPrimitive::from_i32(tok.operand).expect("unreachable");
+                match key {
+                    KeywordType::Dup => todo!(),
+                    KeywordType::Drop => todo!(),
+                    KeywordType::Swap => todo!(),
+                    KeywordType::Over => todo!(),
+                    KeywordType::Rot => todo!(),
+                    KeywordType::Equal => todo!(),
+                    _ => return Err(IRToken::new(TokenType::Keyword, tok.operand, &tok.loc)),
+                }
+            }
+            TokenType::Word => {
+                let word = self
+                    .word_list
+                    .get(tok.operand as usize)
+                    .expect("unreachable");
+
+                let loc_word = LocWord::new(tok.loc.clone(), word.to_string());
+                match self.get_intrinsic_type(&loc_word) {
+                    Some(intrinsic) => match intrinsic {
+                        IntrinsicType::Plus => todo!(),
+                        IntrinsicType::Minus => todo!(),
+                        IntrinsicType::Cast(n) => {
+                            let a = result.pop().expect("Todo:: report error");
+                            let cast = if n >= 0 {
+                                ValueType::from(n as usize).into()
+                            } else {
+                                todo!("Todo:: casting to ptr type not implemented yet");
+                            };
+
+                            result.push(IRToken::new(cast, a.operand, &tok.loc));
+                        }
+                        _ => return Err(IRToken::new(TokenType::Word, tok.operand, &tok.loc)),
+                    },
+                    None =>
+                        if let Some(cnst) = self.try_get_const_name(&loc_word) {
+                            result.push(IRToken::new(cnst.typ, cnst.word.value, &tok.loc));
+                        } else {
+                            return Err(tok);
+                        },
+                }
+            }
+            TokenType::Str => {
+                self.register_string(tok.operand);
+                let data = self
+                    .data_list
+                    .get(tok.operand as usize)
+                    .expect("unreachable");
+
+                result.push(IRToken::new(
+                    TokenType::DataType(ValueType::Int),
+                    data.size(),
+                    &tok.loc,
+                ));
+                result.push(IRToken::new(
+                    TokenType::DataType(ValueType::Ptr),
+                    data.offset,
+                    &tok.loc,
+                ));
+            }
+            TokenType::DataType(value) => match value {
+                ValueType::Int | ValueType::Bool | ValueType::Ptr => result.push(tok),
+                _ => return Err(tok),
+            },
+            _ => return Err(tok),
+        }
+        Ok(())
     }
 
     fn invalid_token(&self, tok: IRToken, error_context: &str) -> Result<()> {
@@ -687,9 +780,23 @@ impl Parser {
         })
     }
 
-    fn parse_memory(&mut self, _word: &LocWord) -> Result<Option<Vec<Op>>> {
-        warn!("Todo: Memory parsing not implemented yet");
-        Ok(None)
+    fn parse_memory(&mut self, word: &LocWord) -> Result<()> {
+        let loc = &word.loc;
+
+        self.expect_keyword(KeywordType::Colon, "`:` after `mem`", loc)?;
+        let value_token =
+            self.expect_next_by(|tok| tok.typ == ValueType::Int, "memory size after `:`", loc)?;
+        self.expect_keyword(KeywordType::End, "`end` after memory size", loc)?;
+
+        let size = ((value_token.operand + 3) / 4) * 4;
+        if let Some(proc) = self.current_proc_mut() {
+            proc.mem_size += size;
+            proc.local_mem_names.push(Word::new(word, proc.mem_size));
+        } else {
+            self.mem_list.push(Word::new(word, self.total_mem_size));
+            self.total_mem_size += size;
+        }
+        Ok(())
     }
 
     fn parse_struct(&mut self, word: &LocWord) -> Result<Option<Vec<Op>>> {
@@ -759,13 +866,15 @@ impl Parser {
             .get_keyword()
             .expect("unreachable");
 
-        let (mut result, skip) = self.compile_eval_n(stk.members.len()).with_context(|| {
-            format!("{loc} Failed to parse an valid struct value at compile-time evaluation")
-        })?;
+        let (mut result, skip) = match self.compile_eval_n(stk.members.len()) {
+            Ok((result, skip)) => (result, skip),
+            _ => bail!("Failed to parse an valid struct value at compile-time evaluation"),
+        };
 
         let end_token = self.next_irtokens(skip).expect("unreachable");
         let mut members = stk.members;
         members.reverse();
+        result.reverse(); //Todo:: check if this is correct
 
         if result.len() == 1 {
             if let Some(eval) = result.pop() {
@@ -884,5 +993,12 @@ fn invalid_block(loc: &Loc, block: Op, error: &str) -> Result<Op> {
 
 pub fn compile_file(path: PathBuf) -> Result<()> {
     info!("Compiling file: {:?}", path);
-    Parser::new().lex_file(path)?.parse_tokens()
+    let mut parser = Parser::new();
+    parser.lex_file(path)?.parse_tokens()?;
+
+    for op in parser.program {
+        info!("{} {}", op.loc, op)
+    }
+
+    Ok(())
 }

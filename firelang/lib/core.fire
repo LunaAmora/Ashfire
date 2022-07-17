@@ -1,6 +1,6 @@
-true  : -> bool : 1 #bool end
-false : -> bool : 0 #bool end
-null  : -> ptr : 0 #ptr end
+true  :: 1 #bool end
+false :: 0 #bool end
+null  :: 0 #ptr end
 
 inc32 : *any : dup @ #int 1 + swap !32 end
 dec32 : *any : dup @ #int 1 - swap !32 end
