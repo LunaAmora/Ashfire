@@ -241,7 +241,7 @@ impl Parser {
     }
 
     fn try_get_word(&self, tok: &IRToken) -> Option<&String> {
-        map_bool!(tok == TokenType::Word, Some(self.get_word(tok.operand)))
+        fold_bool!(tok == TokenType::Word, Some(self.get_word(tok.operand)))
     }
 
     fn get_type_name(&self, word: &str) -> Option<&StructType> {
@@ -249,7 +249,7 @@ impl Parser {
     }
 
     fn get_struct_type(&self, tok: &IRToken) -> Option<&StructType> {
-        map_bool!(tok == TokenType::Word, self.get_type_name(self.get_word(tok.operand)))
+        fold_bool!(tok == TokenType::Word, self.get_type_name(self.get_word(tok.operand)))
     }
 
     fn get_data_pointer(&self, word: &str) -> Option<TokenType> {
@@ -352,7 +352,7 @@ impl Parser {
         let mut result = Vec::new();
         let loc = &word.loc;
 
-        let push_type = map_bool!(local, OpType::PushLocal, OpType::PushGlobal);
+        let push_type = fold_bool!(local, OpType::PushLocal, OpType::PushGlobal);
 
         let (store, pointer) = match var_typ {
             Some(VarWordType::Store) => (true, false),
@@ -407,7 +407,7 @@ impl Parser {
                 let index = expect_index(&vars, |name| name.eq(pattern)) as i32;
 
                 for (i, member) in (0_i32..).zip(members.into_iter()) {
-                    let operand = index + map_bool!(local == store, i, -i);
+                    let operand = index + fold_bool!(local == store, i, -i);
 
                     if store {
                         result.push(Op::new(OpType::ExpectType, member.typ.into(), loc))
@@ -701,7 +701,7 @@ impl Parser {
     fn value_display(&self, value: ValueType, operand: i32) -> (String, String) {
         let (desc, name) = match value {
             ValueType::Int => ("Integer", operand.to_string()),
-            ValueType::Bool => ("Boolean", map_bool!(operand != 0, "True", "False").to_owned()),
+            ValueType::Bool => ("Boolean", fold_bool!(operand != 0, "True", "False").to_owned()),
             ValueType::Ptr => ("Pointer", format!("*{}", operand)),
             ValueType::Any => ("Any", operand.to_string()),
             ValueType::Type(n) => {

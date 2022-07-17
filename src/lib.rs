@@ -65,7 +65,7 @@ macro_rules! equals_any {
 }
 
 #[macro_export]
-macro_rules! map_bool {
+macro_rules! fold_bool {
     ($expression:expr, $true:expr ) => {
         if $expression {
             $true
