@@ -382,6 +382,10 @@ impl Parser {
             return Ok(Some(result));
         }
 
+        if !vars.iter().any(|val| val.starts_with(&format!("{}.", word.name))) {
+            return Ok(None);
+        }
+
         if let Some(struct_type) = self.try_get_struct_type(word) {
             let mut member = struct_type.members.first().expect("unreachable");
             if pointer {
@@ -737,7 +741,7 @@ impl Parser {
                     KeywordType::Colon => {
                         return map_res_t(self.define_proc(word, Contract { ins, outs }));
                     }
-                    _ => bail!("{loc}, {error_text}: `{:?}`", key),
+                    _ => bail!("{error_text}: `{:?}`", key),
                 }
             } else if let Some(found_word) = self.try_get_word(&tok) {
                 if let Some(stk) = self.get_type_name(found_word) {
