@@ -1,5 +1,5 @@
 use super::{parser::Parser, types::*};
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{Context, Result};
 use firelib::*;
 use std::{
     fs::File,
@@ -104,10 +104,10 @@ impl Lexer {
         Some(Token { name, loc })
     }
 
-    fn try_parse_string(&mut self, tok: &Token, parser: &mut Parser) -> Result<Option<IRToken>> {
-        tok.name.strip_prefix('\"').map_or_else(
-            || Ok(None),
-            |word| {
+    fn try_parse_string(&mut self, tok: &Token, parser: &mut Parser) -> OptionErr<IRToken> {
+        tok.name
+            .strip_prefix('\"')
+            .map_or_else(OptionErr::default, |word| {
                 word.strip_suffix('\"')
                     .map_or_else(|| self.read_string_literal(&tok.loc), |word| Ok(word.to_string()))
                     .map(|name| {
@@ -120,8 +120,8 @@ impl Lexer {
                         parser.data_list.push(word.into());
                         Some(IRToken::new(TokenType::Str, operand, &tok.loc))
                     })
-            },
-        )
+                    .into()
+            })
     }
 
     fn read_string_literal(&mut self, loc: &Loc) -> Result<String> {
@@ -135,9 +135,9 @@ impl Lexer {
             .to_string())
     }
 
-    pub fn lex_next_token(&mut self, parser: &mut Parser) -> Result<Option<IRToken>> {
+    pub fn lex_next_token(&mut self, parser: &mut Parser) -> OptionErr<IRToken> {
         match self.next_token() {
-            Some(tok) => choice!(
+            Some(tok) => try_choice!(
                 OptionErr,
                 self.try_parse_string(&tok, parser),
                 try_parse_char(&tok),
@@ -145,7 +145,7 @@ impl Lexer {
                 parse_number(&tok),
                 parse_word(tok, parser)
             ),
-            None => Ok(None),
+            None => OptionErr::default(),
         }
     }
 }
@@ -180,19 +180,21 @@ fn parse_number(tok: &Token) -> Option<IRToken> {
         .map(|operand| IRToken::new(ValueType::Int.into(), operand, &tok.loc))
 }
 
-fn try_parse_char(tok: &Token) -> Result<Option<IRToken>> {
+fn try_parse_char(tok: &Token) -> OptionErr<IRToken> {
     let loc = &tok.loc;
-    Ok(match tok.name.strip_prefix('\'') {
+    match tok.name.strip_prefix('\'') {
         Some(word) => match word.strip_suffix('\'') {
             Some(word) => parse_char(word, loc),
             None => bail!("{loc} Missing closing `\'` in char literal"),
-        }?
+        }
+        .value?
         .map(|operand| (operand, loc.clone()).into()),
         None => None,
-    })
+    }
+    .into()
 }
 
-fn parse_char(word: &str, loc: &Loc) -> Result<Option<i32>> {
+fn parse_char(word: &str, loc: &Loc) -> OptionErr<i32> {
     match word.strip_prefix('\\') {
         Some(escaped) => parse_scaped(escaped, loc),
         None => {
@@ -200,13 +202,13 @@ fn parse_char(word: &str, loc: &Loc) -> Result<Option<i32>> {
                 word.len() == 1,
                 "{loc} Char literals cannot contain more than one char: `{word}"
             );
-            Ok(Some(word.chars().next().unwrap() as i32))
+            (word.chars().next().unwrap() as i32).into()
         }
     }
 }
 
-fn parse_scaped(escaped: &str, loc: &Loc) -> Result<Option<i32>> {
-    Ok(match escaped {
+fn parse_scaped(escaped: &str, loc: &Loc) -> OptionErr<i32> {
+    match escaped {
         "t" => Some('\t' as i32),
         "n" => Some('\n' as i32),
         "r" => Some('\r' as i32),
@@ -214,7 +216,8 @@ fn parse_scaped(escaped: &str, loc: &Loc) -> Result<Option<i32>> {
         "\\" => Some('\\' as i32),
         _ if escaped.len() == 2 => try_parse_hex(escaped),
         _ => bail!("{loc} Invalid escaped character sequence found on char literal: `{escaped}`"),
-    })
+    }
+    .into()
 }
 
 fn try_parse_hex(word: &str) -> Option<i32> {
