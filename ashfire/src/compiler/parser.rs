@@ -1,4 +1,4 @@
-use super::{lexer::Lexer, types::*};
+use super::{lexer::Lexer, lib_types::*, types::*};
 use anyhow::{anyhow, Context, Result};
 use firelib::*;
 use num::FromPrimitive;

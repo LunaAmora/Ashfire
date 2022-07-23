@@ -1,4 +1,5 @@
 #![feature(never_type)]
+#![feature(try_trait_v2)]
 #[macro_use] extern crate num_derive;
 #[macro_use] extern crate log;
 extern crate env_logger;
