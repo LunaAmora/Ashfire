@@ -1,6 +1,6 @@
 use num::FromPrimitive;
 use std::{
-    fmt::{self, write, Display, Formatter, Result},
+    fmt::{self, write, Debug, Display, Formatter, Result},
     ops::Deref,
 };
 
@@ -78,7 +78,7 @@ impl From<Op> for anyhow::Result<Option<Vec<Op>>> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Loc {
     pub file: String,
     pub line: i32,
@@ -87,7 +87,11 @@ pub struct Loc {
 
 impl Display for Loc {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}:{}:{}:", self.file, self.line, self.col)
+        if self.file.is_empty() {
+            Ok(())
+        } else {
+            write!(f, "{}:{}:{}: ", self.file, self.line, self.col)
+        }
     }
 }
 

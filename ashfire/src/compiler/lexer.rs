@@ -131,7 +131,7 @@ impl Lexer {
             .strip_prefix('\"')
             .expect("unreachable")
             .strip_suffix('\"')
-            .with_context(|| format!("{loc} Missing closing `\"` in string literal"))?
+            .with_context(|| format!("{loc}Missing closing `\"` in string literal"))?
             .to_string())
     }
 
@@ -185,7 +185,7 @@ fn try_parse_char(tok: &Token) -> OptionErr<IRToken> {
     match tok.name.strip_prefix('\'') {
         Some(word) => match word.strip_suffix('\'') {
             Some(word) => parse_char(word, loc),
-            None => bail!("{loc} Missing closing `\'` in char literal"),
+            None => bail!("{loc}Missing closing `\'` in char literal"),
         }
         .value?
         .map(|operand| (operand, loc.clone()).into()),
@@ -200,7 +200,7 @@ fn parse_char(word: &str, loc: &Loc) -> OptionErr<i32> {
         None => {
             ensure!(
                 word.len() == 1,
-                "{loc} Char literals cannot contain more than one char: `{word}"
+                "{loc}Char literals cannot contain more than one char: `{word}"
             );
             (word.chars().next().unwrap() as i32).into()
         }
@@ -215,7 +215,7 @@ fn parse_scaped(escaped: &str, loc: &Loc) -> OptionErr<i32> {
         "\'" => Some('\'' as i32),
         "\\" => Some('\\' as i32),
         _ if escaped.len() == 2 => try_parse_hex(escaped),
-        _ => bail!("{loc} Invalid escaped character sequence found on char literal: `{escaped}`"),
+        _ => bail!("{loc}Invalid escaped character sequence found on char literal: `{escaped}`"),
     }
     .into()
 }

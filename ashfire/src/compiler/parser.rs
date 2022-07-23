@@ -73,7 +73,7 @@ impl Parser {
     fn define_op(&mut self, tok: IRToken) -> OptionErr<Vec<Op>> {
         ensure!(
             matches!(tok.typ, TokenType::Keyword | TokenType::Word) || self.inside_proc(),
-            "{} Token type cannot be used outside of a procedure: `{:?}",
+            "{}Token type cannot be used outside of a procedure: `{:?}",
             tok.loc,
             tok.typ
         );
@@ -82,11 +82,11 @@ impl Parser {
             TokenType::Keyword => return self.define_keyword_op(tok.operand, tok.loc),
             TokenType::Str => (OpType::PushStr, self.register_string(tok.operand), tok.loc),
             TokenType::DataType(typ) => match typ {
-                ValueType::Type(_) => bail!("{} Value type not valid here: `{:?}`", tok.loc, typ),
+                ValueType::Type(_) => bail!("{}Value type not valid here: `{:?}`", tok.loc, typ),
                 _ => (OpType::PushData(typ), tok.operand, tok.loc),
             },
             TokenType::DataPtr(typ) =>
-                bail!("{} Data pointer type not valid here: `{:?}`", tok.loc, typ),
+                bail!("{}Data pointer type not valid here: `{:?}`", tok.loc, typ),
             TokenType::Word => {
                 let word = &LocWord::new(self.get_word(tok.operand), tok.loc);
                 return choice!(
@@ -102,7 +102,7 @@ impl Parser {
                     self.get_variable(word),
                     self.define_context(word),
                     Err(anyhow!(
-                        "{} Word was not declared on the program: `{}`",
+                        "{}Word was not declared on the program: `{}`",
                         word.loc,
                         word.name
                     ))
@@ -163,7 +163,7 @@ impl Parser {
             KeywordType::Arrow |
             KeywordType::Proc |
             KeywordType::Mem |
-            KeywordType::Struct => bail!("{} Keyword type is not valid here: `{:?}`", loc, key),
+            KeywordType::Struct => bail!("{}Keyword type is not valid here: `{:?}`", loc, key),
         };
 
         OptionErr::from(vec![op])
@@ -181,7 +181,7 @@ impl Parser {
 
     fn pop_block(&mut self, loc: &Loc, closing_type: KeywordType) -> Result<Op> {
         self.op_blocks.pop().with_context(|| {
-            format!("{} There are no open blocks to close with `{:?}`", loc, closing_type)
+            format!("{}There are no open blocks to close with `{:?}`", loc, closing_type)
         })
     }
 
@@ -522,7 +522,7 @@ impl Parser {
                 if let Ok((eval, skip)) = self.compile_eval() {
                     ensure!(
                         eval.typ != ValueType::Any,
-                        "{} Undefined variable value is not allowed",
+                        "{}Undefined variable value is not allowed",
                         &word.loc
                     );
                     self.next_irtokens(skip);
@@ -537,7 +537,7 @@ impl Parser {
             }
             (_, KeywordType::End) => {
                 bail!(
-                    "{} Missing body or contract necessary to infer the type of the word: `{}`",
+                    "{}Missing body or contract necessary to infer the type of the word: `{}`",
                     word.loc,
                     word.name
                 )
@@ -590,7 +590,7 @@ impl Parser {
     fn define_proc(&mut self, name: &LocWord, contract: Contract) -> Result<Op> {
         anyhow::ensure!(
             !self.inside_proc(),
-            "{} Cannot define a procedure inside of another procedure",
+            "{}Cannot define a procedure inside of another procedure",
             &name.loc
         );
 
@@ -688,7 +688,7 @@ impl Parser {
 
     fn invalid_token(&self, tok: IRToken, error_context: &str) -> Result<()> {
         let (desc, name) = self.token_display(&tok);
-        bail!("{} Invalid `{desc}` found on {error_context}: `{name}`", tok.loc)
+        bail!("{}Invalid `{desc}` found on {error_context}: `{name}`", tok.loc)
     }
 
     fn token_display(&self, tok: &IRToken) -> (String, String) {
@@ -734,13 +734,13 @@ impl Parser {
 
         self.expect_keyword(KeywordType::Colon, "`:` after keyword `proc`", loc)?;
         let error_text =
-            format!("{loc} Expected proc contract or `:` after procedure definition, but found");
+            format!("{loc}Expected proc contract or `:` after procedure definition, but found");
 
         while let Some(tok) = self.next_irtoken() {
             if let Some(key) = tok.get_keyword() {
                 match key {
                     KeywordType::Arrow => {
-                        ensure!(!arrow, "{loc} Duplicated `->` found on procedure definition");
+                        ensure!(!arrow, "{loc}Duplicated `->` found on procedure definition");
                         arrow = true;
                     }
                     KeywordType::Colon => {
@@ -773,15 +773,7 @@ impl Parser {
         &mut self, pred: impl FnOnce(&IRToken) -> bool, error_text: &str, loc: &Loc,
     ) -> Result<IRToken> {
         let tok = self.next_irtoken();
-        let none = tok.is_none();
-        expect_by(tok, pred, error_text, |tok| self.format_token(tok)).map_err(|err| {
-            if none {
-                let context = format!("{} {}", loc, err);
-                err.context(context)
-            } else {
-                err
-            }
-        })
+        expect_by(tok, pred, error_text, |tok| self.format_token(tok), Some(loc.to_owned()))
     }
 
     fn parse_memory(&mut self, word: &LocWord) -> Result<()> {
@@ -842,10 +834,10 @@ impl Parser {
                         continue;
                     }
                 }
-                bail!("{loc} {error_text}: {}", self.format_token(name_type));
+                bail!("{loc}{error_text}: {}", self.format_token(name_type));
             }
         }
-        bail!("{loc} Expected struct members or `end` after struct declaration")
+        bail!("{loc}Expected struct members or `end` after struct declaration")
     }
 
     fn parse_const_or_var(&mut self, word: &LocWord, operand: i32, stk: StructType) -> Result<()> {
@@ -883,7 +875,7 @@ impl Parser {
                     let member_type = members.pop().expect("unreachable").typ;
                     anyhow::ensure!(
                         equals_any!(member_type, ValueType::Any, eval.typ),
-                        "{} Expected type `{:?}` on the stack at the end of the compile-time \
+                        "{}Expected type `{:?}` on the stack at the end of the compile-time \
                          evaluation, but found: `{:?}`",
                         end_token.loc,
                         member_type,
@@ -946,6 +938,7 @@ impl Parser {
                 |tok| tok == TokenType::Str,
                 "include file name",
                 |tok| self.format_token(tok),
+                None,
             )?;
 
             let include_path = self.get_string(tok.operand).as_str();
@@ -967,19 +960,18 @@ fn from_i32<T: FromPrimitive>(value: i32) -> T {
 
 fn expect_by(
     value: Option<IRToken>, pred: impl FnOnce(&IRToken) -> bool, desc: &str,
-    fmt: impl FnOnce(IRToken) -> String,
+    fmt: impl FnOnce(IRToken) -> String, loc: Option<Loc>,
 ) -> Result<IRToken> {
     match value {
         Some(tok) if pred(&tok) => Ok(tok),
-        Some(tok) =>
-            bail!("{} Expected to find {}, but found: {}", tok.loc.clone(), desc, fmt(tok)),
-        None => bail!("Expected to find {}, but found nothing", desc),
+        Some(tok) => bail!("{}Expected to find {}, but found: {}", tok.loc.clone(), desc, fmt(tok)),
+        None => bail!("{}Expected to find {}, but found nothing", loc.unwrap_or_default(), desc),
     }
 }
 
 fn invalid_block(loc: &Loc, block: Op, error: &str) -> Result<!> {
     bail!(
-        "{} {}, but found a `{:?}` block instead\n{} [INFO] The found block started here",
+        "{}{}, but found a `{:?}` block instead\n{}[INFO] The found block started here",
         loc,
         error,
         block.typ,
@@ -993,7 +985,7 @@ pub fn compile_file(path: PathBuf) -> Result<()> {
     parser.lex_file(path)?.parse_tokens()?;
 
     for op in parser.program {
-        info!("{} {}", op.loc, op)
+        info!("{}{}", op.loc, op)
     }
 
     Ok(())
