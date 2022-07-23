@@ -8,11 +8,7 @@ use std::{
     path::Path,
 };
 
-pub trait Alternative: Sized {
-    fn or_else<F: Into<Self>>(self, f: impl FnOnce() -> F) -> Self;
-}
-
-pub trait AlternativeV2: Try<Residual = Self> {}
+pub trait Alternative: Try<Residual = Self> {}
 
 #[derive(Control)]
 pub struct OptionErr<T> {
@@ -49,16 +45,7 @@ impl<T> From<T> for OptionErr<T> {
     }
 }
 
-impl<T> Alternative for OptionErr<T> {
-    fn or_else<F: Into<Self>>(self, f: impl FnOnce() -> F) -> Self {
-        match self.value {
-            Ok(None) => f().into(),
-            _ => self,
-        }
-    }
-}
-
-impl<T> AlternativeV2 for OptionErr<T> {}
+impl<T> Alternative for OptionErr<T> {}
 
 impl<T> Try for OptionErr<T> {
     type Output = Self;
@@ -91,24 +78,13 @@ impl<T> FromResidual<Result<Infallible, Error>> for OptionErr<T> {
     }
 }
 
-/// Chain `Alternative::or_else` calls in a lazy way,
-/// ending the chain with a call to `.into()`.
+/// Chain `Alternative::from` calls
+/// in a short_circuit way with the try trait.
 ///
 /// # See also
 /// The choice function for Alternatives in haskell.
 #[macro_export]
 macro_rules! choice {
-    ( $typ:ident, $i:expr, $( $x:expr ),* ) => {
-        $typ::from($i)
-        $(
-            .or_else(|| $x)
-        )*
-            .into()
-    }
-}
-
-#[macro_export]
-macro_rules! try_choice {
     ( $typ:ident, $( $x:expr ),*) => {
         {
             let mut __value;

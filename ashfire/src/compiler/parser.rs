@@ -89,7 +89,7 @@ impl Parser {
                 bail!("{} Data pointer type not valid here: `{:?}`", tok.loc, typ),
             TokenType::Word => {
                 let word = &LocWord::new(self.get_word(tok.operand), tok.loc);
-                return try_choice!(
+                return choice!(
                     OptionErr,
                     self.get_const_struct(word),
                     self.get_offset(word, tok.operand),
@@ -109,6 +109,7 @@ impl Parser {
                 );
             }
         });
+
         OptionErr::from(vec![op])
     }
 
@@ -337,7 +338,7 @@ impl Parser {
         };
 
         let word = LocWord { name: word.to_string(), loc: loc_word.loc.clone() };
-        try_choice!(
+        choice!(
             OptionErr,
             self.current_proc()
                 .map(|proc| proc.local_vars.clone())
@@ -458,14 +459,14 @@ impl Parser {
                 (1, TokenType::DataType(ValueType::Int)) =>
                     return map_res(self.parse_memory(word)),
                 (1, TokenType::Word) =>
-                    return try_choice!(
+                    return choice!(
                         OptionErr,
                         self.parse_proc_ctx(self.get_word(tok.operand).to_owned(), word),
                         self.parse_struct_ctx(i, word),
                         map_res(self.invalid_token(tok, "context declaration"))
                     ),
                 (_, TokenType::Keyword) => {
-                    try_choice!(
+                    choice!(
                         OptionErr,
                         self.parse_keyword_ctx(&mut colons, word, tok),
                         self.parse_end_ctx(colons, i, word)
@@ -552,7 +553,7 @@ impl Parser {
             return OptionErr::default();
         }
 
-        try_choice!(
+        choice!(
             OptionErr,
             self.parse_static_ctx(ctx_size, word),
             map_res_t(self.define_proc(word, Contract::default()))
