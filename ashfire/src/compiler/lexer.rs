@@ -248,7 +248,6 @@ fn parse_keyword(tok: &Token) -> Option<IRToken> {
         "struct" => KeywordType::Struct,
         "include" => KeywordType::Include,
         _ => return None,
-    }
-    .into();
+    } as i32;
     Some(IRToken::new(TokenType::Keyword, operand, &tok.loc))
 }

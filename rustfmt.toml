@@ -10,3 +10,6 @@ format_strings = true
 inline_attribute_width = 40
 struct_lit_width = 50
 fn_call_width = 80
+format_macro_matchers = true
+format_macro_bodies = true
+reorder_impl_items = true

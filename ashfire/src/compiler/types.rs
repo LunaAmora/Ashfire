@@ -1,6 +1,6 @@
 use num::FromPrimitive;
 use std::{
-    fmt::{self, write, Debug, Display, Formatter, Result},
+    fmt::{Debug, Display, Formatter, Result},
     ops::Deref,
 };
 
@@ -335,6 +335,7 @@ pub enum ValueType {
     Any,
     Type(i32),
 }
+
 impl From<usize> for ValueType {
     fn from(value: usize) -> Self {
         match value {
@@ -354,7 +355,7 @@ impl From<ValueType> for i32 {
             ValueType::Bool => 1,
             ValueType::Ptr => 2,
             ValueType::Any => 3,
-            ValueType::Type(i) => 4 + i,
+            ValueType::Type(i) => i,
         }
     }
 }
@@ -495,12 +496,6 @@ pub enum KeywordType {
     At,
     Include,
     Case,
-}
-
-impl From<KeywordType> for i32 {
-    fn from(k: KeywordType) -> Self {
-        k as i32
-    }
 }
 
 pub enum CaseType {

@@ -65,21 +65,21 @@ macro_rules! ensure {
                 Err(anyhow::anyhow!( $( $fmt ),* ))?
             }
         )?
-    }
+    };
 }
 
 #[macro_export]
 macro_rules! bail {
     ($( $fmt:expr ),*) => {
         Err(anyhow::anyhow!( $( $fmt ),* ))?
-    }
+    };
 }
 
 #[macro_export]
 macro_rules! short_circuit {
-    ( $cond:expr ) => {
+    ($cond:expr) => {
         $crate::FlowControl::short_circuit($cond)?
-    }
+    };
 }
 
 #[macro_export]
@@ -91,7 +91,7 @@ macro_rules! equals_any {
 
 #[macro_export]
 macro_rules! fold_bool {
-    ($expression:expr, $true:expr ) => {
+    ($expression:expr, $true:expr) => {
         if $expression {
             $true
         } else {
