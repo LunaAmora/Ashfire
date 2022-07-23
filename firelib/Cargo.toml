@@ -1,13 +1,9 @@
 [package]
-name = "firelib_macro"
+name = "firelib"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Luna Amora <luna.mberry@gmail.com>"]
+description = "Library used by the Ashfire compiler"
 
 [dependencies]
-syn = "1.0"
-quote = "1.0"
-
-[lib]
-proc-macro = true
+anyhow = "1.0"

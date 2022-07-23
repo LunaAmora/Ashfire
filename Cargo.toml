@@ -3,4 +3,5 @@
 members = [
     "ashfire",
     "firelib",
+    "firelib_macro",
 ]

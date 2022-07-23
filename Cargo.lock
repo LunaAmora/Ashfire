@@ -25,6 +25,7 @@ dependencies = [
  "clap",
  "clap-verbosity-flag",
  "env_logger",
+ "firelib",
  "firelib_macro",
  "log",
  "num",
@@ -121,6 +122,13 @@ dependencies = [
  "log",
  "regex",
  "termcolor",
+]
+
+[[package]]
+name = "firelib"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
 ]
 
 [[package]]

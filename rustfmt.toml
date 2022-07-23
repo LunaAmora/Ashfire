@@ -1,4 +1,4 @@
-ignore = ["firelib"]
+ignore = ["firelib_macro"]
 fn_args_layout  = "Compressed"
 imports_granularity = "Crate"
 binop_separator = "Back"

@@ -1,6 +1,7 @@
-use super::{lib_types::OptionErr, parser::Parser, types::*};
+use super::{parser::Parser, types::*};
 use anyhow::{Context, Result};
 use firelib::{bail, choice, ensure};
+use lib_types::OptionErr;
 use std::{
     fs::File,
     io::{BufRead, BufReader},

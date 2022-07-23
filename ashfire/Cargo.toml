@@ -7,8 +7,6 @@ description = "Compiler for the Firelang language"
 readme = "README.md"
 license-file = "LICENSE"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 clap = { version = "3.2.7", features = ["derive"] }
 clap-verbosity-flag = "1.0.1"
@@ -18,8 +16,10 @@ env_logger = "0.9.0"
 num = "0.4.0"
 num-traits = "0.2"
 num-derive = "0.3"
-firelib_macro = {path = "../firelib"}
+firelib = {path = "../firelib"}
+firelib_macro = {path = "../firelib_macro"}
+
 
 [lib]
-name = "firelib"
+name = "lib_types"
 path = "src/lib.rs"

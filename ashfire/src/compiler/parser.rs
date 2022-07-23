@@ -1,6 +1,7 @@
-use super::{lexer::Lexer, lib_types::*, types::*};
+use super::{lexer::Lexer, types::*};
 use anyhow::{anyhow, Context, Result};
 use firelib::*;
+use lib_types::*;
 use num::FromPrimitive;
 use std::{collections::VecDeque, fs::File, io::BufReader, path::PathBuf};
 

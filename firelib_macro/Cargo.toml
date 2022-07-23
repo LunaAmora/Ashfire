@@ -1,0 +1,13 @@
+[package]
+name = "firelib_macro"
+version = "0.1.0"
+edition = "2021"
+authors = ["Luna Amora <luna.mberry@gmail.com>"]
+description = "Library macros used by the Ashfire compiler"
+
+[dependencies]
+syn = "1.0"
+quote = "1.0"
+
+[lib]
+proc-macro = true
