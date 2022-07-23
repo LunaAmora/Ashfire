@@ -385,12 +385,9 @@ impl Parser {
             return result.into();
         }
 
-        if !vars
+        short_circuit!(!vars
             .iter()
-            .any(|val| val.starts_with(&format!("{}.", word.name)))
-        {
-            return OptionErr::default();
-        }
+            .any(|val| val.starts_with(&format!("{}.", word.name))));
 
         if let Some(struct_type) = self.try_get_struct_type(word) {
             let mut member = struct_type.members.first().expect("unreachable");
@@ -550,10 +547,7 @@ impl Parser {
     fn parse_end_ctx(
         &mut self, colons: i32, ctx_size: usize, word: &LocWord,
     ) -> OptionErr<Vec<Op>> {
-        if colons != 2 {
-            return OptionErr::default();
-        }
-
+        short_circuit!(colons != 2);
         choice!(
             OptionErr,
             self.parse_static_ctx(ctx_size, word),

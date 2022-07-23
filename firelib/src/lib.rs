@@ -37,7 +37,7 @@ macro_rules! choice {
     }
 }
 
-pub trait FlowControl: Sized + FromResidual<ControlFlow<Self, Infallible>> {
+pub trait FlowControl: Default + Sized + FromResidual<ControlFlow<Self, Infallible>> {
     fn ensure(condition: bool, f: impl FnOnce() -> Self) -> ControlFlow<Self, ()> {
         match condition {
             true => ControlFlow::Continue(()),
@@ -50,6 +50,10 @@ pub trait FlowControl: Sized + FromResidual<ControlFlow<Self, Infallible>> {
             ControlFlow::Break(value) => value,
             _ => unreachable!(),
         }
+    }
+
+    fn short_circuit(condition: bool) -> ControlFlow<Self, ()> {
+        Self::ensure(!condition, Self::default)
     }
 }
 
@@ -68,6 +72,13 @@ macro_rules! ensure {
 macro_rules! bail {
     ($( $fmt:expr ),*) => {
         Err(anyhow::anyhow!( $( $fmt ),* ))?
+    }
+}
+
+#[macro_export]
+macro_rules! short_circuit {
+    ( $cond:expr ) => {
+        $crate::FlowControl::short_circuit($cond)?
     }
 }
 
