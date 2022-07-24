@@ -25,7 +25,7 @@ pub trait __Alternative: Alternative {
 /// The choice function for Alternatives in haskell.
 #[macro_export]
 macro_rules! choice {
-    ( $typ:ident, $( $x:expr ),*) => {
+    ($typ:ident, $( $x:expr ),* $(,)?) => {
         {
             use $crate::__Alternative as _;
             let mut alternative;
@@ -37,7 +37,16 @@ macro_rules! choice {
     }
 }
 
-pub trait FlowControl: Default + Sized + FromResidual<ControlFlow<Self, Infallible>> {
+pub trait Success {
+    fn success() -> Self;
+}
+
+pub trait SucessFrom {
+    type From;
+    fn success_from(from: Self::From) -> Self;
+}
+
+pub trait FlowControl: Sized + FromResidual<ControlFlow<Self, Infallible>> {
     fn ensure(condition: bool, f: impl FnOnce() -> Self) -> ControlFlow<Self, ()> {
         match condition {
             true => ControlFlow::Continue(()),
@@ -52,8 +61,25 @@ pub trait FlowControl: Default + Sized + FromResidual<ControlFlow<Self, Infallib
         }
     }
 
-    fn short_circuit(condition: bool) -> ControlFlow<Self, ()> {
+    fn short_circuit(condition: bool) -> ControlFlow<Self, ()>
+    where
+        Self: Default,
+    {
         Self::ensure(!condition, Self::default)
+    }
+
+    fn success() -> ControlFlow<Self, Infallible>
+    where
+        Self: Success,
+    {
+        ControlFlow::Break(<Self as Success>::success())
+    }
+
+    fn success_from(from: <Self as SucessFrom>::From) -> ControlFlow<Self, Infallible>
+    where
+        Self: SucessFrom,
+    {
+        ControlFlow::Break(<Self as SucessFrom>::success_from(from))
     }
 }
 
@@ -80,6 +106,27 @@ macro_rules! short_circuit {
     ($cond:expr) => {
         $crate::FlowControl::short_circuit($cond)?
     };
+}
+
+#[macro_export]
+macro_rules! success {
+    () => {
+        $crate::FlowControl::success()?;
+        unreachable!()
+    };
+    ($expr:expr) => {{
+        $expr?;
+        success!();
+    }};
+}
+
+#[macro_export]
+macro_rules! success_from {
+    ($expr:expr) => {{
+        let from = $expr?;
+        $crate::FlowControl::success_from(from)?;
+        unreachable!();
+    }};
 }
 
 #[macro_export]

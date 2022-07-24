@@ -1,5 +1,5 @@
 use super::{lexer::Lexer, types::*};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use firelib::*;
 use lib_types::*;
 use num::FromPrimitive;
@@ -90,7 +90,8 @@ impl Parser {
                 bail!("{}Data pointer type not valid here: `{:?}`", tok.loc, typ),
             TokenType::Word => {
                 let word = &LocWord::new(self.get_word(tok.operand), tok.loc);
-                return choice!(
+
+                choice!(
                     OptionErr,
                     self.get_const_struct(word),
                     self.get_offset(word, tok.operand),
@@ -102,12 +103,9 @@ impl Parser {
                     self.get_const_name(word),
                     self.get_variable(word),
                     self.define_context(word),
-                    Err(anyhow!(
-                        "{}Word was not declared on the program: `{}`",
-                        word.loc,
-                        word.name
-                    ))
                 );
+
+                bail!("{}Word was not declared on the program: `{}`", word.loc, word.name)
             }
         });
 
@@ -345,7 +343,7 @@ impl Parser {
                 .map(|proc| proc.local_vars.clone())
                 .map_or_else(OptionErr::default, |vars| self
                     .try_get_var(&word, vars, true, var_typ)),
-            self.try_get_var(&word, self.global_vars.clone(), false, var_typ)
+            self.try_get_var(&word, self.global_vars.clone(), false, var_typ),
         )
     }
 
@@ -454,24 +452,24 @@ impl Parser {
         let mut colons = 0;
         while let Some(tok) = self.ir_tokens.get(i).cloned() {
             match (colons, &tok.typ) {
-                (1, TokenType::DataType(ValueType::Int)) =>
-                    return map_res(self.parse_memory(word)),
-                (1, TokenType::Word) =>
-                    return choice!(
+                (1, TokenType::DataType(ValueType::Int)) => success!(self.parse_memory(word)),
+                (1, TokenType::Word) => {
+                    choice!(
                         OptionErr,
                         self.parse_proc_ctx(self.get_word(tok.operand).to_owned(), word),
                         self.parse_struct_ctx(i, word),
-                        map_res(self.invalid_token(tok, "context declaration"))
-                    ),
+                    );
+                    self.invalid_token(tok, "context declaration")?;
+                }
                 (_, TokenType::Keyword) => {
                     choice!(
                         OptionErr,
                         self.parse_keyword_ctx(&mut colons, word, tok),
-                        self.parse_end_ctx(colons, i, word)
+                        self.parse_end_ctx(colons, i, word),
                     );
                 }
                 (0, _) => return self.parse_word_ctx(&tok, word),
-                _ => return map_res(self.invalid_token(tok, "context declaration")),
+                _ => self.invalid_token(tok, "context declaration")?,
             }
             i += 1;
         }
@@ -505,7 +503,7 @@ impl Parser {
         match (*colons, from_i32(tok.operand)) {
             (0, KeywordType::Mem) => {
                 self.next_irtoken();
-                map_res(self.parse_memory(word))
+                success!(self.parse_memory(word));
             }
             (0, KeywordType::Struct) => {
                 self.next_irtoken();
@@ -525,9 +523,9 @@ impl Parser {
                     );
                     self.next_irtokens(skip);
                     self.register_var((word.to_string(), eval.operand, eval.typ).into());
-                    return map_res(Ok(()));
+                    success!();
                 }
-                map_res(self.invalid_token(tok, "context declaration"))
+                self.invalid_token(tok, "context declaration")?
             }
             (_, KeywordType::Colon) => {
                 *colons += 1;
@@ -548,11 +546,9 @@ impl Parser {
         &mut self, colons: i32, ctx_size: usize, word: &LocWord,
     ) -> OptionErr<Vec<Op>> {
         short_circuit!(colons != 2);
-        choice!(
-            OptionErr,
-            self.parse_static_ctx(ctx_size, word),
-            map_res_t(self.define_proc(word, Contract::default()))
-        )
+
+        self.parse_static_ctx(ctx_size, word)?;
+        success_from!(self.define_proc(word, Contract::default()));
     }
 
     fn parse_static_ctx(&mut self, ctx_size: usize, word: &LocWord) -> OptionErr<Vec<Op>> {
@@ -566,7 +562,7 @@ impl Parser {
                 self.next_irtokens(skip);
                 self.const_list
                     .push((word.to_string(), eval.operand, eval.typ).into());
-                return map_res(Ok(()));
+                success!();
             }
         }
         OptionErr::default()
@@ -576,7 +572,7 @@ impl Parser {
         if tok == TokenType::Word {
             if let Some(stk) = self.get_struct_type(tok).cloned() {
                 self.next_irtoken();
-                return map_res(self.parse_const_or_var(word, tok.operand, stk));
+                success!(self.parse_const_or_var(word, tok.operand, stk));
             }
         }
         OptionErr::default()
@@ -681,7 +677,7 @@ impl Parser {
         Ok(())
     }
 
-    fn invalid_token(&self, tok: IRToken, error_context: &str) -> Result<()> {
+    fn invalid_token(&self, tok: IRToken, error_context: &str) -> Result<!> {
         let (desc, name) = self.token_display(&tok);
         bail!("{}Invalid `{desc}` found on {error_context}: `{name}`", tok.loc)
     }
@@ -737,25 +733,25 @@ impl Parser {
                     KeywordType::Arrow => {
                         ensure!(!arrow, "{loc}Duplicated `->` found on procedure definition");
                         arrow = true;
+                        continue;
                     }
-                    KeywordType::Colon => {
-                        return map_res_t(self.define_proc(word, Contract { ins, outs }));
-                    }
-                    _ => bail!("{error_text}: `{:?}`", key),
+                    KeywordType::Colon =>
+                        success_from!(self.define_proc(word, Contract { ins, outs })),
+                    _ => {}
                 }
             } else if let Some(found_word) = self.try_get_word(&tok) {
                 if let Some(stk) = self.get_type_name(found_word) {
                     for member in stk.members.iter() {
                         push_by_condition(arrow, member.typ, &mut outs, &mut ins);
                     }
+                    continue;
                 } else if let Some(type_ptr) = self.get_data_pointer(found_word) {
                     push_by_condition(arrow, type_ptr, &mut outs, &mut ins);
-                } else {
-                    bail!("{error_text} the Word: `{found_word}`");
+                    continue;
                 }
-            } else {
-                bail!("{error_text}: `{:?}`", tok.typ);
             }
+
+            bail!("{error_text}: `{:?}`", self.format_token(tok));
         }
         bail!("{error_text} nothing")
     }
@@ -801,7 +797,7 @@ impl Parser {
                 self.expect_keyword(KeywordType::End, "`end` after struct declaration", loc)?;
                 self.struct_list
                     .push(StructType::new(word.to_string(), members));
-                return map_res(Ok(()));
+                success!();
             }
 
             let next =

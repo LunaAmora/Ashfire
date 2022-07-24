@@ -1,6 +1,6 @@
 #![feature(try_trait_v2)]
 use anyhow::{Error, Result};
-use firelib::Alternative;
+use firelib::{Alternative, Success, SucessFrom};
 use firelib_macro::FlowControl;
 use std::{
     convert::Infallible,
@@ -69,10 +69,16 @@ impl<T> FromResidual<Result<Infallible, Error>> for OptionErr<T> {
     }
 }
 
-pub fn map_res<T>(res: Result<()>) -> OptionErr<Vec<T>> {
-    res.map(|_| Some(vec![])).into()
+impl<T> Success for OptionErr<Vec<T>> {
+    fn success() -> Self {
+        OptionErr::from(Ok(Some(vec![])))
+    }
 }
 
-pub fn map_res_t<T>(res: Result<T>) -> OptionErr<Vec<T>> {
-    res.map(|t| Some(vec![t])).into()
+impl<T> SucessFrom for OptionErr<Vec<T>> {
+    type From = T;
+
+    fn success_from(from: Self::From) -> Self {
+        OptionErr::from(Ok(Some(vec![from])))
+    }
 }
