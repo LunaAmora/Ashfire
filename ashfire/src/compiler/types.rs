@@ -1,3 +1,4 @@
+use firelib::fold_bool;
 use num::FromPrimitive;
 use std::{
     fmt::{Debug, Display, Formatter, Result},
@@ -318,11 +319,9 @@ impl From<ValueType> for TokenType {
 impl From<TokenType> for i32 {
     fn from(tok: TokenType) -> Self {
         match tok {
-            TokenType::Keyword => 0,
-            TokenType::Word => 1,
-            TokenType::Str => 2,
-            TokenType::DataType(value) => 3 + usize::from(value) as i32,
-            TokenType::DataPtr(value) => -(3 + usize::from(value) as i32),
+            TokenType::DataType(value) => 1 + usize::from(value) as i32,
+            TokenType::DataPtr(value) => -(1 + usize::from(value) as i32),
+            _ => 0,
         }
     }
 }
@@ -421,7 +420,7 @@ pub enum IntrinsicType {
     Cast(i32),
 }
 
-impl From<i32> for IntrinsicType {
+impl const From<i32> for IntrinsicType {
     fn from(value: i32) -> Self {
         match value {
             0 => IntrinsicType::Plus,
@@ -439,16 +438,19 @@ impl From<i32> for IntrinsicType {
             12 => IntrinsicType::Store8,
             13 => IntrinsicType::Load16,
             14 => IntrinsicType::Store16,
-            16 => IntrinsicType::Load32,
-            17 => IntrinsicType::Store32,
-            19 => IntrinsicType::FdWrite,
-            n if n >= 20 => IntrinsicType::Cast(n - 20),
-            n => IntrinsicType::Cast(n + 20),
+            15 => IntrinsicType::Load32,
+            16 => IntrinsicType::Store32,
+            17 => IntrinsicType::FdWrite,
+            n if n.abs() > CAST_BASE =>
+                IntrinsicType::Cast(fold_bool!(n.is_positive(), -CAST_BASE, CAST_BASE) + n),
+            _ => IntrinsicType::Cast(0), // invalid cast
         }
     }
 }
 
-impl From<IntrinsicType> for i32 {
+const CAST_BASE: i32 = i32::from(IntrinsicType::Cast(0));
+
+impl const From<IntrinsicType> for i32 {
     fn from(intrinsic: IntrinsicType) -> Self {
         match intrinsic {
             IntrinsicType::Plus => 0,
@@ -466,10 +468,10 @@ impl From<IntrinsicType> for i32 {
             IntrinsicType::Store8 => 12,
             IntrinsicType::Load16 => 13,
             IntrinsicType::Store16 => 14,
-            IntrinsicType::Load32 => 16,
-            IntrinsicType::Store32 => 17,
-            IntrinsicType::FdWrite => 19,
-            IntrinsicType::Cast(n) => n + if n >= 0 { 20 } else { -20 },
+            IntrinsicType::Load32 => 15,
+            IntrinsicType::Store32 => 16,
+            IntrinsicType::FdWrite => 17,
+            IntrinsicType::Cast(n) => 18 * fold_bool!(n >= 0, 1, -1) + n,
         }
     }
 }
@@ -515,4 +517,23 @@ pub enum CaseType {
 pub enum VarWordType {
     Store,
     Pointer,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{IntrinsicType, CAST_BASE};
+    const RANGE: i32 = 30;
+
+    #[test]
+    fn intrinsic_type_conversion() {
+        for n in -RANGE..=RANGE {
+            let i = i32::from(IntrinsicType::from(n));
+
+            if !(-CAST_BASE..0).contains(&n) {
+                assert_eq!(n, i);
+            } else {
+                assert_eq!(i, CAST_BASE);
+            }
+        }
+    }
 }

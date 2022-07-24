@@ -224,14 +224,19 @@ impl Parser {
     }
 
     fn parse_cast_type(&self, word: &str) -> Option<i32> {
-        match word.strip_prefix('*') {
-            Some(_) => todo!("cast as typed pointer not implemented"),
-            None => self.parse_data_type(word).map(|u| (u as i32)),
-        }
+        let (word, is_ptr) = match word.strip_prefix('*') {
+            Some(word) => (word, true),
+            None => (word, false),
+        };
+        self.parse_data_type(word)
+            .map(|u| fold_bool!(is_ptr, -1, 1) * u as i32)
     }
 
     fn parse_data_type(&self, word: &str) -> Option<usize> {
-        self.struct_list.iter().position(|s| s.name == word)
+        self.struct_list
+            .iter()
+            .position(|s| s.name == word)
+            .map(|u| u + 1)
     }
 
     fn get_word(&self, index: i32) -> &String {
@@ -257,7 +262,7 @@ impl Parser {
     fn get_data_pointer(&self, word: &str) -> Option<TokenType> {
         word.strip_prefix('*')
             .and_then(|word| self.parse_data_type(word))
-            .map(|i| TokenType::DataPtr(ValueType::from(i)))
+            .map(|i| TokenType::DataPtr(ValueType::from(i - 1)))
     }
 
     fn get_const_struct(&mut self, word: &LocWord) -> OptionErr<Vec<Op>> {
@@ -372,7 +377,7 @@ impl Parser {
             if store {
                 result.push(Op::new(OpType::Intrinsic, IntrinsicType::Store32.into(), loc))
             } else if pointer {
-                let ptr_typ = IntrinsicType::Cast(-i32::from(typ) - 1);
+                let ptr_typ = IntrinsicType::Cast(-i32::from(typ));
                 result.push(Op::new(OpType::Intrinsic, ptr_typ.into(), loc));
             } else {
                 let data_typ = IntrinsicType::Cast(typ.into());
@@ -397,7 +402,7 @@ impl Parser {
                     .parse_data_type(struct_type.name.as_str())
                     .expect("unreachable");
 
-                let ptr_typ = IntrinsicType::Cast(-(stk_id as i32) - 1);
+                let ptr_typ = IntrinsicType::Cast(-(stk_id as i32));
 
                 result.push(Op::new(push_type, index as i32, loc));
                 result.push(Op::new(OpType::Intrinsic, ptr_typ.into(), loc));
@@ -643,10 +648,11 @@ impl Parser {
                         IntrinsicType::Minus => todo!(),
                         IntrinsicType::Cast(n) => {
                             let a = result.pop().expect("Todo:: report error");
-                            let cast = if n >= 0 {
-                                ValueType::from(n as usize).into()
-                            } else {
-                                todo!("casting to ptr type not implemented yet");
+
+                            let cast = match n {
+                                1.. => ValueType::from(n as usize).into(),
+                                0 => todo!("invalid value"),
+                                _ => todo!("casting to ptr type not implemented yet"),
                             };
 
                             result.push(IRToken::new(cast, a.operand, &tok.loc));
