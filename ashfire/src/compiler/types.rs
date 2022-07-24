@@ -321,8 +321,8 @@ impl From<TokenType> for i32 {
             TokenType::Keyword => 0,
             TokenType::Word => 1,
             TokenType::Str => 2,
-            TokenType::DataType(value) => 3 + i32::from(value),
-            TokenType::DataPtr(value) => -(3 + i32::from(value)),
+            TokenType::DataType(value) => 3 + usize::from(value) as i32,
+            TokenType::DataPtr(value) => -(3 + usize::from(value) as i32),
         }
     }
 }
@@ -333,7 +333,7 @@ pub enum ValueType {
     Bool,
     Ptr,
     Any,
-    Type(i32),
+    Type(usize),
 }
 
 impl From<usize> for ValueType {
@@ -343,12 +343,12 @@ impl From<usize> for ValueType {
             1 => ValueType::Bool,
             2 => ValueType::Ptr,
             3 => ValueType::Any,
-            i => ValueType::Type(i as i32),
+            i => ValueType::Type(i),
         }
     }
 }
 
-impl From<ValueType> for i32 {
+impl From<ValueType> for usize {
     fn from(value: ValueType) -> Self {
         match value {
             ValueType::Int => 0,
