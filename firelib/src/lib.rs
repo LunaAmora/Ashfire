@@ -123,8 +123,7 @@ macro_rules! success {
 #[macro_export]
 macro_rules! success_from {
     ($expr:expr) => {{
-        let from = $expr?;
-        $crate::FlowControl::success_from(from)?;
+        $crate::FlowControl::success_from($expr?)?;
         unreachable!();
     }};
 }
@@ -169,6 +168,7 @@ pub fn empty_or_some<T>(vec: Vec<T>) -> Option<Vec<T>> {
 pub fn flatten<T>(vec: Vec<Vec<T>>) -> Vec<T> {
     vec.into_iter().flatten().collect()
 }
+
 pub fn push_by_condition<T>(cond: bool, value: T, if_true: &mut Vec<T>, if_false: &mut Vec<T>) {
     match cond {
         true => if_true.push(value),
