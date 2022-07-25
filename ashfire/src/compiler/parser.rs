@@ -520,29 +520,29 @@ impl Parser {
             }
             (1, KeywordType::Equal) => {
                 self.next_irtokens(2);
-                if let Ok((eval, skip)) = self.compile_eval() {
-                    ensure!(
-                        eval.typ != ValueType::Any,
-                        "{}Undefined variable value is not allowed",
-                        &word.loc
-                    );
-                    self.next_irtokens(skip);
-                    self.register_var((word.to_string(), eval.operand, eval.typ).into());
-                    success!();
+                match self.compile_eval() {
+                    Ok((eval, skip)) => {
+                        ensure!(
+                            eval.typ != ValueType::Any,
+                            "{}Undefined variable value is not allowed",
+                            &word.loc
+                        );
+                        self.next_irtokens(skip);
+                        self.register_var((word.to_string(), eval.operand, eval.typ).into());
+                        success!();
+                    }
+                    Err(tok) => self.invalid_token(tok, "context declaration")?,
                 }
-                self.invalid_token(tok, "context declaration")?
             }
             (_, KeywordType::Colon) => {
                 *colons += 1;
                 OptionErr::default()
             }
-            (_, KeywordType::End) => {
-                bail!(
-                    "{}Missing body or contract necessary to infer the type of the word: `{}`",
-                    word.loc,
-                    word.name
-                )
-            }
+            (_, KeywordType::End) => bail!(
+                "{}Missing body or contract necessary to infer the type of the word: `{}`",
+                word.loc,
+                word.name
+            ),
             _ => OptionErr::default(),
         }
     }
