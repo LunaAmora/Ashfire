@@ -1,7 +1,6 @@
 #![feature(try_trait_v2)]
 use anyhow::{Error, Result};
-use firelib::{Alternative, Success, SucessFrom};
-use firelib_macro::FlowControl;
+use firelib::{Alternative, FlowControl, Success, SucessFrom};
 use std::{
     convert::Infallible,
     ops::{ControlFlow, FromResidual, Try},

@@ -7,3 +7,4 @@ description = "Library used by the Ashfire compiler"
 
 [dependencies]
 anyhow = "1.0"
+firelib_macro = {path = "../firelib_macro"}

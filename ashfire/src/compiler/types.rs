@@ -1,4 +1,3 @@
-use firelib::fold_bool;
 use num::FromPrimitive;
 use std::{
     fmt::{Debug, Display, Formatter, Result},

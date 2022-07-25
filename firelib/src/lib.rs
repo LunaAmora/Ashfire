@@ -1,5 +1,6 @@
 #![feature(try_trait_v2)]
 pub use anyhow;
+pub use firelib_macro::FlowControl;
 use std::{
     convert::Infallible,
     ops::{ControlFlow, FromResidual, Try},
