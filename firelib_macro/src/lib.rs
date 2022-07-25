@@ -13,7 +13,7 @@ pub fn derive_flow(item: TokenStream) -> TokenStream {
             impl firelib::FlowControl for #struct_name {}
             impl FromResidual<ControlFlow<#struct_name, Infallible>> for #struct_name {
                 fn from_residual(residual: ControlFlow<#struct_name, Infallible>) -> Self {
-                    <Self as firelib::FlowControl>::from_residual(residual)
+                    <Self as firelib::FlowControl>::__from_residual(residual)
                 }
             }
         }
@@ -22,7 +22,7 @@ pub fn derive_flow(item: TokenStream) -> TokenStream {
             impl<#params> firelib::FlowControl for #struct_name<#params> {}
             impl<#params> FromResidual<ControlFlow<#struct_name<#params>, Infallible>> for #struct_name<#params> {
                 fn from_residual(residual: ControlFlow<#struct_name<#params>, Infallible>) -> Self {
-                    <Self as firelib::FlowControl>::from_residual(residual)
+                    <Self as firelib::FlowControl>::__from_residual(residual)
                 }
             }
         }

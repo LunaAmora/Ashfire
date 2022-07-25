@@ -54,13 +54,6 @@ pub trait FlowControl: Sized + FromResidual<ControlFlow<Self, Infallible>> {
         }
     }
 
-    fn from_residual(residual: ControlFlow<Self, Infallible>) -> Self {
-        match residual {
-            ControlFlow::Break(value) => value,
-            _ => unreachable!(),
-        }
-    }
-
     fn short_circuit(condition: bool) -> ControlFlow<Self, ()>
     where
         Self: Default,
@@ -80,6 +73,14 @@ pub trait FlowControl: Sized + FromResidual<ControlFlow<Self, Infallible>> {
         Self: SucessFrom,
     {
         ControlFlow::Break(<Self as SucessFrom>::success_from(from))
+    }
+
+    #[doc(hidden)]
+    fn __from_residual(residual: ControlFlow<Self, Infallible>) -> Self {
+        match residual {
+            ControlFlow::Break(value) => value,
+            _ => unreachable!(),
+        }
     }
 }
 
