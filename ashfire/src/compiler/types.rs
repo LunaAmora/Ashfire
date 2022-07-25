@@ -441,9 +441,8 @@ impl const From<i32> for IntrinsicType {
             15 => IntrinsicType::Load32,
             16 => IntrinsicType::Store32,
             17 => IntrinsicType::FdWrite,
-            n if n.abs() > CAST_BASE =>
-                IntrinsicType::Cast(fold_bool!(n.is_positive(), -CAST_BASE, CAST_BASE) + n),
-            _ => IntrinsicType::Cast(0), // invalid cast
+            n if n.abs() <= CAST_BASE => IntrinsicType::Cast(0), // invalid cast
+            n => IntrinsicType::Cast(fold_bool!(n.is_positive(), -CAST_BASE, CAST_BASE) + n),
         }
     }
 }
