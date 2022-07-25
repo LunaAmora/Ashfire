@@ -1,4 +1,5 @@
 #![feature(try_trait_v2)]
+pub use anyhow;
 use std::{
     convert::Infallible,
     ops::{ControlFlow, FromResidual, Try},
@@ -87,18 +88,14 @@ pub trait FlowControl: Sized + FromResidual<ControlFlow<Self, Infallible>> {
 #[macro_export]
 macro_rules! ensure {
     ($expr:expr, $( $fmt:expr ),*) => {
-        $crate::FlowControl::ensure($expr,
-            || {
-                Err(anyhow::anyhow!( $( $fmt ),* ))?
-            }
-        )?
+        $crate::FlowControl::ensure($expr, || $crate::bail!($( $fmt ),*))?
     };
 }
 
 #[macro_export]
 macro_rules! bail {
     ($( $fmt:expr ),*) => {
-        Err(anyhow::anyhow!( $( $fmt ),* ))?
+        Err($crate::anyhow::anyhow!( $( $fmt ),* ))?
     };
 }
 
@@ -111,10 +108,10 @@ macro_rules! short_circuit {
 
 #[macro_export]
 macro_rules! success {
-    () => {
+    () => {{
         $crate::FlowControl::success()?;
-        unreachable!()
-    };
+        unreachable!();
+    }};
     ($expr:expr) => {{
         $expr?;
         success!();
