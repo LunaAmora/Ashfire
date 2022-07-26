@@ -1,4 +1,5 @@
 #![feature(try_trait_v2)]
+#![feature(never_type)]
 pub use anyhow;
 pub use firelib_macro::FlowControl;
 use std::{
@@ -63,14 +64,14 @@ pub trait FlowControl: Sized + FromResidual<ControlFlow<Self, Infallible>> {
         Self::ensure(!condition, Self::default)
     }
 
-    fn success() -> ControlFlow<Self, Infallible>
+    fn flow_success() -> ControlFlow<Self, !>
     where
         Self: Success,
     {
         ControlFlow::Break(<Self as Success>::success())
     }
 
-    fn success_from(from: <Self as SucessFrom>::From) -> ControlFlow<Self, Infallible>
+    fn flow_success_from(from: <Self as SucessFrom>::From) -> ControlFlow<Self, !>
     where
         Self: SucessFrom,
     {
@@ -109,10 +110,9 @@ macro_rules! short_circuit {
 
 #[macro_export]
 macro_rules! success {
-    () => {{
-        $crate::FlowControl::success()?;
-        unreachable!();
-    }};
+    () => {
+        $crate::FlowControl::flow_success()?;
+    };
     ($expr:expr) => {{
         $expr?;
         success!();
@@ -121,10 +121,9 @@ macro_rules! success {
 
 #[macro_export]
 macro_rules! success_from {
-    ($expr:expr) => {{
-        $crate::FlowControl::success_from($expr?)?;
-        unreachable!();
-    }};
+    ($expr:expr) => {
+        $crate::FlowControl::flow_success_from($expr?)?;
+    };
 }
 
 #[macro_export]
