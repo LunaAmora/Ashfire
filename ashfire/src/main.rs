@@ -8,8 +8,9 @@ extern crate num;
 
 mod compiler;
 mod logger;
-use crate::compiler::parser::*;
 
+use crate::compiler::{parser::*, typechecker::*};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use std::path::PathBuf;
@@ -42,10 +43,14 @@ fn main() {
             .init();
     }
 
-    match args.command {
-        Commands::Com { path, output: _ } =>
-            if let Err(err) = compile_file(path) {
-                error!("{:#}", err);
-            },
-    };
+    if let Err(err) = match args.command {
+        Commands::Com { path, output } => compile_command(path, output),
+    } {
+        error!("{:#}", err);
+    }
+}
+
+fn compile_command(path: PathBuf, _output: Option<PathBuf>) -> Result<()> {
+    let program = compile_file(path)?;
+    type_check(&program)
 }

@@ -81,3 +81,73 @@ impl<T> SucessFrom for OptionErr<Vec<T>> {
         OptionErr::from(Ok(Some(vec![from])))
     }
 }
+
+pub struct EvalStack<T> {
+    frames: Vec<T>,
+    min_count: i32,
+    stack_count: i32,
+}
+
+impl<T> Default for EvalStack<T> {
+    fn default() -> Self {
+        Self { frames: Vec::new(), min_count: 0, stack_count: 0 }
+    }
+}
+
+impl<T: Clone> Clone for EvalStack<T> {
+    fn clone(&self) -> Self {
+        Self {
+            frames: self.frames.clone(),
+            min_count: self.min_count,
+            stack_count: 0,
+        }
+    }
+}
+
+impl<T> EvalStack<T> {
+    pub fn new() -> Self {
+        Self { ..Default::default() }
+    }
+
+    pub fn push(&mut self, item: T) {
+        self.stack_count += 1;
+        self.frames.push(item)
+    }
+
+    pub fn pop(&mut self) -> Option<T> {
+        self.stack_minus(1);
+        self.frames.pop()
+    }
+
+    pub fn pop_n(&mut self, n: usize) -> Vec<T> {
+        self.stack_minus(n);
+        let len = self.len();
+        let range = len - n..;
+        self.frames.drain(range).collect()
+    }
+
+    pub fn peek(&mut self) -> Option<&T> {
+        self.stack_minus(1);
+        self.stack_count += 1;
+        self.frames.last()
+    }
+
+    pub fn get(&self, n: usize) -> Option<&T> {
+        self.frames.get(n)
+    }
+
+    pub fn len(&self) -> usize {
+        self.frames.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.frames.is_empty()
+    }
+
+    fn stack_minus(&mut self, n: usize) {
+        self.stack_count -= n as i32;
+        if self.stack_count < self.min_count {
+            self.min_count = self.stack_count
+        }
+    }
+}
