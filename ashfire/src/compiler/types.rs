@@ -5,6 +5,53 @@ use std::{
 };
 
 #[derive(Default)]
+pub struct Program {
+    pub ops: Vec<Op>,
+    pub words: Vec<String>,
+    pub data: Vec<SizedWord>,
+    pub mem_size: i32,
+    pub data_size: i32,
+    pub structs_types: Vec<StructType>,
+    pub procs: Vec<Proc>,
+    current_proc: Option<usize>,
+}
+
+impl Program {
+    pub fn new() -> Self {
+        Self {
+            structs_types: vec![
+                ("int", ValueType::Int).into(),
+                ("bool", ValueType::Bool).into(),
+                ("ptr", ValueType::Ptr).into(),
+                ("any", ValueType::Any).into(),
+            ],
+            ..Default::default()
+        }
+    }
+
+    pub fn inside_proc(&self) -> bool {
+        self.current_proc.is_some()
+    }
+
+    pub fn current_proc(&self) -> Option<&Proc> {
+        self.current_proc.and_then(|index| self.procs.get(index))
+    }
+
+    pub fn current_proc_mut(&mut self) -> Option<&mut Proc> {
+        self.current_proc
+            .and_then(|index| self.procs.get_mut(index))
+    }
+
+    pub fn enter_proc(&mut self, i: usize) {
+        self.current_proc = Some(i)
+    }
+
+    pub fn exit_proc(&mut self) {
+        self.current_proc = None;
+    }
+}
+
+#[derive(Default)]
 pub struct Proc {
     pub name: String,
     pub contract: Contract,

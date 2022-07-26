@@ -3,51 +3,49 @@ use anyhow::{Context, Result};
 use firelib::*;
 use lib_types::*;
 use num::FromPrimitive;
-use std::{collections::VecDeque, fs::File, io::BufReader, path::PathBuf};
+use std::{
+    collections::VecDeque,
+    fs::File,
+    io::BufReader,
+    ops::{Deref, DerefMut},
+    path::PathBuf,
+};
 
-#[derive(Default)]
-pub struct Parser {
-    pub word_list: Vec<String>,
-    pub data_list: Vec<SizedWord>,
-    pub total_mem_size: i32,
-    pub total_data_size: i32,
-    pub struct_list: Vec<StructType>,
+struct Parser<'a> {
+    program: &'a mut Program,
     ir_tokens: VecDeque<IRToken>,
-    const_list: Vec<TypedWord>,
+    consts: Vec<TypedWord>,
     global_vars: Vec<TypedWord>,
-    program: Vec<Op>,
+    global_mems: Vec<Word>,
     op_blocks: Vec<Op>,
-    struct_names: Vec<Word>,
-    mem_list: Vec<Word>,
-    proc_list: Vec<Proc>,
-    current_proc: Option<usize>,
+    structs: Vec<Word>,
 }
 
-impl Parser {
-    pub fn new() -> Self {
+impl<'a> Deref for Parser<'a> {
+    type Target = &'a mut Program;
+
+    fn deref(&self) -> &Self::Target {
+        &self.program
+    }
+}
+
+impl<'a> DerefMut for Parser<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.program
+    }
+}
+
+impl<'a> Parser<'a> {
+    pub fn new(program: &'a mut Program) -> Self {
         Self {
-            struct_list: vec![
-                ("int", ValueType::Int).into(),
-                ("bool", ValueType::Bool).into(),
-                ("ptr", ValueType::Ptr).into(),
-                ("any", ValueType::Any).into(),
-            ],
-            ..Default::default()
+            program,
+            ir_tokens: VecDeque::new(),
+            consts: Vec::new(),
+            global_vars: Vec::new(),
+            op_blocks: Vec::new(),
+            structs: Vec::new(),
+            global_mems: Vec::new(),
         }
-    }
-
-    fn inside_proc(&self) -> bool {
-        self.current_proc.is_some()
-    }
-
-    fn current_proc(&self) -> Option<&Proc> {
-        self.current_proc
-            .and_then(|index| self.proc_list.get(index))
-    }
-
-    fn current_proc_mut(&mut self) -> Option<&mut Proc> {
-        self.current_proc
-            .and_then(|index| self.proc_list.get_mut(index))
     }
 
     fn next_irtoken(&mut self) -> Option<IRToken> {
@@ -65,7 +63,7 @@ impl Parser {
     fn parse_tokens(&mut self) -> Result<()> {
         while let Some(token) = self.next_irtoken() {
             if let Some(mut op) = self.define_op(token).value? {
-                self.program.append(&mut op)
+                self.ops.append(&mut op)
             }
         }
         Ok(())
@@ -154,8 +152,10 @@ impl Parser {
                 Op { typ: OpType::Do, .. } => (OpType::EndWhile, loc).into(),
                 Op { typ: OpType::BindStack, .. } => todo!(),
                 Op { typ: OpType::CaseOption, .. } => todo!(),
-                Op { typ: OpType::PrepProc, operand, .. } =>
-                    self.exit_proc((OpType::EndProc, operand, loc).into()),
+                Op { typ: OpType::PrepProc, operand, .. } => {
+                    self.exit_proc();
+                    (OpType::EndProc, operand, loc).into()
+                }
                 block => invalid_block(&loc, block, "Expected `end` to close a valid block")?,
             },
             KeywordType::Include |
@@ -169,10 +169,10 @@ impl Parser {
     }
 
     fn register_string(&mut self, operand: i32) -> i32 {
-        if let Some(data) = self.data_list.get_mut(operand as usize) {
+        if let Some(data) = self.program.data.get_mut(operand as usize) {
             if data.offset == -1 {
-                data.offset = self.total_data_size;
-                self.total_data_size += data.size();
+                data.offset = self.program.data_size;
+                self.program.data_size += data.size();
             }
         }
         operand
@@ -186,11 +186,6 @@ impl Parser {
 
     fn push_block(&mut self, op: Op) -> Op {
         self.op_blocks.push(op.clone());
-        op
-    }
-
-    fn exit_proc(&mut self, op: Op) -> Op {
-        self.current_proc = None;
         op
     }
 
@@ -233,18 +228,18 @@ impl Parser {
     }
 
     fn parse_data_type(&self, word: &str) -> Option<usize> {
-        self.struct_list
+        self.structs_types
             .iter()
             .position(|s| s.name == word)
             .map(|u| u + 1)
     }
 
     fn get_word(&self, index: i32) -> &String {
-        expect_get(&self.word_list, index as usize)
+        expect_get(&self.words, index as usize)
     }
 
     fn get_string(&self, index: i32) -> &SizedWord {
-        expect_get(&self.data_list, index as usize)
+        expect_get(&self.data, index as usize)
     }
 
     fn try_get_word(&self, tok: &IRToken) -> Option<&String> {
@@ -252,7 +247,7 @@ impl Parser {
     }
 
     fn get_type_name(&self, word: &str) -> Option<&StructType> {
-        self.struct_list.iter().find(|s| s.name == word)
+        self.structs_types.iter().find(|s| s.name == word)
     }
 
     fn get_struct_type(&self, tok: &IRToken) -> Option<&StructType> {
@@ -270,7 +265,7 @@ impl Parser {
     }
 
     fn get_const_struct_fields(&self, word: &LocWord) -> Vec<IRToken> {
-        self.const_list
+        self.consts
             .iter()
             .filter(|cnst| cnst.starts_with(&format!("{}.", word.name)))
             .map(|tword| (tword, &word.loc).into())
@@ -311,21 +306,21 @@ impl Parser {
     }
 
     fn get_global_mem(&self, word: &LocWord) -> Option<Vec<Op>> {
-        self.mem_list
+        self.global_mems
             .iter()
             .find(|mem| word == &mem.name)
             .map(|global| Op::new(OpType::PushGlobalMem, global.value, &word.loc).into())
     }
 
     fn get_proc_name(&self, word: &LocWord) -> Option<Vec<Op>> {
-        self.proc_list
+        self.procs
             .iter()
             .position(|proc| word == &proc.name)
             .map(|index| Op::new(OpType::Call, index as i32, &word.loc).into())
     }
 
     fn try_get_const_name(&self, word: &LocWord) -> Option<&TypedWord> {
-        self.const_list.iter().find(|cnst| word == cnst.as_str())
+        self.consts.iter().find(|cnst| word == cnst.as_str())
     }
 
     fn get_const_name(&mut self, word: &LocWord) -> OptionErr<Vec<Op>> {
@@ -442,11 +437,11 @@ impl Parser {
     }
 
     fn try_get_struct_type(&self, word: &LocWord) -> Option<&StructType> {
-        self.struct_names
+        self.structs
             .iter()
             .find(|stk| *word == stk.name)
             .and_then(|stk| {
-                self.word_list
+                self.words
                     .get(stk.value as usize)
                     .and_then(|stk| self.get_type_name(stk))
             })
@@ -565,7 +560,7 @@ impl Parser {
         if let Ok((eval, skip)) = self.compile_eval() {
             if eval.typ != ValueType::Any {
                 self.next_irtokens(skip);
-                self.const_list
+                self.consts
                     .push((word.to_string(), eval.operand, eval.typ).into());
                 success!();
             }
@@ -591,9 +586,9 @@ impl Parser {
         );
 
         let proc = Proc::new(name, contract);
-        let operand = self.proc_list.len();
-        self.current_proc = Some(operand);
-        self.proc_list.push(proc);
+        let operand = self.procs.len();
+        self.enter_proc(operand);
+        self.procs.push(proc);
 
         Ok(self.push_block(Op::new(OpType::PrepProc, operand as i32, &name.loc)))
     }
@@ -698,8 +693,7 @@ impl Parser {
                 let (desc, name) = self.value_display(value, tok.operand);
                 return (desc + " Pointer", name);
             }
-            TokenType::Str =>
-                ("String", expect_get(&self.data_list, tok.operand as usize).to_string()),
+            TokenType::Str => ("String", self.get_string(tok.operand).to_string()),
         };
         (desc.to_owned(), name)
     }
@@ -711,7 +705,7 @@ impl Parser {
             ValueType::Ptr => ("Pointer", format!("*{}", operand)),
             ValueType::Any => ("Any", operand.to_string()),
             ValueType::Type(n) => {
-                let stk = expect_get(&self.struct_list, n as usize);
+                let stk = expect_get(&self.structs_types, n as usize);
                 (stk.name.as_str(), operand.to_string())
             }
         };
@@ -786,8 +780,8 @@ impl Parser {
             proc.mem_size += size;
             proc.local_mem_names.push(Word::new(word, proc.mem_size));
         } else {
-            self.mem_list.push(Word::new(word, self.total_mem_size));
-            self.total_mem_size += size;
+            self.global_mems.push(Word::new(word, self.mem_size));
+            self.mem_size += size;
         }
         Ok(())
     }
@@ -796,12 +790,11 @@ impl Parser {
         let mut members = Vec::new();
         let loc = &word.loc;
         self.expect_keyword(KeywordType::Colon, "`:` after keyword `struct`", loc)?;
-        let error_text = "Expected struct member type but found";
 
         while let Some(tok) = self.ir_tokens.get(0) {
             if tok.typ == TokenType::Keyword {
                 self.expect_keyword(KeywordType::End, "`end` after struct declaration", loc)?;
-                self.struct_list
+                self.structs_types
                     .push(StructType::new(word.to_string(), members));
                 success!();
             }
@@ -831,7 +824,10 @@ impl Parser {
                         continue;
                     }
                 }
-                bail!("{loc}{error_text}: {}", self.format_token(name_type));
+                bail!(
+                    "{loc}Expected struct member type but found: {}",
+                    self.format_token(name_type)
+                );
             }
         }
         bail!("{loc}Expected struct members or `end` after struct declaration")
@@ -891,22 +887,20 @@ impl Parser {
                 result.reverse();
             }
 
-            for index in 0..members.len() {
-                if let (Some(member), Some(item)) = (members.get(index), result.get(index)) {
-                    let name = format!("{}.{}", word.name, member.name);
-                    let struct_word = (name, item.operand, item.typ).into();
-                    self.register_typed_word(&assign, struct_word);
-                }
+            for (member, item) in members.into_iter().zip(result.into_iter()) {
+                let name = format!("{}.{}", word.name, member.name);
+                let struct_word = (name, item.operand, item.typ).into();
+                self.register_typed_word(&assign, struct_word);
             }
         }
 
-        self.struct_names.push(Word::new(word, operand));
+        self.structs.push(Word::new(word, operand));
         Ok(())
     }
 
     fn register_typed_word(&mut self, assign: &KeywordType, struct_word: TypedWord) {
         match assign {
-            KeywordType::Colon => self.const_list.push(struct_word),
+            KeywordType::Colon => self.consts.push(struct_word),
             _ => self.register_var(struct_word),
         }
     }
@@ -976,14 +970,10 @@ fn invalid_block(loc: &Loc, block: Op, error: &str) -> Result<!> {
     )
 }
 
-pub fn compile_file(path: PathBuf) -> Result<()> {
+pub fn compile_file(path: PathBuf) -> Result<Program> {
     info!("Compiling file: {:?}", path);
-    let mut parser = Parser::new();
+    let mut program = Program::new();
+    let mut parser = Parser::new(&mut program);
     parser.lex_file(path)?.parse_tokens()?;
-
-    for op in parser.program {
-        info!("{}{}", op.loc, op)
-    }
-
-    Ok(())
+    Ok(program)
 }

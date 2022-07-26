@@ -1,4 +1,4 @@
-use super::{parser::Parser, types::*};
+use super::types::*;
 use anyhow::{Context, Result};
 use lib_types::OptionErr;
 use std::{
@@ -104,7 +104,7 @@ impl Lexer {
         Some(Token { name, loc })
     }
 
-    fn try_parse_string(&mut self, tok: &Token, parser: &mut Parser) -> OptionErr<IRToken> {
+    fn try_parse_string(&mut self, tok: &Token, program: &mut Program) -> OptionErr<IRToken> {
         tok.name
             .strip_prefix('\"')
             .map_or_else(OptionErr::default, |word| {
@@ -113,11 +113,11 @@ impl Lexer {
                     .map(|name| {
                         (
                             Word::new(&name, (name.len() - scapped_len(&name)) as i32),
-                            parser.data_list.len() as i32,
+                            program.data.len() as i32,
                         )
                     })
                     .map(|(word, operand)| {
-                        parser.data_list.push(word.into());
+                        program.data.push(word.into());
                         Some(IRToken::new(TokenType::Str, operand, &tok.loc))
                     })
                     .into()
@@ -135,15 +135,15 @@ impl Lexer {
             .to_string())
     }
 
-    pub fn lex_next_token(&mut self, parser: &mut Parser) -> OptionErr<IRToken> {
+    pub fn lex_next_token(&mut self, program: &mut Program) -> OptionErr<IRToken> {
         match self.next_token() {
             Some(tok) => choice!(
                 OptionErr,
-                self.try_parse_string(&tok, parser),
+                self.try_parse_string(&tok, program),
                 try_parse_char(&tok),
                 parse_keyword(&tok),
                 parse_number(&tok),
-                parse_word(tok, parser)
+                parse_word(tok, program)
             ),
             None => OptionErr::default(),
         }
@@ -157,13 +157,13 @@ fn scapped_len(name: &str) -> usize {
         .len()
 }
 
-fn parse_word(tok: Token, parser: &mut Parser) -> IRToken {
-    IRToken::new(TokenType::Word, define_word(tok.name, parser), &tok.loc)
+fn parse_word(tok: Token, program: &mut Program) -> IRToken {
+    IRToken::new(TokenType::Word, define_word(tok.name, program), &tok.loc)
 }
 
-fn define_word(name: String, parser: &mut Parser) -> i32 {
-    parser.word_list.push(name);
-    parser.word_list.len() as i32 - 1
+fn define_word(name: String, program: &mut Program) -> i32 {
+    program.words.push(name);
+    program.words.len() as i32 - 1
 }
 
 fn strip_trailing_newline(input: &str) -> &str {
