@@ -2,7 +2,6 @@ use super::{lexer::Lexer, types::*};
 use anyhow::{Context, Result};
 use firelib::*;
 use lib_types::*;
-use num::FromPrimitive;
 use std::{
     collections::VecDeque,
     fs::File,
@@ -232,14 +231,6 @@ impl<'a> Parser<'a> {
             .iter()
             .position(|s| s.name == word)
             .map(|u| u + 1)
-    }
-
-    fn get_word(&self, index: i32) -> &String {
-        expect_get(&self.words, index as usize)
-    }
-
-    fn get_string(&self, index: i32) -> &SizedWord {
-        expect_get(&self.data, index as usize)
     }
 
     fn try_get_word(&self, tok: &IRToken) -> Option<&String> {
@@ -679,42 +670,9 @@ impl<'a> Parser<'a> {
     }
 
     fn invalid_token(&self, tok: IRToken, error_context: &str) -> Result<!> {
-        let (desc, name) = self.token_display(&tok);
+        let desc = self.type_name(tok.typ);
+        let name = self.type_display(tok.typ, tok.operand);
         bail!("{}Invalid `{desc}` found on {error_context}: `{name}`", tok.loc)
-    }
-
-    fn token_display(&self, tok: &IRToken) -> (String, String) {
-        let (desc, name) = match tok.typ {
-            TokenType::Keyword =>
-                ("Keyword", format!("{:?}", from_i32::<KeywordType>(tok.operand))),
-            TokenType::Word => ("Word or Intrinsic", self.get_word(tok.operand).to_owned()),
-            TokenType::DataType(value) => return self.value_display(value, tok.operand),
-            TokenType::DataPtr(value) => {
-                let (desc, name) = self.value_display(value, tok.operand);
-                return (desc + " Pointer", name);
-            }
-            TokenType::Str => ("String", self.get_string(tok.operand).to_string()),
-        };
-        (desc.to_owned(), name)
-    }
-
-    fn value_display(&self, value: ValueType, operand: i32) -> (String, String) {
-        let (desc, name) = match value {
-            ValueType::Int => ("Integer", operand.to_string()),
-            ValueType::Bool => ("Boolean", fold_bool!(operand != 0, "True", "False").to_owned()),
-            ValueType::Ptr => ("Pointer", format!("*{}", operand)),
-            ValueType::Any => ("Any", operand.to_string()),
-            ValueType::Type(n) => {
-                let stk = expect_get(&self.structs_types, n as usize);
-                (stk.name.as_str(), operand.to_string())
-            }
-        };
-        (desc.to_owned(), name)
-    }
-
-    fn format_token(&self, tok: IRToken) -> String {
-        let (desc, name) = self.token_display(&tok);
-        format!("{} `{}`", desc, name)
     }
 
     fn parse_procedure(&mut self, word: &LocWord) -> OptionErr<Vec<Op>> {
@@ -764,7 +722,7 @@ impl<'a> Parser<'a> {
         &mut self, pred: impl FnOnce(&IRToken) -> bool, error_text: &str, loc: &Loc,
     ) -> Result<IRToken> {
         let tok = self.next_irtoken();
-        expect_by(tok, pred, error_text, |tok| self.format_token(tok), Some(loc.to_owned()))
+        self.expect_token_by(tok, pred, error_text, Some(loc.to_owned()))
     }
 
     fn parse_memory(&mut self, word: &LocWord) -> Result<()> {
@@ -868,8 +826,10 @@ impl<'a> Parser<'a> {
                     let member_type = members.pop().expect("unreachable").typ;
                     anyhow::ensure!(
                         equals_any!(member_type, ValueType::Any, eval.typ),
-                        "{}Expected type `{:?}` on the stack at the end of the compile-time \
-                         evaluation, but found: `{:?}`",
+                        concat!(
+                            "{}Expected type `{:?}` on the stack at the end of ",
+                            "the compile-time evaluation, but found: `{:?}`"
+                        ),
                         end_token.loc,
                         member_type,
                         eval.typ
@@ -912,6 +872,29 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn format_token(&self, tok: IRToken) -> String {
+        let desc = self.type_name(tok.typ);
+        let name = self.type_display(tok.typ, tok.operand);
+        format!("{} `{}`", desc, name)
+    }
+
+    pub fn expect_token_by(
+        &self, value: Option<IRToken>, pred: impl FnOnce(&IRToken) -> bool, desc: &str,
+        loc: Option<Loc>,
+    ) -> anyhow::Result<IRToken> {
+        match value {
+            Some(tok) if pred(&tok) => Ok(tok),
+            Some(tok) => bail!(
+                "{}Expected to find {}, but found: {}",
+                tok.loc.clone(),
+                desc,
+                self.format_token(tok)
+            ),
+            None =>
+                bail!("{}Expected to find {}, but found nothing", loc.unwrap_or_default(), desc),
+        }
+    }
+
     fn lex_file(&mut self, path: PathBuf) -> Result<&mut Self> {
         let reader = BufReader::new(
             File::open(&path).with_context(|| format!("could not read file `{:?}`", &path))?,
@@ -923,12 +906,11 @@ impl<'a> Parser<'a> {
                 self.ir_tokens.push_back(token);
                 continue;
             }
-
-            let tok = expect_by(
-                lex.lex_next_token(self).value?,
-                |tok| tok == TokenType::Str,
+            let token = lex.lex_next_token(self.program).value?;
+            let tok = self.expect_token_by(
+                token,
+                |token| token == TokenType::Str,
                 "include file name",
-                |tok| self.format_token(tok),
                 None,
             )?;
 
@@ -945,24 +927,12 @@ impl<'a> Parser<'a> {
     }
 }
 
-fn from_i32<T: FromPrimitive>(value: i32) -> T {
-    FromPrimitive::from_i32(value).expect("unreachable, lexer error")
-}
-
-fn expect_by(
-    value: Option<IRToken>, pred: impl FnOnce(&IRToken) -> bool, desc: &str,
-    fmt: impl FnOnce(IRToken) -> String, loc: Option<Loc>,
-) -> Result<IRToken> {
-    match value {
-        Some(tok) if pred(&tok) => Ok(tok),
-        Some(tok) => bail!("{}Expected to find {}, but found: {}", tok.loc.clone(), desc, fmt(tok)),
-        None => bail!("{}Expected to find {}, but found nothing", loc.unwrap_or_default(), desc),
-    }
-}
-
 fn invalid_block(loc: &Loc, block: Op, error: &str) -> Result<!> {
     bail!(
-        "{}{}, but found a `{:?}` block instead\n{}[INFO] The found block started here",
+        concat!(
+            "{}{}, but found a `{:?}` block instead\n",
+            "{}[INFO] The found block started here"
+        ),
         loc,
         error,
         block.typ,

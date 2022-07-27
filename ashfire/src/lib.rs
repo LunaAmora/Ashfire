@@ -82,6 +82,17 @@ impl<T> SucessFrom for OptionErr<Vec<T>> {
     }
 }
 
+pub trait Stack<T> {
+    fn slice(&self) -> &[T];
+    fn push(&mut self, item: T);
+    fn pop(&mut self) -> Option<T>;
+    fn pop_n(&mut self, n: usize) -> Vec<T>;
+    fn peek(&mut self) -> Option<&T>;
+    fn get(&self, n: usize) -> Option<&T>;
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool;
+}
+
 pub struct EvalStack<T> {
     frames: Vec<T>,
     min_count: i32,
@@ -109,45 +120,51 @@ impl<T> EvalStack<T> {
         Self { ..Default::default() }
     }
 
-    pub fn push(&mut self, item: T) {
-        self.stack_count += 1;
-        self.frames.push(item)
-    }
-
-    pub fn pop(&mut self) -> Option<T> {
-        self.stack_minus(1);
-        self.frames.pop()
-    }
-
-    pub fn pop_n(&mut self, n: usize) -> Vec<T> {
-        self.stack_minus(n);
-        let len = self.len();
-        let range = len - n..;
-        self.frames.drain(range).collect()
-    }
-
-    pub fn peek(&mut self) -> Option<&T> {
-        self.stack_minus(1);
-        self.stack_count += 1;
-        self.frames.last()
-    }
-
-    pub fn get(&self, n: usize) -> Option<&T> {
-        self.frames.get(n)
-    }
-
-    pub fn len(&self) -> usize {
-        self.frames.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.frames.is_empty()
-    }
-
     fn stack_minus(&mut self, n: usize) {
         self.stack_count -= n as i32;
         if self.stack_count < self.min_count {
             self.min_count = self.stack_count
         }
+    }
+}
+
+impl<T> Stack<T> for EvalStack<T> {
+    fn push(&mut self, item: T) {
+        self.stack_count += 1;
+        self.frames.push(item)
+    }
+
+    fn pop(&mut self) -> Option<T> {
+        self.stack_minus(1);
+        self.frames.pop()
+    }
+
+    fn pop_n(&mut self, n: usize) -> Vec<T> {
+        self.stack_minus(n);
+        let len = self.len();
+        let range = (len - n)..;
+        self.frames.drain(range).collect()
+    }
+
+    fn peek(&mut self) -> Option<&T> {
+        self.stack_minus(1);
+        self.stack_count += 1;
+        self.frames.last()
+    }
+
+    fn get(&self, n: usize) -> Option<&T> {
+        self.frames.get(n)
+    }
+
+    fn len(&self) -> usize {
+        self.frames.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.frames.is_empty()
+    }
+
+    fn slice(&self) -> &[T] {
+        &self.frames
     }
 }

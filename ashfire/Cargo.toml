@@ -16,8 +16,8 @@ env_logger = "0.9.0"
 num = "0.4.0"
 num-traits = "0.2"
 num-derive = "0.3"
+itertools = "0.10.3"
 firelib = {path = "../firelib"}
-
 
 [lib]
 name = "lib_types"

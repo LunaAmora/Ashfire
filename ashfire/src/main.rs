@@ -51,6 +51,6 @@ fn main() {
 }
 
 fn compile_command(path: PathBuf, _output: Option<PathBuf>) -> Result<()> {
-    let program = compile_file(path)?;
-    type_check(&program)
+    let mut program = compile_file(path)?;
+    type_check(&mut program)
 }

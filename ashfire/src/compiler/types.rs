@@ -1,3 +1,4 @@
+use firelib::expect_get;
 use num::FromPrimitive;
 use std::{
     fmt::{Debug, Display, Formatter, Result},
@@ -49,6 +50,61 @@ impl Program {
     pub fn exit_proc(&mut self) {
         self.current_proc = None;
     }
+
+    pub fn get_word(&self, index: i32) -> &String {
+        expect_get(&self.words, index as usize)
+    }
+
+    pub fn get_string(&self, index: i32) -> &SizedWord {
+        expect_get(&self.data, index as usize)
+    }
+
+    pub fn data_name(&self, value: ValueType) -> String {
+        match value {
+            ValueType::Int => "Integer",
+            ValueType::Bool => "Boolean",
+            ValueType::Ptr => "Pointer",
+            ValueType::Any => "Any",
+            ValueType::Type(n) =>
+                return expect_get(&self.structs_types, n as usize).name.to_owned(),
+        }
+        .to_owned()
+    }
+
+    pub fn data_display(&self, value: ValueType, operand: i32) -> String {
+        match value {
+            ValueType::Bool => fold_bool!(operand != 0, "True", "False").to_owned(),
+            ValueType::Ptr => format!("*{}", operand),
+            ValueType::Any | ValueType::Int | ValueType::Type(_) => operand.to_string(),
+        }
+    }
+
+    pub fn type_name(&self, typ: TokenType) -> String {
+        match typ {
+            TokenType::Keyword => "Keyword",
+            TokenType::Word => "Word or Intrinsic",
+            TokenType::DataType(value) => return self.data_name(value),
+            TokenType::DataPtr(value) => {
+                return self.data_name(value) + " Pointer";
+            }
+            TokenType::Str => "String",
+        }
+        .to_owned()
+    }
+
+    pub fn type_display(&self, typ: TokenType, operand: i32) -> String {
+        match typ {
+            TokenType::Keyword => format!("{:?}", from_i32::<KeywordType>(operand)),
+            TokenType::Word => self.get_word(operand).to_owned(),
+            TokenType::DataType(value) | TokenType::DataPtr(value) =>
+                self.data_display(value, operand),
+            TokenType::Str => self.get_string(operand).to_string(),
+        }
+    }
+}
+
+pub fn from_i32<T: FromPrimitive>(value: i32) -> T {
+    FromPrimitive::from_i32(value).expect("unreachable")
 }
 
 #[derive(Default)]
@@ -330,13 +386,13 @@ impl LocWord {
 }
 
 pub struct TypeFrame {
-    typ: TokenType,
-    loc: Loc,
+    pub typ: TokenType,
+    pub loc: Loc,
 }
 
 pub struct CaseOption {
-    typ: CaseType,
-    values: Vec<i32>,
+    pub typ: CaseType,
+    pub values: Vec<i32>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
