@@ -18,6 +18,17 @@ struct Parser<'a> {
     global_mems: Vec<Word>,
     op_blocks: Vec<Op>,
     structs: Vec<Word>,
+    current_proc: Option<usize>,
+}
+
+impl ProgramVisitor for Parser<'_> {
+    fn set_index(&mut self, i: Option<usize>) {
+        self.current_proc = i;
+    }
+
+    fn get_index(&self) -> Option<usize> {
+        self.current_proc
+    }
 }
 
 impl<'a> Deref for Parser<'a> {
@@ -44,6 +55,7 @@ impl<'a> Parser<'a> {
             op_blocks: Vec::new(),
             structs: Vec::new(),
             global_mems: Vec::new(),
+            current_proc: None,
         }
     }
 
@@ -280,7 +292,7 @@ impl<'a> Parser<'a> {
     }
 
     fn get_binding(&self, word: &LocWord) -> Option<Vec<Op>> {
-        self.current_proc()
+        self.current_proc(self)
             .and_then(|proc| {
                 proc.bindings
                     .iter()
@@ -291,7 +303,7 @@ impl<'a> Parser<'a> {
     }
 
     fn get_local_mem(&self, word: &LocWord) -> Option<Vec<Op>> {
-        self.current_proc()
+        self.current_proc(self)
             .and_then(|proc| proc.local_mem_names.iter().find(|mem| word == &mem.name))
             .map(|local| Op::new(OpType::PushLocalMem, local.value, &word.loc).into())
     }
@@ -330,7 +342,7 @@ impl<'a> Parser<'a> {
         let word = LocWord { name: word.to_string(), loc: loc_word.loc.clone() };
         choice!(
             OptionErr,
-            self.current_proc()
+            self.current_proc(self)
                 .map(|proc| proc.local_vars.clone())
                 .map_or_else(OptionErr::default, |vars| self
                     .try_get_var(&word, vars, true, var_typ)),
@@ -636,7 +648,7 @@ impl<'a> Parser<'a> {
                             let a = result.pop().expect("Todo:: report error");
 
                             let cast = match n {
-                                1.. => ValueType::from(n as usize).into(),
+                                1.. => ValueType::from((n - 1) as usize).into(),
                                 0 => todo!("invalid value"),
                                 _ => todo!("casting to ptr type not implemented yet"),
                             };
@@ -734,7 +746,8 @@ impl<'a> Parser<'a> {
         self.expect_keyword(KeywordType::End, "`end` after memory size", loc)?;
 
         let size = ((value_token.operand + 3) / 4) * 4;
-        if let Some(proc) = self.current_proc_mut() {
+        if let Some(i) = self.current_proc {
+            let proc = self.procs.get_mut(i).expect("unreachable");
             proc.mem_size += size;
             proc.local_mem_names.push(Word::new(word, proc.mem_size));
         } else {
@@ -866,8 +879,11 @@ impl<'a> Parser<'a> {
     }
 
     fn register_var(&mut self, struct_word: TypedWord) {
-        match self.current_proc_mut() {
-            Some(proc) => proc.local_vars.push(struct_word),
+        match self.current_proc {
+            Some(i) => {
+                let proc = self.procs.get_mut(i).expect("unreachable");
+                proc.local_vars.push(struct_word)
+            }
             _ => self.global_vars.push(struct_word),
         }
     }

@@ -5,6 +5,39 @@ use std::{
     ops::Deref,
 };
 
+pub trait ProgramVisitor {
+    fn set_index(&mut self, i: Option<usize>);
+    fn get_index(&self) -> Option<usize>;
+
+    fn inside_proc(&self) -> bool {
+        self.get_index().is_some()
+    }
+
+    fn current_proc<'a>(&'a self, program: &'a Program) -> Option<&Proc> {
+        if let Some(i) = self.get_index() {
+            program.procs.get(i)
+        } else {
+            None
+        }
+    }
+
+    fn current_proc_mut<'a>(&'a self, program: &'a mut Program) -> Option<&mut Proc> {
+        if let Some(i) = self.get_index() {
+            program.procs.get_mut(i)
+        } else {
+            None
+        }
+    }
+
+    fn enter_proc(&mut self, i: usize) {
+        self.set_index(Some(i))
+    }
+
+    fn exit_proc(&mut self) {
+        self.set_index(None)
+    }
+}
+
 #[derive(Default)]
 pub struct Program {
     pub ops: Vec<Op>,
@@ -14,7 +47,6 @@ pub struct Program {
     pub data_size: i32,
     pub structs_types: Vec<StructType>,
     pub procs: Vec<Proc>,
-    current_proc: Option<usize>,
 }
 
 impl Program {
@@ -28,27 +60,6 @@ impl Program {
             ],
             ..Default::default()
         }
-    }
-
-    pub fn inside_proc(&self) -> bool {
-        self.current_proc.is_some()
-    }
-
-    pub fn current_proc(&self) -> Option<&Proc> {
-        self.current_proc.and_then(|index| self.procs.get(index))
-    }
-
-    pub fn current_proc_mut(&mut self) -> Option<&mut Proc> {
-        self.current_proc
-            .and_then(|index| self.procs.get_mut(index))
-    }
-
-    pub fn enter_proc(&mut self, i: usize) {
-        self.current_proc = Some(i)
-    }
-
-    pub fn exit_proc(&mut self) {
-        self.current_proc = None;
     }
 
     pub fn get_word(&self, index: i32) -> &String {
@@ -388,6 +399,17 @@ impl LocWord {
 pub struct TypeFrame {
     pub typ: TokenType,
     pub loc: Loc,
+}
+
+impl From<(ValueType, &Loc)> for TypeFrame {
+    fn from(t: (ValueType, &Loc)) -> Self {
+        TypeFrame { typ: t.0.into(), loc: t.1.to_owned() }
+    }
+}
+impl From<(TokenType, &Loc)> for TypeFrame {
+    fn from(t: (TokenType, &Loc)) -> Self {
+        TypeFrame { typ: t.0, loc: t.1.to_owned() }
+    }
 }
 
 pub struct CaseOption {

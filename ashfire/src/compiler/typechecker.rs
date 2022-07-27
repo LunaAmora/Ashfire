@@ -1,5 +1,7 @@
 #![allow(dead_code)]
-use super::types::{IntrinsicType, Loc, Op, OpType, Program, TokenType, TypeFrame, ValueType};
+use super::types::{
+    IntrinsicType, Loc, Op, OpType, Program, ProgramVisitor, TokenType, TypeFrame, ValueType,
+};
 use anyhow::{anyhow, Result};
 use itertools::Itertools;
 use lib_types::{EvalStack, Stack};
@@ -32,6 +34,17 @@ struct TypeChecker {
     block_stack: Vec<TypeBlock>,
     bind_stack: Vec<TypeFrame>,
     data_stack: TypeStack,
+    current_proc: Option<usize>,
+}
+
+impl ProgramVisitor for TypeChecker {
+    fn set_index(&mut self, i: Option<usize>) {
+        self.current_proc = i;
+    }
+
+    fn get_index(&self) -> Option<usize> {
+        self.current_proc
+    }
 }
 
 impl TypeChecker {
@@ -39,42 +52,53 @@ impl TypeChecker {
         Self { ..Default::default() }
     }
 
-    fn type_check_op(&mut self, op: &Op, _program: &Program) -> Result<()> {
+    fn type_check(&mut self, program: &mut Program) -> Result<()> {
+        for op in &program.ops {
+            self.type_check_op(op, program)?;
+        }
+        Ok(())
+    }
+
+    fn type_check_op(&mut self, op: &Op, program: &Program) -> Result<()> {
+        let loc = &op.loc;
         match op.typ {
             OpType::PushData(value) => match value {
-                ValueType::Int => todo!(),
-                ValueType::Bool => todo!(),
-                ValueType::Ptr => todo!(),
-                ValueType::Any => todo!(),
-                ValueType::Type(_) => todo!(),
+                ValueType::Int | ValueType::Bool | ValueType::Ptr =>
+                    self.data_stack.push((value, loc).into()),
+                ValueType::Any | ValueType::Type(_) => unreachable!(),
             },
-            OpType::PushStr => todo!(),
-            OpType::PushLocalMem => todo!(),
-            OpType::PushGlobalMem => todo!(),
-            OpType::PushLocal => todo!(),
-            OpType::PushGlobal => todo!(),
+            OpType::PushStr => {
+                self.data_stack.push((ValueType::Int, loc).into());
+                self.data_stack.push((ValueType::Ptr, loc).into());
+            }
+            OpType::PushLocalMem |
+            OpType::PushGlobalMem |
+            OpType::PushLocal |
+            OpType::PushGlobal => self.data_stack.push((ValueType::Ptr, loc).into()),
             OpType::OffsetLoad => todo!(),
             OpType::Offset => todo!(),
             OpType::Intrinsic => match IntrinsicType::from(op.operand) {
-                IntrinsicType::Plus => todo!(),
-                IntrinsicType::Minus => todo!(),
+                IntrinsicType::Plus | IntrinsicType::Minus => todo!(),
                 IntrinsicType::Times => todo!(),
                 IntrinsicType::Div => todo!(),
-                IntrinsicType::Greater => todo!(),
-                IntrinsicType::GreaterE => todo!(),
-                IntrinsicType::Lesser => todo!(),
+                IntrinsicType::Greater |
+                IntrinsicType::GreaterE |
+                IntrinsicType::Lesser |
                 IntrinsicType::LesserE => todo!(),
-                IntrinsicType::And => todo!(),
-                IntrinsicType::Or => todo!(),
-                IntrinsicType::Xor => todo!(),
-                IntrinsicType::Load8 => todo!(),
-                IntrinsicType::Store8 => todo!(),
-                IntrinsicType::Load16 => todo!(),
-                IntrinsicType::Store16 => todo!(),
-                IntrinsicType::Load32 => todo!(),
-                IntrinsicType::Store32 => todo!(),
+                IntrinsicType::And | IntrinsicType::Or | IntrinsicType::Xor => todo!(),
+                IntrinsicType::Load8 | IntrinsicType::Load16 | IntrinsicType::Load32 => todo!(),
+                IntrinsicType::Store8 | IntrinsicType::Store16 | IntrinsicType::Store32 => todo!(),
                 IntrinsicType::FdWrite => todo!(),
-                IntrinsicType::Cast(_) => todo!(),
+                IntrinsicType::Cast(n) => {
+                    self.data_stack.expect_pop(loc)?;
+
+                    let cast: TokenType = match n {
+                        1.. => ValueType::from((n - 1) as usize).into(),
+                        0 => todo!("invalid value"),
+                        _ => todo!("typechecking casting to ptr type not implemented yet"),
+                    };
+                    self.data_stack.push((cast, loc).into());
+                }
             },
             OpType::Dup => todo!(),
             OpType::Drop => todo!(),
@@ -83,12 +107,38 @@ impl TypeChecker {
             OpType::Rot => todo!(),
             OpType::Call => todo!(),
             OpType::Equal => todo!(),
-            OpType::PrepProc => todo!(),
+            OpType::PrepProc => {
+                self.enter_proc(op.operand as usize);
+
+                let ins = program
+                    .procs
+                    .get(self.current_proc.expect("unreachable"))
+                    .expect("unreachable")
+                    .contract
+                    .ins
+                    .clone();
+
+                for typ in ins {
+                    self.data_stack.push((typ, loc).into());
+                }
+            }
             OpType::IfStart => todo!(),
             OpType::Else => todo!(),
             OpType::EndIf => todo!(),
             OpType::EndElse => todo!(),
-            OpType::EndProc => todo!(),
+            OpType::EndProc => {
+                let mut outs = self
+                    .current_proc(program)
+                    .expect("unreachable")
+                    .contract
+                    .outs
+                    .clone();
+                outs.reverse();
+
+                self.data_stack.expect_exact_pop(&outs, program, loc)?;
+                self.exit_proc();
+                self.data_stack = Default::default();
+            }
             OpType::BindStack => todo!(),
             OpType::PushBind => todo!(),
             OpType::PopBind => todo!(),
@@ -102,6 +152,7 @@ impl TypeChecker {
             OpType::CaseOption => todo!(),
             OpType::EndCase => todo!(),
         };
+        Ok(())
     }
 }
 
@@ -131,16 +182,31 @@ pub trait Expect<T>: Stack<T> {
         Ok(self.pop_n(contract.len()))
     }
 
-    fn expect_arity_pop(
-        &mut self, contract: &[TokenType], program: &Program, loc: &Loc,
+    fn expect_contract_pop(
+        &mut self, contr: &[TokenType], prog: &Program, loc: &Loc,
     ) -> Result<Vec<T>> {
-        self.expect_stack_size(contract.len(), loc)?;
-        self.program_arity(program, self.slice(), contract, loc)?;
-        Ok(self.pop_n(contract.len()))
+        self.expect_stack_size(contr.len(), loc)?;
+        self.program_arity(prog, self.slice(), contr, loc)?;
+        Ok(self.pop_n(contr.len()))
     }
 
-    fn expect_pop(&mut self, arity: ArityType, loc: &Loc) -> Result<T> {
-        self.expect_arity(1, arity, loc)?;
+    fn expect_arity_pop(&mut self, n: usize, arity: ArityType, loc: &Loc) -> Result<Vec<T>> {
+        self.expect_arity(n, arity, loc)?;
+        Ok(self.pop_n(n))
+    }
+
+    fn expect_peek(&mut self, arity_t: TokenType, loc: &Loc) -> Result<&T> {
+        self.expect_arity(1, ArityType::Type(arity_t), loc)?;
+        self.peek().ok_or_else(|| anyhow!("unreachable"))
+    }
+
+    fn expect_pop(&mut self, loc: &Loc) -> Result<T> {
+        self.expect_stack_size(1, loc)?;
+        self.pop().ok_or_else(|| anyhow!("unreachable"))
+    }
+
+    fn expect_pop_type(&mut self, arity_t: TokenType, loc: &Loc) -> Result<T> {
+        self.expect_arity(1, ArityType::Type(arity_t), loc)?;
         self.pop().ok_or_else(|| anyhow!("unreachable"))
     }
 
@@ -237,7 +303,7 @@ impl Program {
 }
 
 fn format_stack(stack: &[TokenType]) -> String {
-    format!("[{}] ->", stack.iter().map(|t| format!("<{:?}>", t)).join(","))
+    format!("[{}] ->", stack.iter().map(|t| format!("<{:?}>", t)).join(", "))
 }
 
 impl Expect<TypeFrame> for EvalStack<TypeFrame> {
@@ -264,10 +330,7 @@ impl Expect<TypeFrame> for EvalStack<TypeFrame> {
 
 pub fn type_check(program: &mut Program) -> Result<()> {
     let mut checker = TypeChecker::new();
-
-    for op in program.ops.iter() {
-        checker.type_check_op(op, program)?
-    }
+    checker.type_check(program)?;
 
     Ok(())
 }
