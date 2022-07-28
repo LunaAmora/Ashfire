@@ -1,7 +1,5 @@
 #![allow(dead_code)]
-use super::types::{
-    IntrinsicType, Loc, Op, OpType, Program, ProgramVisitor, TokenType, TypeFrame, ValueType,
-};
+use super::types::*;
 use anyhow::{anyhow, Result};
 use itertools::Itertools;
 use lib_types::{EvalStack, Stack};
