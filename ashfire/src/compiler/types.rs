@@ -29,6 +29,11 @@ pub trait ProgramVisitor {
         }
     }
 
+    fn visit_proc<'a>(&'a mut self, program: &'a Program, index: usize) -> &Proc {
+        self.enter_proc(index);
+        program.procs.get(index).expect("unreachable")
+    }
+
     fn enter_proc(&mut self, i: usize) {
         self.set_index(Some(i))
     }

@@ -3,7 +3,7 @@ use anyhow::{Error, Result};
 use firelib::{Alternative, FlowControl, Success, SucessFrom};
 use std::{
     convert::Infallible,
-    ops::{ControlFlow, FromResidual, Try},
+    ops::{ControlFlow, Deref, FromResidual, Try},
 };
 
 #[derive(FlowControl)]
@@ -83,7 +83,6 @@ impl<T> SucessFrom for OptionErr<Vec<T>> {
 }
 
 pub trait Stack<T> {
-    fn slice(&self) -> &[T];
     fn push(&mut self, item: T);
     fn pop(&mut self) -> Option<T>;
     fn pop_n(&mut self, n: usize) -> Vec<T>;
@@ -97,6 +96,14 @@ pub struct EvalStack<T> {
     frames: Vec<T>,
     min_count: i32,
     stack_count: i32,
+}
+
+impl<T> Deref for EvalStack<T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        &self.frames
+    }
 }
 
 impl<T> Default for EvalStack<T> {
@@ -162,9 +169,5 @@ impl<T> Stack<T> for EvalStack<T> {
 
     fn is_empty(&self) -> bool {
         self.frames.is_empty()
-    }
-
-    fn slice(&self) -> &[T] {
-        &self.frames
     }
 }

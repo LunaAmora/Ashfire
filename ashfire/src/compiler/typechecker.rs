@@ -3,27 +3,9 @@ use super::types::*;
 use anyhow::{anyhow, Result};
 use itertools::Itertools;
 use lib_types::{EvalStack, Stack};
-use std::ops::{Deref, DerefMut};
-
-#[derive(Default)]
-struct TypeStack(EvalStack<TypeFrame>);
-
-impl Deref for TypeStack {
-    type Target = EvalStack<TypeFrame>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for TypeStack {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
 
 struct TypeBlock {
-    data_stack: TypeStack,
+    data_stack: EvalStack<TypeFrame>,
     start_op: usize,
 }
 
@@ -31,7 +13,7 @@ struct TypeBlock {
 struct TypeChecker {
     block_stack: Vec<TypeBlock>,
     bind_stack: Vec<TypeFrame>,
-    data_stack: TypeStack,
+    data_stack: EvalStack<TypeFrame>,
     current_proc: Option<usize>,
 }
 
@@ -61,18 +43,17 @@ impl TypeChecker {
         let loc = &op.loc;
         match op.typ {
             OpType::PushData(value) => match value {
-                ValueType::Int | ValueType::Bool | ValueType::Ptr =>
-                    self.data_stack.push((value, loc).into()),
+                ValueType::Int | ValueType::Bool | ValueType::Ptr => self.push_value(value, loc),
                 ValueType::Any | ValueType::Type(_) => unreachable!(),
             },
             OpType::PushStr => {
-                self.data_stack.push((ValueType::Int, loc).into());
-                self.data_stack.push((ValueType::Ptr, loc).into());
+                self.push_value(ValueType::Int, loc);
+                self.push_value(ValueType::Ptr, loc);
             }
             OpType::PushLocalMem |
             OpType::PushGlobalMem |
             OpType::PushLocal |
-            OpType::PushGlobal => self.data_stack.push((ValueType::Ptr, loc).into()),
+            OpType::PushGlobal => self.push_value(ValueType::Ptr, loc),
             OpType::OffsetLoad => todo!(),
             OpType::Offset => todo!(),
             OpType::Intrinsic => match IntrinsicType::from(op.operand) {
@@ -95,7 +76,7 @@ impl TypeChecker {
                         0 => todo!("invalid value"),
                         _ => todo!("typechecking casting to ptr type not implemented yet"),
                     };
-                    self.data_stack.push((cast, loc).into());
+                    self.push_frame(cast, loc);
                 }
             },
             OpType::Dup => todo!(),
@@ -106,18 +87,14 @@ impl TypeChecker {
             OpType::Call => todo!(),
             OpType::Equal => todo!(),
             OpType::PrepProc => {
-                self.enter_proc(op.operand as usize);
-
-                let ins = program
-                    .procs
-                    .get(self.current_proc.expect("unreachable"))
-                    .expect("unreachable")
+                let ins = self
+                    .visit_proc(program, op.operand as usize)
                     .contract
                     .ins
                     .clone();
 
                 for typ in ins {
-                    self.data_stack.push((typ, loc).into());
+                    self.push_frame(typ, loc);
                 }
             }
             OpType::IfStart => todo!(),
@@ -152,6 +129,14 @@ impl TypeChecker {
         };
         Ok(())
     }
+
+    fn push_value(&mut self, value: ValueType, loc: &Loc) {
+        self.data_stack.push((value, loc).into())
+    }
+
+    fn push_frame(&mut self, typ: TokenType, loc: &Loc) {
+        self.data_stack.push((typ, loc).into())
+    }
 }
 
 pub enum ArityType {
@@ -161,22 +146,16 @@ pub enum ArityType {
 }
 
 pub trait Expect<T>: Stack<T> {
+    fn program_arity(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()>;
+    fn program_exact(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()>;
     fn get_type(&self, t: &T) -> TokenType;
     fn get_loc(&self, t: &T) -> Loc;
-
-    fn program_arity(
-        &self, program: &Program, stack: &[T], contract: &[TokenType], loc: &Loc,
-    ) -> Result<()>;
-
-    fn program_exact(
-        &self, program: &Program, stack: &[T], contract: &[TokenType], loc: &Loc,
-    ) -> Result<()>;
 
     fn expect_exact_pop(
         &mut self, contract: &[TokenType], program: &Program, loc: &Loc,
     ) -> Result<Vec<T>> {
         self.expect_stack_size(contract.len(), loc)?;
-        self.program_exact(program, self.slice(), contract, loc)?;
+        self.program_exact(program, contract, loc)?;
         Ok(self.pop_n(contract.len()))
     }
 
@@ -184,7 +163,7 @@ pub trait Expect<T>: Stack<T> {
         &mut self, contr: &[TokenType], prog: &Program, loc: &Loc,
     ) -> Result<Vec<T>> {
         self.expect_stack_size(contr.len(), loc)?;
-        self.program_arity(prog, self.slice(), contr, loc)?;
+        self.program_arity(prog, contr, loc)?;
         Ok(self.pop_n(contr.len()))
     }
 
@@ -259,6 +238,24 @@ pub trait Expect<T>: Stack<T> {
     }
 }
 
+impl Expect<TypeFrame> for EvalStack<TypeFrame> {
+    fn get_type(&self, t: &TypeFrame) -> TokenType {
+        t.typ
+    }
+
+    fn get_loc(&self, t: &TypeFrame) -> Loc {
+        t.loc.clone()
+    }
+
+    fn program_arity(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()> {
+        program.expect_arity(self, contract, loc)
+    }
+
+    fn program_exact(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()> {
+        program.expect_stack_exact(self, contract, loc)
+    }
+}
+
 impl Program {
     fn expect_arity(
         &self, _stack: &[TypeFrame], _contract: &[TokenType], _loc: &Loc,
@@ -302,28 +299,6 @@ impl Program {
 
 fn format_stack(stack: &[TokenType]) -> String {
     format!("[{}] ->", stack.iter().map(|t| format!("<{:?}>", t)).join(", "))
-}
-
-impl Expect<TypeFrame> for EvalStack<TypeFrame> {
-    fn get_type(&self, t: &TypeFrame) -> TokenType {
-        t.typ
-    }
-
-    fn get_loc(&self, t: &TypeFrame) -> Loc {
-        t.loc.clone()
-    }
-
-    fn program_arity(
-        &self, program: &Program, stack: &[TypeFrame], contract: &[TokenType], loc: &Loc,
-    ) -> Result<()> {
-        program.expect_arity(stack, contract, loc)
-    }
-
-    fn program_exact(
-        &self, program: &Program, stack: &[TypeFrame], contract: &[TokenType], loc: &Loc,
-    ) -> Result<()> {
-        program.expect_stack_exact(stack, contract, loc)
-    }
 }
 
 pub fn type_check(program: &mut Program) -> Result<()> {
