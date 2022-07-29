@@ -375,12 +375,6 @@ pub struct LocWord {
     pub loc: Loc,
 }
 
-impl PartialEq<String> for LocWord {
-    fn eq(&self, other: &String) -> bool {
-        self.name == *other
-    }
-}
-
 impl PartialEq<str> for LocWord {
     fn eq(&self, other: &str) -> bool {
         self.name == other

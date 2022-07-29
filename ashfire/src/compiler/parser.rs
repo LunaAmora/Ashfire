@@ -197,7 +197,7 @@ impl Parser {
             .and_then(|proc| {
                 proc.bindings
                     .iter()
-                    .position(|bind| word == bind)
+                    .position(|bind| word == bind.as_str())
                     .map(|index| (proc.bindings.len() - 1 - index) as i32)
             })
             .map(|index| Op::new(OpType::PushBind, index, &word.loc).into())
@@ -205,14 +205,14 @@ impl Parser {
 
     fn get_local_mem(&self, word: &LocWord, prog: &Program) -> Option<Vec<Op>> {
         self.current_proc(prog)
-            .and_then(|proc| proc.local_mem_names.iter().find(|mem| word == &mem.name))
+            .and_then(|proc| proc.local_mem_names.iter().find(|mem| word == mem.as_str()))
             .map(|local| Op::new(OpType::PushLocalMem, local.value, &word.loc).into())
     }
 
     fn get_global_mem(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.global_mems
             .iter()
-            .find(|mem| word == &mem.name)
+            .find(|mem| word == mem.as_str())
             .map(|global| Op::new(OpType::PushGlobalMem, global.value, &word.loc).into())
     }
 
@@ -259,7 +259,7 @@ impl Parser {
             _ => Default::default(),
         };
 
-        if let Some(index) = vars.iter().position(|name| *word == **name) {
+        if let Some(index) = vars.iter().position(|name| word == name.as_str()) {
             let typ = expect_get(&vars, index).typ;
             if store {
                 result.push(Op::new(OpType::ExpectType, typ.into(), loc))
@@ -337,7 +337,7 @@ impl Parser {
     fn try_get_struct_type<'a>(&'a self, word: &LocWord, prog: &'a Program) -> Option<&StructType> {
         self.structs
             .iter()
-            .find(|stk| *word == stk.name)
+            .find(|stk| word == stk.as_str())
             .and_then(|stk| {
                 prog.words
                     .get(stk.value as usize)
@@ -907,7 +907,7 @@ impl Program {
     fn get_proc_name(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.procs
             .iter()
-            .position(|proc| word == &proc.name)
+            .position(|proc| word == proc.name.as_str())
             .map(|index| Op::new(OpType::Call, index as i32, &word.loc).into())
     }
 
