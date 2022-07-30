@@ -1,4 +1,4 @@
-use firelib::expect_get;
+use firelib::{expect_get, fold_bool};
 use num::FromPrimitive;
 use std::{
     fmt::{Debug, Display, Formatter, Result},
@@ -31,7 +31,7 @@ pub trait ProgramVisitor {
 
     fn visit_proc<'a>(&'a mut self, program: &'a Program, index: usize) -> &Proc {
         self.enter_proc(index);
-        program.procs.get(index).expect("unreachable")
+        program.procs.get(index).unwrap()
     }
 
     fn enter_proc(&mut self, i: usize) {
@@ -120,7 +120,7 @@ impl Program {
 }
 
 pub fn from_i32<T: FromPrimitive>(value: i32) -> T {
-    FromPrimitive::from_i32(value).expect("unreachable")
+    FromPrimitive::from_i32(value).unwrap()
 }
 
 #[derive(Default)]
@@ -224,7 +224,7 @@ pub struct IRToken {
 impl From<(i32, Loc)> for IRToken {
     fn from(tuple: (i32, Loc)) -> Self {
         let (operand, loc) = tuple;
-        Self { typ: ValueType::Int.into(), operand, loc }
+        Self { typ: INT, operand, loc }
     }
 }
 
@@ -244,8 +244,7 @@ impl IRToken {
 
 impl PartialEq<KeywordType> for &IRToken {
     fn eq(&self, other: &KeywordType) -> bool {
-        self.typ == TokenType::Keyword &&
-            other == &FromPrimitive::from_i32(self.operand).expect("unreachable")
+        self.typ == TokenType::Keyword && other == &FromPrimitive::from_i32(self.operand).unwrap()
     }
 }
 
@@ -425,6 +424,11 @@ pub enum TokenType {
     DataPtr(ValueType),
 }
 
+pub const INT: TokenType = TokenType::DataType(ValueType::Int);
+pub const BOOL: TokenType = TokenType::DataType(ValueType::Bool);
+pub const PTR: TokenType = TokenType::DataType(ValueType::Ptr);
+pub const ANY: TokenType = TokenType::DataType(ValueType::Any);
+
 impl PartialEq<ValueType> for TokenType {
     fn eq(&self, other: &ValueType) -> bool {
         match (self, other) {
@@ -433,6 +437,7 @@ impl PartialEq<ValueType> for TokenType {
         }
     }
 }
+
 impl From<ValueType> for TokenType {
     fn from(value: ValueType) -> Self {
         TokenType::DataType(value)

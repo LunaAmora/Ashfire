@@ -160,7 +160,7 @@ impl<T> Stack<T> for EvalStack<T> {
     }
 
     fn get(&self, n: usize) -> Option<&T> {
-        self.frames.get(n)
+        self.frames.get(self.len() - 1 - n)
     }
 
     fn len(&self) -> usize {

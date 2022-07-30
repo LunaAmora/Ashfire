@@ -286,15 +286,12 @@ impl Parser {
             .any(|val| val.starts_with(&format!("{}.", word.name))));
 
         if let Some(struct_type) = self.try_get_struct_type(word, prog) {
-            let mut member = struct_type.members.first().expect("unreachable");
+            let mut member = struct_type.members.first().unwrap();
             if pointer {
                 let pattern = &format!("{}.{}", word.name, member.name);
                 let index = expect_index(&vars, |name| name.eq(pattern));
 
-                let stk_id = prog
-                    .parse_data_type(struct_type.name.as_str())
-                    .expect("unreachable");
-
+                let stk_id = prog.parse_data_type(struct_type.name.as_str()).unwrap();
                 let ptr_typ = IntrinsicType::Cast(-(stk_id as i32));
 
                 result.push(Op::new(push_type, index as i32, loc));
@@ -303,7 +300,7 @@ impl Parser {
                 let mut members = struct_type.members.clone();
                 if store {
                     members.reverse();
-                    member = struct_type.members.last().expect("unreachable");
+                    member = struct_type.members.last().unwrap();
                 }
 
                 let pattern = &format!("{}.{}", word.name, member.name);
@@ -506,7 +503,7 @@ impl Parser {
 
     fn compile_eval(&self, prog: &mut Program) -> Result<(IRToken, usize), IRToken> {
         match self.compile_eval_n(1, prog) {
-            Ok((mut result, skip)) => Ok((result.pop().expect("unreachable"), skip)),
+            Ok((mut result, skip)) => Ok((result.pop().unwrap(), skip)),
             Err(tok) => Err(tok),
         }
     }
@@ -581,8 +578,8 @@ impl Parser {
                 prog.register_string(tok.operand);
                 let data = prog.get_string(tok.operand);
 
-                result.push(IRToken::new(ValueType::Int.into(), data.size(), &tok.loc));
-                result.push(IRToken::new(ValueType::Ptr.into(), data.offset, &tok.loc));
+                result.push(IRToken::new(INT, data.size(), &tok.loc));
+                result.push(IRToken::new(PTR, data.offset, &tok.loc));
             }
             TokenType::DataType(value) => match value {
                 ValueType::Int | ValueType::Bool | ValueType::Ptr => result.push(tok),
@@ -688,7 +685,7 @@ impl Parser {
 
                     if let Some(stk_typ) = prog.get_type_name(found_type) {
                         if stk_typ.members.len() == 1 {
-                            let typ = stk_typ.members.first().expect("unreachable").typ;
+                            let typ = stk_typ.members.first().unwrap().typ;
                             members.push((found_word, typ).into());
                         } else {
                             for member in &stk_typ.members {
@@ -725,14 +722,14 @@ impl Parser {
                 loc,
             )?
             .get_keyword()
-            .expect("unreachable");
+            .unwrap();
 
         let (mut result, eval) = match self.compile_eval_n(stk.members.len(), prog) {
             Ok((result, eval)) => (result, eval),
             _ => bail!("Failed to parse an valid struct value at compile-time evaluation"),
         };
 
-        let end_token = self.skip(eval).expect("unreachable");
+        let end_token = self.skip(eval).unwrap();
         let mut members = stk.members;
         members.reverse();
         result.reverse(); //Todo:: check if this is correct
@@ -746,7 +743,7 @@ impl Parser {
                         self.register_typed_word(&assign, struct_word, prog);
                     }
                 } else {
-                    let member_type = members.pop().expect("unreachable").typ;
+                    let member_type = members.pop().unwrap().typ;
                     anyhow::ensure!(
                         equals_any!(member_type, ValueType::Any, eval.typ),
                         concat!(

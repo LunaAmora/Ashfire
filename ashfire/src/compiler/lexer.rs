@@ -1,5 +1,6 @@
 use super::types::*;
 use anyhow::{Context, Result};
+use firelib::{bail, choice, ensure};
 use lib_types::OptionErr;
 use std::{
     fs::File,
@@ -129,7 +130,7 @@ impl Lexer {
         Ok(self
             .read_by_predicate(|c| c == ' ')
             .strip_prefix('\"')
-            .expect("unreachable")
+            .unwrap()
             .strip_suffix('\"')
             .with_context(|| format!("{loc}Missing closing `\"` in string literal"))?
             .to_string())
@@ -177,7 +178,7 @@ fn parse_number(tok: &Token) -> Option<IRToken> {
     tok.name
         .parse::<i32>()
         .ok()
-        .map(|operand| IRToken::new(ValueType::Int.into(), operand, &tok.loc))
+        .map(|operand| IRToken::new(INT, operand, &tok.loc))
 }
 
 fn try_parse_char(tok: &Token) -> OptionErr<IRToken> {

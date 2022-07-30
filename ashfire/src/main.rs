@@ -2,7 +2,6 @@
 #![feature(const_trait_impl)]
 #[macro_use] extern crate num_derive;
 #[macro_use] extern crate log;
-#[macro_use] extern crate firelib;
 extern crate env_logger;
 extern crate num;
 
