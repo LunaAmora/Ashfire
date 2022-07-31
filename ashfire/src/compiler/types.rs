@@ -81,8 +81,9 @@ impl Program {
             ValueType::Bool => "Boolean",
             ValueType::Ptr => "Pointer",
             ValueType::Any => "Any",
-            ValueType::Type(n) =>
-                return expect_get(&self.structs_types, n as usize).name.to_owned(),
+            ValueType::Type(n) => {
+                return expect_get(&self.structs_types, n as usize).name.to_owned()
+            }
         }
         .to_owned()
     }
@@ -100,9 +101,7 @@ impl Program {
             TokenType::Keyword => "Keyword",
             TokenType::Word => "Word or Intrinsic",
             TokenType::DataType(value) => return self.data_name(value),
-            TokenType::DataPtr(value) => {
-                return self.data_name(value) + " Pointer";
-            }
+            TokenType::DataPtr(value) => return self.data_name(value) + " Pointer",
             TokenType::Str => "String",
         }
         .to_owned()
@@ -112,8 +111,9 @@ impl Program {
         match typ {
             TokenType::Keyword => format!("{:?}", from_i32::<KeywordType>(operand)),
             TokenType::Word => self.get_word(operand).to_owned(),
-            TokenType::DataType(value) | TokenType::DataPtr(value) =>
-                self.data_display(value, operand),
+            TokenType::DataType(value) | TokenType::DataPtr(value) => {
+                self.data_display(value, operand)
+            }
             TokenType::Str => self.get_string(operand).to_string(),
         }
     }

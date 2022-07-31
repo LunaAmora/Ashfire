@@ -61,13 +61,18 @@ impl Parser {
 
         let op = Op::from(match tok.typ {
             TokenType::Keyword => return self.define_keyword_op(tok.operand, tok.loc),
+
             TokenType::Str => (OpType::PushStr, prog.register_string(tok.operand), tok.loc),
+
             TokenType::DataType(typ) => match typ {
                 ValueType::Type(_) => bail!("{}Value type not valid here: `{:?}`", tok.loc, typ),
                 _ => (OpType::PushData(typ), tok.operand, tok.loc),
             },
-            TokenType::DataPtr(typ) =>
-                bail!("{}Data pointer type not valid here: `{:?}`", tok.loc, typ),
+
+            TokenType::DataPtr(typ) => {
+                bail!("{}Data pointer type not valid here: `{:?}`", tok.loc, typ)
+            }
+
             TokenType::Word => {
                 let word = &LocWord::new(prog.get_word(tok.operand), tok.loc);
 
@@ -103,16 +108,22 @@ impl Parser {
             KeywordType::Rot => (OpType::Rot, loc).into(),
             KeywordType::Equal => (OpType::Equal, loc).into(),
             KeywordType::At => (OpType::Unpack, loc).into(),
+
             KeywordType::While => self.push_block((OpType::While, loc).into()),
+
             KeywordType::Do => match self.pop_block(&loc, key)? {
                 Op { typ: OpType::While, .. } => (OpType::Do, loc).into(),
-                Op { typ: OpType::CaseMatch, operand, .. } =>
-                    (OpType::CaseOption, operand, loc).into(),
-                block =>
-                    invalid_block(&loc, block, "`do` can only come in a `while` or `case` block")?,
+                Op { typ: OpType::CaseMatch, operand, .. } => {
+                    (OpType::CaseOption, operand, loc).into()
+                }
+                block => {
+                    invalid_block(&loc, block, "`do` can only come in a `while` or `case` block")?
+                }
             },
+
             KeywordType::Let => todo!(),
             KeywordType::Case => todo!(),
+
             KeywordType::Colon => match self.pop_block(&loc, key)? {
                 Op { typ: OpType::CaseStart, .. } => todo!(),
                 block => invalid_block(
@@ -121,25 +132,33 @@ impl Parser {
                     "`:` can only be used on word or `case` block definition",
                 )?,
             },
+
             KeywordType::If => self.push_block((OpType::IfStart, loc).into()),
+
             KeywordType::Else => match self.pop_block(&loc, key)? {
                 Op { typ: OpType::IfStart, .. } => todo!(),
                 Op { typ: OpType::CaseOption, .. } => todo!(),
-                block =>
-                    invalid_block(&loc, block, "`else` can only come in a `if` or `case` block")?,
+                block => {
+                    invalid_block(&loc, block, "`else` can only come in a `if` or `case` block")?
+                }
             },
+
             KeywordType::End => match self.pop_block(&loc, key)? {
                 Op { typ: OpType::IfStart, .. } => (OpType::EndIf, loc).into(),
                 Op { typ: OpType::Else, .. } => (OpType::EndElse, loc).into(),
                 Op { typ: OpType::Do, .. } => (OpType::EndWhile, loc).into(),
+
                 Op { typ: OpType::BindStack, .. } => todo!(),
                 Op { typ: OpType::CaseOption, .. } => todo!(),
+
                 Op { typ: OpType::PrepProc, operand, .. } => {
                     self.exit_proc();
                     (OpType::EndProc, operand, loc).into()
                 }
+
                 block => invalid_block(&loc, block, "Expected `end` to close a valid block")?,
             },
+
             KeywordType::Include |
             KeywordType::Arrow |
             KeywordType::Proc |
@@ -348,6 +367,7 @@ impl Parser {
         while let Some(tok) = self.ir_tokens.get(i).cloned() {
             match (colons, &tok.typ) {
                 (1, TokenType::DataType(ValueType::Int)) => success!(self.parse_memory(word, prog)),
+
                 (1, TokenType::Word) => {
                     choice!(
                         OptionErr,
@@ -356,6 +376,7 @@ impl Parser {
                     );
                     prog.invalid_token(tok, "context declaration")?;
                 }
+
                 (_, TokenType::Keyword) => {
                     choice!(
                         OptionErr,
@@ -363,7 +384,9 @@ impl Parser {
                         self.parse_end_ctx(colons, i, word, prog),
                     );
                 }
+
                 (0, _) => return self.parse_word_ctx(&tok, word, prog),
+
                 _ => prog.invalid_token(tok, "context declaration")?,
             }
             i += 1;
@@ -404,14 +427,17 @@ impl Parser {
                 self.next();
                 success!(self.parse_memory(word, prog));
             }
+
             (0, KeywordType::Struct) => {
                 self.next();
                 self.parse_struct(word, prog)
             }
+
             (0, KeywordType::Proc) => {
                 self.next();
                 self.parse_procedure(word, prog)
             }
+
             (1, KeywordType::Equal) => {
                 self.skip(2);
                 match self.compile_eval(prog) {
@@ -421,25 +447,30 @@ impl Parser {
                             "{}Undefined variable value is not allowed",
                             &word.loc
                         );
+
                         self.skip(eval);
                         self.register_var(
                             (word.to_string(), result.operand, result.typ).into(),
                             prog,
                         );
+
                         success!();
                     }
                     Err(tok) => prog.invalid_token(tok, "context declaration")?,
                 }
             }
+
             (_, KeywordType::Colon) => {
                 *colons += 1;
                 OptionErr::default()
             }
+
             (_, KeywordType::End) => bail!(
                 "{}Missing body or contract necessary to infer the type of the word: `{}`",
                 word.loc,
                 word.name
             ),
+
             _ => OptionErr::default(),
         }
     }
@@ -547,12 +578,14 @@ impl Parser {
                     _ => return Err(IRToken::new(TokenType::Keyword, tok.operand, &tok.loc)),
                 }
             }
+
             TokenType::Word => {
                 let loc_word = LocWord::new(prog.get_word(tok.operand), tok.loc.clone());
                 match prog.get_intrinsic_type(&loc_word) {
                     Some(intrinsic) => match intrinsic {
                         IntrinsicType::Plus => todo!(),
                         IntrinsicType::Minus => todo!(),
+
                         IntrinsicType::Cast(n) => {
                             let a = result.pop().expect("Todo:: report error");
 
@@ -564,16 +597,18 @@ impl Parser {
 
                             result.push(IRToken::new(cast, a.operand, &tok.loc));
                         }
+
                         _ => return Err(IRToken::new(TokenType::Word, tok.operand, &tok.loc)),
                     },
-                    None =>
-                        if let Some(cnst) = self.try_get_const_name(&loc_word) {
+                    None => match self.try_get_const_name(&loc_word) {
+                        Some(cnst) => {
                             result.push(IRToken::new(cnst.typ, cnst.word.value, &tok.loc));
-                        } else {
-                            return Err(tok);
-                        },
+                        }
+                        None => return Err(tok),
+                    },
                 }
             }
+
             TokenType::Str => {
                 prog.register_string(tok.operand);
                 let data = prog.get_string(tok.operand);
@@ -581,10 +616,12 @@ impl Parser {
                 result.push(IRToken::new(INT, data.size(), &tok.loc));
                 result.push(IRToken::new(PTR, data.offset, &tok.loc));
             }
+
             TokenType::DataType(value) => match value {
                 ValueType::Int | ValueType::Bool | ValueType::Ptr => result.push(tok),
                 _ => return Err(tok),
             },
+
             _ => return Err(tok),
         }
         Ok(())
@@ -608,8 +645,9 @@ impl Parser {
                         arrow = true;
                         continue;
                     }
-                    KeywordType::Colon =>
-                        success_from!(self.define_proc(word, Contract { ins, outs }, prog)),
+                    KeywordType::Colon => {
+                        success_from!(self.define_proc(word, Contract { ins, outs }, prog))
+                    }
                     _ => {}
                 }
             } else if let Some(found_word) = prog.try_get_word(&tok) {

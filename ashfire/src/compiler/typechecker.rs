@@ -48,27 +48,33 @@ impl TypeChecker {
                 ValueType::Int | ValueType::Bool | ValueType::Ptr => self.push_value(value, loc),
                 ValueType::Any | ValueType::Type(_) => unreachable!(),
             },
+
             OpType::PushStr => {
                 self.push_value(ValueType::Int, loc);
                 self.push_value(ValueType::Ptr, loc);
             }
+
             OpType::PushLocalMem |
             OpType::PushGlobalMem |
             OpType::PushLocal |
             OpType::PushGlobal => self.push_value(ValueType::Ptr, loc),
+
             OpType::OffsetLoad => {
                 let op = &op.clone();
                 let offset_type = self.expect_struct_pointer(program, ip, op, ".")?;
                 self.push_frame(offset_type, &op.loc);
             }
+
             OpType::Offset => {
                 let op = &op.clone();
                 match self.expect_struct_pointer(program, ip, op, ".*")? {
-                    TokenType::DataType(offset_type) =>
-                        self.push_frame(TokenType::DataPtr(offset_type), &op.loc),
+                    TokenType::DataType(offset_type) => {
+                        self.push_frame(TokenType::DataPtr(offset_type), &op.loc)
+                    }
                     _ => unreachable!(),
                 }
             }
+
             OpType::Intrinsic => match IntrinsicType::from(op.operand) {
                 IntrinsicType::Plus | IntrinsicType::Minus => {
                     let top = self
@@ -77,27 +83,34 @@ impl TypeChecker {
                     let top_typ = top.get(0).unwrap().typ;
                     self.push_frame(top_typ, loc);
                 }
+
                 IntrinsicType::Times => todo!(),
                 IntrinsicType::Div => todo!(),
+
                 IntrinsicType::Greater |
                 IntrinsicType::GreaterE |
                 IntrinsicType::Lesser |
                 IntrinsicType::LesserE => todo!(),
+
                 IntrinsicType::And | IntrinsicType::Or | IntrinsicType::Xor => {
                     self.data_stack
                         .expect_contract_pop(&[INT, INT], program, loc)?;
                     self.push_frame(INT, loc);
                 }
+
                 IntrinsicType::Load8 | IntrinsicType::Load16 | IntrinsicType::Load32 => todo!(),
+
                 IntrinsicType::Store8 | IntrinsicType::Store16 | IntrinsicType::Store32 => {
                     self.data_stack
                         .expect_contract_pop(&[ANY, ANY], program, loc)?;
                 }
+
                 IntrinsicType::FdWrite => {
                     self.data_stack
                         .expect_contract_pop(&[INT, PTR, INT, PTR], program, loc)?;
                     self.push_frame(PTR, loc);
                 }
+
                 IntrinsicType::Cast(n) => {
                     self.data_stack.expect_pop(loc)?;
 
@@ -109,6 +122,7 @@ impl TypeChecker {
                     self.push_frame(cast, loc);
                 }
             },
+
             OpType::Dup => {
                 let typ = self
                     .data_stack
@@ -116,17 +130,21 @@ impl TypeChecker {
                     .typ;
                 self.push_frame(typ, loc);
             }
+
             OpType::Drop => {
                 self.data_stack.expect_pop(loc)?;
             }
+
             OpType::Swap => {
                 let a = self.data_stack.expect_pop(loc)?;
                 let b = self.data_stack.expect_pop(loc)?;
                 self.data_stack.push(a);
                 self.data_stack.push(b);
             }
+
             OpType::Over => todo!(),
             OpType::Rot => todo!(),
+
             OpType::Call => {
                 let Proc { contract: Contract { ins, outs }, .. } =
                     program.procs.get(op.operand as usize).unwrap();
@@ -137,7 +155,9 @@ impl TypeChecker {
                     }
                 }
             }
+
             OpType::Equal => todo!(),
+
             OpType::PrepProc => {
                 let ins = self
                     .visit_proc(program, op.operand as usize)
@@ -149,10 +169,12 @@ impl TypeChecker {
                     self.push_frame(typ, loc);
                 }
             }
+
             OpType::IfStart => todo!(),
             OpType::Else => todo!(),
             OpType::EndIf => todo!(),
             OpType::EndElse => todo!(),
+
             OpType::EndProc => {
                 let mut outs = self.current_proc(program).unwrap().contract.outs.clone();
                 outs.reverse();
@@ -161,12 +183,14 @@ impl TypeChecker {
                 self.data_stack = Default::default();
                 self.exit_proc();
             }
+
             OpType::BindStack => todo!(),
             OpType::PushBind => todo!(),
             OpType::PopBind => todo!(),
             OpType::While => todo!(),
             OpType::Do => todo!(),
             OpType::EndWhile => todo!(),
+
             OpType::Unpack => match self.data_stack.expect_pop(loc)?.typ {
                 TokenType::DataPtr(n) => {
                     let index = usize::from(n);
@@ -182,6 +206,7 @@ impl TypeChecker {
                     bail!("{loc}Cannot unpack element of type: `{}`", program.type_name(top));
                 }
             },
+
             OpType::ExpectType => {
                 let typ = match op.operand {
                     0 => unreachable!(),
@@ -191,6 +216,7 @@ impl TypeChecker {
                 self.data_stack
                     .expect_peek(ArityType::Type(typ), program, loc)?;
             }
+
             OpType::CaseStart => todo!(),
             OpType::CaseMatch => todo!(),
             OpType::CaseOption => todo!(),
