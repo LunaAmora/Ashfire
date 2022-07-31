@@ -936,7 +936,7 @@ fn invalid_block(loc: &Loc, block: Op, error: &str) -> Result<!> {
     bail!(
         concat!(
             "{}{}, but found a `{:?}` block instead\n",
-            "{}[INFO] The found block started here"
+            "[INFO]  {}The found block started here"
         ),
         loc,
         error,

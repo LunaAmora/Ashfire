@@ -4,7 +4,6 @@ use anyhow::{anyhow, bail, ensure, Context, Result};
 use firelib::equals_any;
 use itertools::Itertools;
 use lib_types::{EvalStack, Stack};
-use std::fmt::Debug;
 
 struct TypeBlock {
     data_stack: EvalStack<TypeFrame>,
@@ -38,15 +37,12 @@ impl TypeChecker {
         for ip in 0..program.ops.len() {
             self.type_check_op(ip, program)?;
         }
-        info!("Typechecking Done!");
-
         Ok(())
     }
 
     fn type_check_op(&mut self, ip: usize, program: &mut Program) -> Result<()> {
         let op = program.ops.get(ip).unwrap();
         let loc = &op.loc;
-        info!("{loc} typechecking {:?} [{}]", op.typ, op.operand);
         match op.typ {
             OpType::PushData(value) => match value {
                 ValueType::Int | ValueType::Bool | ValueType::Ptr => self.push_value(value, loc),
@@ -368,7 +364,7 @@ impl Program {
             bail!(
                 concat!(
                     "{}Expected type `{}`, but found `{}`\n",
-                    "[INFO] {}The type found was declared here"
+                    "[INFO]  {}The type found was declared here"
                 ),
                 loc,
                 self.type_name(expected),
@@ -384,11 +380,11 @@ impl Program {
             stack.len() == contract.len() && self.expect_arity(stack, contract, loc).is_ok(),
             concat!(
                 "Found stack at the end of the context does match the expected types:\n",
-                "{}[INFO] Expected types: {}\n",
-                "{}[INFO] Actual types:   {}"
+                "[INFO]  {}Expected types: {}\n",
+                "[INFO]  {}Actual types:   {}"
             ),
             loc,
-            format_stack(contract),
+            self.format_stack(contract),
             loc,
             self.format_frames(stack, true),
         );
@@ -401,18 +397,24 @@ impl Program {
             let info = &stack
                 .iter()
                 .map(|t| {
-                    format!("{}[INFO] Type `{}` was declared here", t.loc, self.type_name(t.typ))
+                    format!("[INFO]  {}Type `{}` was declared here", t.loc, self.type_name(t.typ))
                 })
                 .join("\n");
-            format!("{}\n{info}", format_stack(&types))
+            format!("{}\n{info}", self.format_stack(&types))
         } else {
-            format_stack(&types)
+            self.format_stack(&types)
         }
     }
-}
 
-fn format_stack<T: Debug>(stack: &[T]) -> String {
-    format!("[{}] ->", stack.iter().map(|t| format!("<{:?}>", t)).join(", "))
+    fn format_stack(&self, stack: &[TokenType]) -> String {
+        format!(
+            "[{}] ->",
+            stack
+                .iter()
+                .map(|t| format!("<{}>", self.type_name(*t)))
+                .join(", ")
+        )
+    }
 }
 
 pub fn type_check(program: &mut Program) -> Result<()> {
