@@ -343,7 +343,7 @@ pub trait Expect<T>: Stack<T> {
             len >= n,
             concat!(
                 "Stack has less elements than expected\n",
-                "[INFO]  {}Expected `{}` elements, but found `{}`"
+                "[INFO] {}Expected `{}` elements, but found `{}`"
             ),
             loc,
             n,
@@ -378,6 +378,16 @@ impl Expect<TypeFrame> for EvalStack<TypeFrame> {
 }
 
 impl Program {
+    pub fn expect_exact(
+        &self, stack: &[TypeFrame], contract: &[TokenType], loc: &Loc,
+    ) -> Result<()> {
+        ensure!(
+            stack.len() == contract.len() && self.expect_arity(stack, contract, loc).is_ok(),
+            self.format_stack_diff(stack, contract, true, loc)
+        );
+        Ok(())
+    }
+
     fn expect_arity(&self, stack: &[TypeFrame], contract: &[TokenType], loc: &Loc) -> Result<()> {
         for (stk, contr) in stack.iter().zip(contract.iter()) {
             self.expect_type(*contr, stk, loc)?;
@@ -386,62 +396,61 @@ impl Program {
     }
 
     fn expect_type(&self, expected: TokenType, frame: &TypeFrame, loc: &Loc) -> Result<()> {
-        if !equals_any!(expected, ValueType::Any, TokenType::DataPtr(ValueType::Any), frame.typ) {
-            bail!(
-                concat!(
-                    "{}Expected type `{}`, but found `{}`\n",
-                    "[INFO]  {}The type found was declared here"
-                ),
-                loc,
-                self.type_name(expected),
-                self.type_name(frame.typ),
-                frame.loc
-            )
-        }
-        Ok(())
-    }
-
-    pub fn expect_exact(
-        &self, stack: &[TypeFrame], contract: &[TokenType], loc: &Loc,
-    ) -> Result<()> {
         ensure!(
-            stack.len() == contract.len() && self.expect_arity(stack, contract, loc).is_ok(),
-            concat!(
-                "Found stack at the end of the context does match the expected types:\n",
-                "[INFO]  {}Expected types: {}\n",
-                "[INFO]  {}Actual types:   {}"
-            ),
-            loc,
-            self.format_stack(contract),
-            loc,
-            self.format_frames(stack, true),
+            equals_any!(expected, ValueType::Any, TokenType::DataPtr(ValueType::Any), frame.typ),
+            self.format_type_diff(expected, frame, loc)
         );
         Ok(())
     }
 
-    fn format_frames(&self, stack: &[TypeFrame], verbose: bool) -> String {
-        let types: Vec<TokenType> = stack.iter().map(|t| t.typ).collect();
+    fn format_type_diff(&self, expected: TokenType, frame: &TypeFrame, loc: &Loc) -> String {
+        format!(
+            "{}Expected type `{}`, but found `{}`\n{}",
+            loc,
+            self.type_name(expected),
+            self.type_name(frame.typ),
+            self.format_frame(frame)
+        )
+    }
+
+    fn format_stack_diff(
+        &self, stack: &[TypeFrame], contract: &[TokenType], verbose: bool, loc: &Loc,
+    ) -> String {
+        let fmt = format!(
+            concat!(
+                "Found stack at the end of the context does match the expected types:\n",
+                "[INFO] {}Expected types: {}\n",
+                "[INFO] {}Actual types:   {}"
+            ),
+            loc,
+            self.format_stack(contract, |tok| *tok),
+            loc,
+            self.format_stack(stack, |frame| frame.typ)
+        );
+
         if verbose {
-            let info = &stack
-                .iter()
-                .map(|t| {
-                    format!("[INFO]  {}Type `{}` was declared here", t.loc, self.type_name(t.typ))
-                })
-                .join("\n");
-            format!("{}\n{info}", self.format_stack(&types))
+            format!("{fmt}\n{}", self.format_frames_loc(stack))
         } else {
-            self.format_stack(&types)
+            fmt
         }
     }
 
-    fn format_stack(&self, stack: &[TokenType]) -> String {
+    fn format_stack<T>(&self, stack: &[T], f: impl Fn(&T) -> TokenType) -> String {
         format!(
             "[{}] ->",
             stack
                 .iter()
-                .map(|t| format!("<{}>", self.type_name(*t)))
+                .map(|t| format!("<{}>", self.type_name(f(t))))
                 .join(", ")
         )
+    }
+
+    fn format_frames_loc(&self, stack: &[TypeFrame]) -> String {
+        stack.iter().map(|t| self.format_frame(t)).join("\n")
+    }
+
+    fn format_frame(&self, t: &TypeFrame) -> String {
+        format!("[INFO] {}Type `{}` was declared here", t.loc, self.type_name(t.typ))
     }
 }
 
@@ -450,5 +459,6 @@ pub fn type_check(program: &mut Program) -> Result<()> {
     let mut checker = TypeChecker::new();
     checker.type_check(program)?;
 
+    info!("Typechecking done");
     Ok(())
 }

@@ -800,7 +800,7 @@ impl Parser {
         } else {
             let stack: Vec<TypeFrame> = result.iter().map(|tok| tok.into()).collect();
             let contract: Vec<TokenType> = members.iter().map(|stk| stk.typ).collect();
-            prog.expect_exact(&stack, &contract, loc)?;
+            prog.expect_exact(&stack, &contract, &end_token.loc)?;
 
             if !self.inside_proc() {
                 members.reverse();
@@ -976,7 +976,7 @@ fn invalid_block(loc: &Loc, block: Op, error: &str) -> Result<!> {
     bail!(
         concat!(
             "{}{}, but found a `{:?}` block instead\n",
-            "[INFO]  {}The found block started here"
+            "[INFO] {}The found block started here"
         ),
         loc,
         error,
@@ -992,5 +992,6 @@ pub fn compile_file(path: PathBuf) -> Result<Program> {
     parser.lex_file(path, &mut program)?;
     parser.parse_tokens(&mut program)?;
 
+    info!("Compilation done");
     Ok(program)
 }
