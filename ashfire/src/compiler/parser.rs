@@ -798,7 +798,9 @@ impl Parser {
                 }
             }
         } else {
-            warn!("Todo: Typechecking stack elements is not implemented yet");
+            let stack: Vec<TypeFrame> = result.iter().map(|tok| tok.into()).collect();
+            let contract: Vec<TokenType> = members.iter().map(|stk| stk.typ).collect();
+            prog.expect_exact(&stack, &contract, loc)?;
 
             if !self.inside_proc() {
                 members.reverse();

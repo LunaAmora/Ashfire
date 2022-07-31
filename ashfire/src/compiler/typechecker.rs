@@ -324,13 +324,13 @@ pub trait Expect<T>: Stack<T> {
     fn expect_arity(&self, n: usize, arity: ArityType, program: &Program, loc: &Loc) -> Result<()> {
         self.expect_stack_size(n, loc)?;
 
-        let typ = match arity {
+        let (typ, start) = match arity {
             ArityType::Any => return Ok(()),
-            ArityType::Same => self.get_type(self.get(0).unwrap()),
-            ArityType::Type(typ) => typ,
+            ArityType::Same => (self.get_type(self.get(0).unwrap()), 1),
+            ArityType::Type(typ) => (typ, 0),
         };
 
-        for i in 1..n {
+        for i in start..n {
             self.program_type(program, self.get(i).unwrap(), typ, loc)?;
         }
 
@@ -401,7 +401,9 @@ impl Program {
         Ok(())
     }
 
-    fn expect_exact(&self, stack: &[TypeFrame], contract: &[TokenType], loc: &Loc) -> Result<()> {
+    pub fn expect_exact(
+        &self, stack: &[TypeFrame], contract: &[TokenType], loc: &Loc,
+    ) -> Result<()> {
         ensure!(
             stack.len() == contract.len() && self.expect_arity(stack, contract, loc).is_ok(),
             concat!(
@@ -444,6 +446,7 @@ impl Program {
 }
 
 pub fn type_check(program: &mut Program) -> Result<()> {
+    info!("Typechecking program");
     let mut checker = TypeChecker::new();
     checker.type_check(program)?;
 

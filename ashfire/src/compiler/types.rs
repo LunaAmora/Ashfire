@@ -399,6 +399,12 @@ pub struct TypeFrame {
     pub loc: Loc,
 }
 
+impl From<&IRToken> for TypeFrame {
+    fn from(tok: &IRToken) -> Self {
+        Self { typ: tok.typ, loc: tok.loc.to_owned() }
+    }
+}
+
 impl From<(ValueType, &Loc)> for TypeFrame {
     fn from(t: (ValueType, &Loc)) -> Self {
         TypeFrame { typ: t.0.into(), loc: t.1.to_owned() }
