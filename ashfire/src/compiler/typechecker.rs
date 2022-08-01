@@ -5,8 +5,10 @@ use firelib::equals_any;
 use itertools::Itertools;
 use lib_types::{EvalStack, Stack};
 
+type DataStack = EvalStack<TypeFrame>;
+
 struct TypeBlock {
-    data_stack: EvalStack<TypeFrame>,
+    data_stack: DataStack,
     start_op: usize,
 }
 
@@ -14,7 +16,7 @@ struct TypeBlock {
 struct TypeChecker {
     block_stack: Vec<TypeBlock>,
     bind_stack: Vec<TypeFrame>,
-    data_stack: EvalStack<TypeFrame>,
+    data_stack: DataStack,
     current_proc: Option<usize>,
 }
 
@@ -353,7 +355,7 @@ pub trait Expect<T>: Stack<T> {
     }
 }
 
-impl Expect<TypeFrame> for EvalStack<TypeFrame> {
+impl Expect<TypeFrame> for DataStack {
     fn get_type(&self, t: &TypeFrame) -> TokenType {
         t.typ
     }
@@ -429,7 +431,7 @@ impl Program {
         );
 
         if verbose {
-            format!("{fmt}\n{}", self.format_frames_loc(stack))
+            format!("{fmt}\n{}", self.format_frames(stack))
         } else {
             fmt
         }
@@ -445,7 +447,7 @@ impl Program {
         )
     }
 
-    fn format_frames_loc(&self, stack: &[TypeFrame]) -> String {
+    fn format_frames(&self, stack: &[TypeFrame]) -> String {
         stack.iter().map(|t| self.format_frame(t)).join("\n")
     }
 

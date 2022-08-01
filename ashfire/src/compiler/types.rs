@@ -410,6 +410,7 @@ impl From<(ValueType, &Loc)> for TypeFrame {
         TypeFrame { typ: t.0.into(), loc: t.1.to_owned() }
     }
 }
+
 impl From<(TokenType, &Loc)> for TypeFrame {
     fn from(t: (TokenType, &Loc)) -> Self {
         TypeFrame { typ: t.0, loc: t.1.to_owned() }
