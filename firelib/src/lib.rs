@@ -89,6 +89,17 @@ pub trait FlowControl:
             _ => unreachable!(),
         }
     }
+
+    #[doc(hidden)]
+    fn __from_error(residual: Result<Infallible, anyhow::Error>) -> Self
+    where
+        Self: From<anyhow::Error>,
+    {
+        match residual {
+            Err(err) => Self::from(err),
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[macro_export]

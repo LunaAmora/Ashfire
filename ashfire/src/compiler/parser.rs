@@ -94,7 +94,7 @@ impl Parser {
             }
         });
 
-        OptionErr::from(vec![op])
+        OptionErr::new(vec![op])
     }
 
     fn define_keyword_op(&mut self, operand: i32, loc: Loc) -> OptionErr<Vec<Op>> {
@@ -166,7 +166,7 @@ impl Parser {
             KeywordType::Struct => bail!("{}Keyword type is not valid here: `{:?}`", loc, key),
         };
 
-        OptionErr::from(vec![op])
+        OptionErr::new(vec![op])
     }
 
     fn pop_block(&mut self, loc: &Loc, closing_type: KeywordType) -> Result<Op> {
@@ -297,7 +297,7 @@ impl Parser {
                 result.push(Op::new(OpType::Intrinsic, data_typ.into(), loc));
             }
 
-            return result.into();
+            return OptionErr::new(result);
         }
 
         short_circuit!(!vars
@@ -344,7 +344,7 @@ impl Parser {
                 }
             }
 
-            return result.into();
+            return OptionErr::new(result);
         }
 
         OptionErr::default()

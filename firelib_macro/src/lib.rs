@@ -15,6 +15,12 @@ pub fn derive_flow(item: TokenStream) -> TokenStream {
                 <Self as firelib::FlowControl>::__from_residual(residual)
             }
         }
+
+        #imp FromResidual<Result<Infallible, anyhow::Error>> for #struct_name {
+            fn from_residual(residual: Result<Infallible, anyhow::Error>) -> Self {
+                <Self as firelib::FlowControl>::__from_error(residual)
+            }
+        }
     };
 
     TokenStream::from(expanded)

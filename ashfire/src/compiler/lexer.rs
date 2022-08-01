@@ -144,7 +144,7 @@ impl Lexer {
                 try_parse_char(&tok),
                 parse_keyword(&tok),
                 parse_number(&tok),
-                parse_word(tok, program)
+                OptionErr::new(parse_word(tok, program))
             ),
             None => OptionErr::default(),
         }
@@ -203,7 +203,7 @@ fn parse_char(word: &str, loc: &Loc) -> OptionErr<i32> {
                 word.len() == 1,
                 "{loc}Char literals cannot contain more than one char: `{word}"
             );
-            (word.chars().next().unwrap() as i32).into()
+            OptionErr::new(word.chars().next().unwrap() as i32)
         }
     }
 }

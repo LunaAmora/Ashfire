@@ -12,6 +12,12 @@ pub struct OptionErr<T> {
     pub value: Result<Option<T>>,
 }
 
+impl<T> OptionErr<T> {
+    pub fn new(value: T) -> Self {
+        Self { value: Ok(Some(value)) }
+    }
+}
+
 impl<T> Default for OptionErr<T> {
     fn default() -> Self {
         Ok(None).into()
@@ -30,18 +36,9 @@ impl<T> From<Option<T>> for OptionErr<T> {
     }
 }
 
-impl<T> From<T> for OptionErr<T> {
-    fn from(value: T) -> Self {
-        Self { value: Ok(Some(value)) }
-    }
-}
-
-impl<T> FromResidual<Result<Infallible, Error>> for OptionErr<T> {
-    fn from_residual(residual: Result<Infallible, Error>) -> Self {
-        match residual {
-            Ok(_) => unreachable!(),
-            Err(err) => Self { value: Err(err) },
-        }
+impl<T> From<Error> for OptionErr<T> {
+    fn from(err: Error) -> Self {
+        Self { value: Err(err) }
     }
 }
 
