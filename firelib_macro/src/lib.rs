@@ -7,7 +7,7 @@ pub fn derive_flow(item: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(item as DeriveInput);
     let (imp, struct_name) = extract_generics(&ast);
 
-    let expanded = quote! {
+    TokenStream::from(quote! {
         #imp firelib::FlowControl for #struct_name {}
 
         #imp FromResidual<ControlFlow<#struct_name, Infallible>> for #struct_name {
@@ -21,22 +21,21 @@ pub fn derive_flow(item: TokenStream) -> TokenStream {
                 <Self as firelib::FlowControl>::__from_error(residual)
             }
         }
-    };
-
-    TokenStream::from(expanded)
+    })
 }
 
 #[proc_macro_attribute]
 pub fn alternative(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let input = item.clone();
-    let ast = parse_macro_input!(input as DeriveInput);
+    let ast = parse_macro_input!(item as DeriveInput);
     let args = parse_macro_input!(attr as AttributeArgs);
 
     let (imp, struct_name) = extract_generics(&ast);
     let matcher = generate_matcher(args);
 
-    let expanded = quote! {
-        #imp Alternative for #struct_name {}
+    TokenStream::from(quote! {
+        #ast
+
+        #imp firelib::Alternative for #struct_name {}
 
         #imp Try for #struct_name {
             type Output = Self;
@@ -59,11 +58,7 @@ pub fn alternative(attr: TokenStream, item: TokenStream) -> TokenStream {
                 residual
             }
         }
-    };
-
-    let mut ret = TokenStream::from(expanded);
-    ret.extend(item);
-    ret
+    })
 }
 
 type QuoteStream = quote::__private::TokenStream;
