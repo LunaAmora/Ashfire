@@ -281,9 +281,7 @@ pub trait Expect<T>: Stack<T> {
     fn program_type(
         &self, program: &Program, frame: &T, expected: TokenType, loc: &Loc,
     ) -> Result<()>;
-
     fn get_type(&self, t: &T) -> TokenType;
-    fn get_loc(&self, t: &T) -> Loc;
 
     fn expect_exact_pop(
         &mut self, contract: &[TokenType], program: &Program, loc: &Loc,
@@ -358,10 +356,6 @@ pub trait Expect<T>: Stack<T> {
 impl Expect<TypeFrame> for DataStack {
     fn get_type(&self, t: &TypeFrame) -> TokenType {
         t.typ
-    }
-
-    fn get_loc(&self, t: &TypeFrame) -> Loc {
-        t.loc.clone()
     }
 
     fn program_arity(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()> {
