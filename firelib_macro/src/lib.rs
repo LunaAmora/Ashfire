@@ -42,7 +42,7 @@ pub fn alternative(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
                 match self {
-                    Self {#matcher} => ControlFlow::Continue(self),
+                    Self {#matcher, ..} => ControlFlow::Continue(self),
                     _ => ControlFlow::Break(self),
                 }
             }
@@ -84,7 +84,6 @@ fn generate_matcher(args: Vec<NestedMeta>) -> QuoteStream {
         }
     }
 
-    matcher = quote!(#matcher, ..);
     matcher
 }
 
