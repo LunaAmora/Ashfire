@@ -1,32 +1,100 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput};
+use syn::{parse_macro_input, AttributeArgs, DeriveInput, NestedMeta};
 
 #[proc_macro_derive(FlowControl)]
 pub fn derive_flow(item: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(item as DeriveInput);
-    let struct_name = &ast.ident;
-    let params = &ast.generics.params;
+    let (imp, struct_name) = extract_generics(&ast);
 
-    let expanded = if params.is_empty() {
-        quote! {
-            impl firelib::FlowControl for #struct_name {}
-            impl FromResidual<ControlFlow<#struct_name, Infallible>> for #struct_name {
-                fn from_residual(residual: ControlFlow<#struct_name, Infallible>) -> Self {
-                    <Self as firelib::FlowControl>::__from_residual(residual)
-                }
-            }
-        }
-    } else {
-        quote! {
-            impl<#params> firelib::FlowControl for #struct_name<#params> {}
-            impl<#params> FromResidual<ControlFlow<#struct_name<#params>, Infallible>> for #struct_name<#params> {
-                fn from_residual(residual: ControlFlow<#struct_name<#params>, Infallible>) -> Self {
-                    <Self as firelib::FlowControl>::__from_residual(residual)
-                }
+    let expanded = quote! {
+        #imp firelib::FlowControl for #struct_name {}
+
+        #imp FromResidual<ControlFlow<#struct_name, Infallible>> for #struct_name {
+            fn from_residual(residual: ControlFlow<#struct_name, Infallible>) -> Self {
+                <Self as firelib::FlowControl>::__from_residual(residual)
             }
         }
     };
 
     TokenStream::from(expanded)
+}
+
+#[proc_macro_attribute]
+pub fn alternative(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let input = item.clone();
+    let ast = parse_macro_input!(input as DeriveInput);
+    let args = parse_macro_input!(attr as AttributeArgs);
+
+    let (imp, struct_name) = extract_generics(&ast);
+    let matcher = generate_matcher(args);
+
+    let expanded = quote! {
+        #imp Alternative for #struct_name {}
+
+        #imp Try for #struct_name {
+            type Output = Self;
+            type Residual = Self;
+
+            fn from_output(output: Self::Output) -> Self {
+                output
+            }
+
+            fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
+                match self {
+                    Self {#matcher} => ControlFlow::Continue(self),
+                    _ => ControlFlow::Break(self),
+                }
+            }
+        }
+
+        #imp FromResidual for #struct_name {
+            fn from_residual(residual: <Self as Try>::Residual) -> Self {
+                residual
+            }
+        }
+    };
+
+    let mut ret = TokenStream::from(expanded);
+    ret.extend(item);
+    ret
+}
+
+type QuoteStream = quote::__private::TokenStream;
+
+fn generate_matcher(args: Vec<NestedMeta>) -> QuoteStream {
+    let mut matcher = QuoteStream::new();
+    let mut i = 0;
+
+    loop {
+        let (name, pattern) = (
+            args.get(i).expect("Missing match attribute name"),
+            args.get(i + 1).expect("Missing match atribute pattern"),
+        );
+
+        matcher = if i == 0 {
+            quote!(#name: #pattern)
+        } else {
+            quote!(#matcher, #name: #pattern)
+        };
+
+        i += 2;
+        if args.len() - i == 0 {
+            break;
+        }
+    }
+
+    matcher = quote!(#matcher, ..);
+    matcher
+}
+
+fn extract_generics(ast: &DeriveInput) -> (QuoteStream, QuoteStream) {
+    let struct_name = &ast.ident;
+    let params = &ast.generics.params;
+
+    if params.is_empty() {
+        (quote!(impl), quote!(#struct_name))
+    } else {
+        (quote!(impl<#params>), quote!(#struct_name<#params>))
+    }
 }

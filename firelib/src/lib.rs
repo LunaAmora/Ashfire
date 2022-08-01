@@ -1,7 +1,7 @@
 #![feature(try_trait_v2)]
 #![feature(never_type)]
 pub use anyhow;
-pub use firelib_macro::FlowControl;
+pub use firelib_macro::{alternative, FlowControl};
 use std::{
     convert::Infallible,
     ops::{ControlFlow, FromResidual, Try},
@@ -49,7 +49,11 @@ pub trait SucessFrom {
     fn success_from(from: Self::From) -> Self;
 }
 
-pub trait FlowControl: Sized + FromResidual<ControlFlow<Self, Infallible>> {
+pub trait FlowControl:
+    Sized
+    + FromResidual<ControlFlow<Self, Infallible>>
+    + FromResidual<Result<Infallible, anyhow::Error>>
+{
     fn ensure(condition: bool, f: impl FnOnce() -> Self) -> ControlFlow<Self, ()> {
         match condition {
             true => ControlFlow::Continue(()),

@@ -1,12 +1,13 @@
 #![feature(try_trait_v2)]
 use anyhow::{Error, Result};
-use firelib::{Alternative, FlowControl, Success, SucessFrom};
+use firelib::{alternative, Alternative, FlowControl, Success, SucessFrom};
 use std::{
     convert::Infallible,
     ops::{ControlFlow, Deref, FromResidual, Try},
 };
 
 #[derive(FlowControl)]
+#[alternative(value, Ok(None))]
 pub struct OptionErr<T> {
     pub value: Result<Option<T>>,
 }
@@ -32,30 +33,6 @@ impl<T> From<Option<T>> for OptionErr<T> {
 impl<T> From<T> for OptionErr<T> {
     fn from(value: T) -> Self {
         Self { value: Ok(Some(value)) }
-    }
-}
-
-impl<T> Alternative for OptionErr<T> {}
-
-impl<T> Try for OptionErr<T> {
-    type Output = Self;
-    type Residual = Self;
-
-    fn from_output(output: Self::Output) -> Self {
-        output
-    }
-
-    fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
-        match self.value {
-            Ok(None) => ControlFlow::Continue(self),
-            _ => ControlFlow::Break(self),
-        }
-    }
-}
-
-impl<T> FromResidual for OptionErr<T> {
-    fn from_residual(residual: <Self as Try>::Residual) -> Self {
-        residual
     }
 }
 
