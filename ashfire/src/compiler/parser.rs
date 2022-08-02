@@ -116,9 +116,11 @@ impl Parser {
                 Op { typ: OpType::CaseMatch, operand, .. } => {
                     (OpType::CaseOption, operand, loc).into()
                 }
-                block => {
-                    invalid_block(&loc, block, "`do` can only come in a `while` or `case` block")?
-                }
+                block => bail!(format_block(
+                    "`do` can only come in a `while` or `case` block",
+                    block,
+                    &loc
+                )),
             },
 
             KeywordType::Let => todo!(),
@@ -126,11 +128,11 @@ impl Parser {
 
             KeywordType::Colon => match self.pop_block(&loc, key)? {
                 Op { typ: OpType::CaseStart, .. } => todo!(),
-                block => invalid_block(
-                    &loc,
-                    block,
+                block => bail!(format_block(
                     "`:` can only be used on word or `case` block definition",
-                )?,
+                    block,
+                    &loc
+                )),
             },
 
             KeywordType::If => self.push_block((OpType::IfStart, loc).into()),
@@ -138,9 +140,11 @@ impl Parser {
             KeywordType::Else => match self.pop_block(&loc, key)? {
                 Op { typ: OpType::IfStart, .. } => todo!(),
                 Op { typ: OpType::CaseOption, .. } => todo!(),
-                block => {
-                    invalid_block(&loc, block, "`else` can only come in a `if` or `case` block")?
-                }
+                block => bail!(format_block(
+                    "`else` can only come in a `if` or `case` block",
+                    block,
+                    &loc,
+                )),
             },
 
             KeywordType::End => match self.pop_block(&loc, key)? {
@@ -156,7 +160,7 @@ impl Parser {
                     (OpType::EndProc, operand, loc).into()
                 }
 
-                block => invalid_block(&loc, block, "Expected `end` to close a valid block")?,
+                block => bail!(format_block("Expected `end` to close a valid block", block, &loc)),
             },
 
             KeywordType::Include |
@@ -374,7 +378,8 @@ impl Parser {
                         self.parse_proc_ctx(prog.get_word(tok.operand).to_owned(), word, prog),
                         self.parse_struct_ctx(i, word, prog),
                     );
-                    prog.invalid_token(tok, "context declaration")?;
+
+                    bail!(prog.invalid_token(tok, "context declaration"));
                 }
 
                 (_, TokenType::Keyword) => {
@@ -387,7 +392,7 @@ impl Parser {
 
                 (0, _) => return self.parse_word_ctx(&tok, word, prog),
 
-                _ => prog.invalid_token(tok, "context declaration")?,
+                _ => bail!(prog.invalid_token(tok, "context declaration")),
             }
             i += 1;
         }
@@ -456,7 +461,7 @@ impl Parser {
 
                         success!();
                     }
-                    Err(tok) => prog.invalid_token(tok, "context declaration")?,
+                    Err(tok) => bail!(prog.invalid_token(tok, "context declaration")),
                 }
             }
 
@@ -954,10 +959,10 @@ impl Program {
         format!("{} `{}`", desc, name)
     }
 
-    fn invalid_token(&self, tok: IRToken, error_context: &str) -> Result<!> {
+    fn invalid_token(&self, tok: IRToken, error_context: &str) -> String {
         let desc = self.type_name(tok.typ);
         let name = self.type_display(tok.typ, tok.operand);
-        bail!("{}Invalid `{desc}` found on {error_context}: `{name}`", tok.loc)
+        format!("{}Invalid `{desc}` found on {error_context}: `{name}`", tok.loc)
     }
 }
 
@@ -972,16 +977,13 @@ fn expect_token_by(
     }
 }
 
-fn invalid_block(loc: &Loc, block: Op, error: &str) -> Result<!> {
-    bail!(
+fn format_block(error: &str, block: Op, loc: &Loc) -> String {
+    format!(
         concat!(
             "{}{}, but found a `{:?}` block instead\n",
             "[INFO] {}The found block started here"
         ),
-        loc,
-        error,
-        block.typ,
-        block.loc
+        loc, error, block.typ, block.loc
     )
 }
 

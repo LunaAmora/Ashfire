@@ -1,4 +1,3 @@
-#![feature(never_type)]
 #![feature(const_trait_impl)]
 #[macro_use] extern crate num_derive;
 #[macro_use] extern crate log;
