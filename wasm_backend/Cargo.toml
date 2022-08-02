@@ -1,0 +1,10 @@
+[package]
+name = "wasm_backend"
+version = "0.1.0"
+edition = "2021"
+authors = ["Luna Amora <luna.mberry@gmail.com>"]
+description = "Wasm backend used by the Ashfire compiler"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
