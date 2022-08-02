@@ -7,7 +7,7 @@ extern crate num;
 mod compiler;
 mod logger;
 
-use crate::compiler::{parser::*, typechecker::*};
+use crate::compiler::{generator::*, parser::*, typechecker::*};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
@@ -48,7 +48,8 @@ fn main() {
     }
 }
 
-fn compile_command(path: PathBuf, _output: Option<PathBuf>) -> Result<()> {
-    let mut program = compile_file(path)?;
-    type_check(&mut program)
+fn compile_command(path: PathBuf, output: Option<PathBuf>) -> Result<()> {
+    let mut program = compile_file(&path)?;
+    type_check(&mut program)?;
+    generate_wasm(&program, path, output)
 }

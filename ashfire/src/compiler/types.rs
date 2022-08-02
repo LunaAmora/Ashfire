@@ -50,6 +50,7 @@ pub struct Program {
     pub data: Vec<SizedWord>,
     pub mem_size: i32,
     pub data_size: i32,
+    pub global_vars: Vec<TypedWord>,
     pub structs_types: Vec<StructType>,
     pub procs: Vec<Proc>,
 }
@@ -65,6 +66,14 @@ impl Program {
             ],
             ..Default::default()
         }
+    }
+
+    pub fn final_data_size(&self) -> i32 {
+        ((self.data_size + 3) / 4) * 4
+    }
+
+    pub fn total_vars_size(&self) -> i32 {
+        self.global_vars.len() as i32 * 4
     }
 
     pub fn get_word(&self, index: i32) -> &String {
@@ -147,6 +156,12 @@ impl Proc {
 pub struct Contract {
     pub ins: Vec<TokenType>,
     pub outs: Vec<TokenType>,
+}
+
+impl From<&Contract> for (usize, usize) {
+    fn from(contr: &Contract) -> Self {
+        (contr.ins.len(), contr.outs.len())
+    }
 }
 
 #[derive(Clone)]

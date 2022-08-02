@@ -8,7 +8,6 @@ use std::{collections::VecDeque, fs::File, io::BufReader, path::PathBuf};
 struct Parser {
     ir_tokens: VecDeque<IRToken>,
     consts: Vec<TypedWord>,
-    global_vars: Vec<TypedWord>,
     global_mems: Vec<Word>,
     op_blocks: Vec<Op>,
     structs: Vec<Word>,
@@ -263,7 +262,7 @@ impl Parser {
                 .map(|proc| proc.local_vars.clone())
                 .map_or_else(OptionErr::default, |vars| self
                     .try_get_var(&word, vars, true, var_typ, prog)),
-            self.try_get_var(&word, self.global_vars.clone(), false, var_typ, prog),
+            self.try_get_var(&word, prog.global_vars.clone(), false, var_typ, prog),
         )
     }
 
@@ -835,15 +834,15 @@ impl Parser {
     fn register_var(&mut self, struct_word: TypedWord, prog: &mut Program) {
         match self.current_proc_mut(prog) {
             Some(proc) => proc.local_vars.push(struct_word),
-            _ => self.global_vars.push(struct_word),
+            _ => prog.global_vars.push(struct_word),
         }
     }
 
-    fn lex_file(&mut self, path: PathBuf, prog: &mut Program) -> Result<()> {
+    fn lex_file(&mut self, path: &PathBuf, prog: &mut Program) -> Result<()> {
         let reader = BufReader::new(
-            File::open(&path).with_context(|| format!("could not read file `{:?}`", &path))?,
+            File::open(path).with_context(|| format!("could not read file `{:?}`", &path))?,
         );
-        let mut lex = Lexer::new(reader, &path);
+        let mut lex = Lexer::new(reader, path);
 
         while let Some(token) = lex.lex_next_token(prog).value? {
             if &token != KeywordType::Include {
@@ -861,12 +860,12 @@ impl Parser {
 
             let include_path = prog.get_string(tok.operand).as_str();
 
-            let include = get_dir(&path)
+            let include = get_dir(path)
                 .with_context(|| "failed to get file directory path")?
                 .join(include_path);
 
             info!("Including file: {:?}", include);
-            self.lex_file(include, prog)?;
+            self.lex_file(&include, prog)?;
         }
         Ok(())
     }
@@ -987,7 +986,7 @@ fn format_block(error: &str, block: Op, loc: &Loc) -> String {
     )
 }
 
-pub fn compile_file(path: PathBuf) -> Result<Program> {
+pub fn compile_file(path: &PathBuf) -> Result<Program> {
     info!("Compiling file: {:?}", path);
     let mut program = Program::new();
     let mut parser = Parser::new();

@@ -5,7 +5,6 @@ binop_separator = "Back"
 newline_style = "Unix"
 use_field_init_shorthand = true
 overflow_delimited_expr = true
-format_strings = true
 inline_attribute_width = 40
 struct_lit_width = 50
 fn_call_width = 80
