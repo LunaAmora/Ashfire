@@ -1,3 +1,9 @@
+#![allow(unused_variables)]
+pub mod wasm_types;
+
+use wasm_types::*;
+
+#[derive(Default)]
 pub struct Module {
     pub types: Vec<FuncType>,
     pub imports: Vec<Import>,
@@ -7,117 +13,32 @@ pub struct Module {
     pub funcs: Vec<Func>,
 }
 
-pub enum WasmType {
-    I32,
-}
+impl Module {
+    pub fn new() -> Self {
+        Self { ..Default::default() }
+    }
 
-pub struct WasmValue {
-    pub wasm_type: WasmType,
-    pub value: i32,
-}
+    pub fn new_mem(&mut self) -> usize {
+        todo!();
+    }
 
-pub struct FuncType {
-    pub param: Vec<WasmType>,
-    pub result: Vec<WasmType>,
-}
+    pub fn add_import(
+        &mut self, module: &str, name: &str, label: &str, ins: &[WasmType], outs: &[WasmType],
+    ) {
+        todo!();
+    }
 
-pub struct Import {
-    pub module: String,
-    pub label: String,
-    pub import: Bind,
-}
+    pub fn add_export(&mut self, label: &str, export: Bind) {
+        todo!();
+    }
 
-pub struct Export {
-    pub label: String,
-    pub export: Bind,
-}
+    pub fn add_global(&mut self, label: &str, typ: WasmType, value: i32) -> usize {
+        todo!();
+    }
 
-pub enum Bind {
-    Global(Id),
-    Func(Id),
-    Mem(Id),
-}
-
-pub enum Id {
-    Value(usize),
-    Label(String),
-}
-
-pub struct Global {
-    pub wasm_type: WasmType,
-    pub value: WasmValue,
-    pub mutable: bool,
-}
-
-pub struct Data {
-    pub position: usize,
-    pub bytes: Vec<u8>,
-}
-
-pub struct Func {
-    pub contract: Id,
-    pub code: Vec<Instruction>,
-}
-
-pub enum Instruction {
-    Block(BlockType, Option<Id>),
-    Global(VarMethod),
-    Local(VarMethod),
-    Const(WasmValue),
-    I32(NumMethod),
-    Call(Id),
-    BrIf(Id),
-    Br(Id),
-    Drop,
-    End,
-}
-
-pub enum BlockType {
-    If,
-    Loop(Option<String>),
-    Block(Option<String>),
-}
-
-#[allow(non_camel_case_types)]
-pub enum VarMethod {
-    get,
-    set,
-}
-
-#[allow(non_camel_case_types)]
-pub enum NumMethod {
-    add,
-    sub,
-    store,
-    load,
-    or,
-    and,
-    eq,
-    lt_s,
-    ge_s,
-    le_s,
-    gt_s,
-}
-
-pub enum WasmIR {
-    OpenParen,
-    CloseParen,
-    Keyword(Keyword),
-    Type(WasmType),
-    Local(Instruction),
-}
-
-#[allow(non_camel_case_types)]
-pub enum Keyword {
-    module,
-    func,
-    param,
-    result,
-    import,
-    export,
-    global,
-    memory,
-    data,
-    r#type,
-    r#mut,
+    pub fn add_fn(
+        &mut self, label: &str, ins: &[WasmType], outs: &[WasmType], inst: Vec<Instruction>,
+    ) -> usize {
+        todo!();
+    }
 }
