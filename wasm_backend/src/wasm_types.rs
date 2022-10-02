@@ -14,6 +14,8 @@ pub struct FuncType {
     pub result: Vec<WasmType>,
 }
 
+pub struct Memory {}
+
 pub struct Import {
     pub module: String,
     pub label: String,
@@ -30,6 +32,12 @@ pub enum Ident {
     Label(String),
 }
 
+impl From<&str> for Ident {
+    fn from(label: &str) -> Self {
+        Ident::Label(label.to_owned())
+    }
+}
+
 pub enum Bind {
     Global(Ident),
     Func(Ident),
@@ -37,9 +45,7 @@ pub enum Bind {
 }
 
 pub struct Global {
-    pub wasm_type: WasmType,
     pub value: WasmValue,
-    pub mutable: bool,
 }
 
 pub struct Data {
