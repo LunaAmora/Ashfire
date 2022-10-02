@@ -161,14 +161,8 @@ impl TypeChecker {
             OpType::Equal => todo!(),
 
             OpType::PrepProc => {
-                let ins = self
-                    .visit_proc(program, op.operand as usize)
-                    .contract
-                    .ins
-                    .clone();
-
-                for typ in ins {
-                    self.push_frame(typ, loc);
+                for typ in &self.visit_proc(program, op.operand as usize).contract.ins {
+                    self.push_frame(*typ, loc);
                 }
             }
 

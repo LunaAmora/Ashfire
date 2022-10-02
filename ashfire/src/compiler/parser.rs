@@ -353,7 +353,7 @@ impl Parser {
         OptionErr::default()
     }
 
-    fn try_get_struct_type<'a>(&'a self, word: &LocWord, prog: &'a Program) -> Option<&StructType> {
+    fn try_get_struct_type<'a>(&self, word: &LocWord, prog: &'a Program) -> Option<&'a StructType> {
         self.structs
             .iter()
             .find(|stk| word == stk.as_str())

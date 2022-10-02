@@ -13,7 +13,7 @@ pub trait ProgramVisitor {
         self.get_index().is_some()
     }
 
-    fn current_proc<'a>(&'a self, program: &'a Program) -> Option<&Proc> {
+    fn current_proc<'a>(&self, program: &'a Program) -> Option<&'a Proc> {
         if let Some(i) = self.get_index() {
             program.procs.get(i)
         } else {
@@ -21,7 +21,7 @@ pub trait ProgramVisitor {
         }
     }
 
-    fn current_proc_mut<'a>(&'a self, program: &'a mut Program) -> Option<&mut Proc> {
+    fn current_proc_mut<'a>(&self, program: &'a mut Program) -> Option<&'a mut Proc> {
         if let Some(i) = self.get_index() {
             program.procs.get_mut(i)
         } else {
@@ -29,7 +29,7 @@ pub trait ProgramVisitor {
         }
     }
 
-    fn visit_proc<'a>(&'a mut self, program: &'a Program, index: usize) -> &Proc {
+    fn visit_proc<'a>(&mut self, program: &'a Program, index: usize) -> &'a Proc {
         self.enter_proc(index);
         program.procs.get(index).unwrap()
     }
