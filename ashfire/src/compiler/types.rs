@@ -336,6 +336,7 @@ impl Deref for Word {
     }
 }
 
+#[derive(Clone)]
 pub struct SizedWord {
     pub word: Word,
     pub offset: i32,

@@ -1,17 +1,25 @@
-#![allow(unused_variables)]
 pub mod wasm_types;
 
+use anyhow::Result;
+use itertools::Itertools;
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{BufWriter, Write},
+};
 use wasm_types::*;
 
 #[derive(Default)]
 pub struct Module {
-    pub types: Vec<FuncType>,
-    pub mems: Vec<Memory>,
-    pub imports: Vec<Import>,
-    pub exports: Vec<Export>,
-    pub globals: Vec<Global>,
-    pub data: Vec<Data>,
-    pub funcs: Vec<Func>,
+    types: Vec<FuncType>,
+    mems: Vec<Memory>,
+    imports: Vec<Import>,
+    exports: Vec<Export>,
+    globals: Vec<Global>,
+    data: Vec<String>,
+    funcs: Vec<Func>,
+    func_map: HashMap<String, usize>,
+    global_map: HashMap<String, usize>,
 }
 
 impl Module {
@@ -20,19 +28,19 @@ impl Module {
     }
 
     pub fn new_mem(&mut self) -> usize {
-        self.mems.push(Memory {});
+        self.mems.push(Memory::default());
         self.mems.len() - 1
     }
 
     pub fn add_import(
         &mut self, module: &str, name: &str, label: &str, ins: &[WasmType], outs: &[WasmType],
     ) -> usize {
-        let func = self.new_fn(label, ins, outs, vec![]);
+        let func = self.add_fn(label, ins, outs, vec![]);
 
         self.imports.push(Import {
             module: module.to_owned(),
             label: name.to_owned(),
-            import: Bind::Func(Ident::Id(func)),
+            bind: Bind::Func(Ident::Id(func)),
         });
 
         func
@@ -40,30 +48,167 @@ impl Module {
 
     pub fn add_export(&mut self, label: &str, export: Bind) {
         self.exports
-            .push(Export { label: label.to_owned(), export })
+            .push(Export { label: label.to_owned(), bind: export })
     }
 
-    pub fn add_global(&mut self, label: &str, wasm_type: WasmType, value: i32) -> usize {
+    pub fn add_global(
+        &mut self, label: &str, wasm_type: WasmType, value: i32, is_mut: bool,
+    ) -> usize {
         self.globals
-            .push(Global { value: WasmValue { wasm_type, value } });
-        self.globals.len() - 1
+            .push(Global { value: WasmValue { wasm_type, value, is_mut } });
+        let index = self.globals.len() - 1;
+        self.global_map.insert(label.to_owned(), index);
+
+        index
     }
 
-    pub fn add_fn(&mut self, func: Func) -> usize {
-        self.funcs.push(func);
-        self.funcs.len() - 1
-    }
-
-    pub fn new_fn(
+    pub fn add_fn(
         &mut self, label: &str, ins: &[WasmType], outs: &[WasmType], code: Vec<Instruction>,
     ) -> usize {
-        let contract = Ident::Id(self.new_contract(ins, outs));
-        self.add_fn(Func { contract, code })
+        let contract = self.new_contract(ins, outs);
+        self.funcs.push(Func { contract, code });
+        let index = self.funcs.len() - 1;
+        self.func_map.insert(label.to_owned(), index);
+
+        index
     }
 
     pub fn new_contract(&mut self, ins: &[WasmType], outs: &[WasmType]) -> usize {
         self.types
             .push(FuncType { param: ins.to_vec(), result: outs.to_vec() });
         self.types.len() - 1
+    }
+
+    pub fn add_data(&mut self, data: &str) {
+        self.data.push(data.to_owned());
+    }
+
+    fn func_label_by_id(&self, id: &Ident) -> String {
+        match id {
+            Ident::Id(index) => self
+                .func_map
+                .iter()
+                .find(|pair| pair.1 == index)
+                .unwrap()
+                .0
+                .to_owned(),
+            Ident::Label(label) => label.to_owned(),
+        }
+    }
+
+    fn func_by_id(&self, _id: &Ident) -> &Func {
+        match _id {
+            Ident::Id(index) => self.funcs.get(*index),
+            Ident::Label(label) => self.funcs.get(*self.func_map.get(label).unwrap()),
+        }
+        .unwrap()
+    }
+
+    fn write_imports(&mut self, writer: &mut BufWriter<File>) -> Result<()> {
+        for import in &self.imports {
+            match &import.bind {
+                Bind::Global(_) => todo!(),
+                Bind::Func(id) => {
+                    let func = self.func_by_id(id);
+                    let contr = self.types.get(func.contract).unwrap();
+                    let label = self.func_label_by_id(id);
+
+                    writer.write_all(
+                        format!(
+                            "(import \"{0}\" \"{1}\" (func ${2} {3}))\n",
+                            import.module, import.label, label, contr
+                        )
+                        .as_bytes(),
+                    )?;
+
+                    self.func_map.remove(&label);
+                }
+                Bind::Mem(_) => todo!(),
+            }
+        }
+        Ok(())
+    }
+
+    fn write_memories(&self, writer: &mut BufWriter<File>) -> Result<()> {
+        for mem in &self.mems {
+            writer.write_all(format!("{mem}\n").as_bytes())?;
+        }
+        Ok(())
+    }
+
+    fn write_globals(&self, writer: &mut BufWriter<File>) -> Result<()> {
+        for (label, index) in self.global_map.iter().sorted_by_key(|entry| entry.1) {
+            let global = &self.globals.get(*index).unwrap().value;
+
+            let global_type =
+                format!("{}{}", if global.is_mut { "mut " } else { "" }, global.wasm_type);
+            writer.write_all(
+                format!(
+                    "(global ${label} ({global_type}) ({}.const {}))\n",
+                    global.wasm_type, global.value
+                )
+                .as_bytes(),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn write_funcs(&self, writer: &mut BufWriter<File>) -> Result<()> {
+        for (label, index) in self.func_map.iter().sorted_by_key(|entry| entry.1) {
+            let func = self.funcs.get(*index).unwrap();
+            let contr = self.types.get(func.contract).unwrap();
+
+            writer.write_all(
+                format!("(func ${0} {1}\n  {2}\n)\n", label, contr, func.code.iter().join(" "))
+                    .as_bytes(),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn write_data(&self, _writer: &mut BufWriter<File>) -> Result<()> {
+        _writer.write_all(
+            format!(
+                "(data (i32.const 0)\n{}\n)\n",
+                self.data.iter().map(|d| format!("  \"{d}\"")).join("\n")
+            )
+            .as_bytes(),
+        )?;
+        Ok(())
+    }
+
+    fn write_exports(&self, writer: &mut BufWriter<File>) -> Result<()> {
+        for export in &self.exports {
+            match &export.bind {
+                Bind::Global(_) => todo!(),
+                Bind::Func(id) => writer.write_all(
+                    format!(
+                        "(export \"{}\" (func ${}))\n",
+                        export.label,
+                        self.func_label_by_id(id)
+                    )
+                    .as_bytes(),
+                )?,
+                Bind::Mem(id) => {
+                    let mem = match id {
+                        Ident::Id(mem_index) => mem_index,
+                        Ident::Label(_) => unreachable!(),
+                    };
+
+                    writer.write_all(format!("(export \"memory\" (memory {mem}))\n").as_bytes())?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn write_text(&mut self, mut writer: BufWriter<File>) -> Result<()> {
+        self.write_imports(&mut writer)?;
+        self.write_memories(&mut writer)?;
+        self.write_globals(&mut writer)?;
+        self.write_funcs(&mut writer)?;
+        self.write_data(&mut writer)?;
+        self.write_exports(&mut writer)?;
+        Ok(())
     }
 }

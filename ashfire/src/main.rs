@@ -11,7 +11,7 @@ use crate::compiler::{generator::*, parser::*, typechecker::*};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
-use std::path::PathBuf;
+use std::{path::PathBuf, process::Command};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -30,6 +30,12 @@ enum Commands {
         path: PathBuf,
         #[clap(short, long)]
         output: Option<PathBuf>,
+        /// Run the `.wasm` file with a runtime.
+        #[clap(short, long)]
+        run: bool,
+        /// Optimize the `.wasm` file to reduce it's size. (Needs Binaryen).
+        #[clap(short = 'p', long)]
+        opt: bool,
     },
 }
 
@@ -42,14 +48,48 @@ fn main() {
     }
 
     if let Err(err) = match args.command {
-        Commands::Com { path, output } => compile_command(path, output),
+        Commands::Com { path, output, run, opt } => compile_command(path, output, run, opt),
     } {
         error!("{:#}", err);
     }
 }
 
-fn compile_command(path: PathBuf, output: Option<PathBuf>) -> Result<()> {
+fn compile_command(path: PathBuf, output: Option<PathBuf>, run: bool, opt: bool) -> Result<()> {
     let mut program = compile_file(&path)?;
     type_check(&mut program)?;
-    generate_wasm(&program, path, output)
+
+    let mut out = output.unwrap_or(path);
+    out.set_extension("wat");
+
+    generate_wasm(&program, out.clone())?;
+
+    let mut out_wasm = out.clone();
+    out_wasm.set_extension("wasm");
+
+    info!("Running wat2wasm");
+    Command::new("wat2wasm")
+        .arg(out)
+        .arg("-o")
+        .arg(out_wasm.clone())
+        .spawn()?
+        .wait()?;
+
+    if opt {
+        info!("Running wasm-opt");
+        Command::new("wasm-opt")
+            .arg("-O4")
+            .arg("--enable-multivalue")
+            .arg(out_wasm.clone())
+            .arg("-o")
+            .arg(out_wasm.clone())
+            .spawn()?
+            .wait()?;
+    }
+
+    if run {
+        info!("Running wasmtime");
+        Command::new("wasmtime").arg(out_wasm).spawn()?.wait()?;
+    }
+
+    Ok(())
 }

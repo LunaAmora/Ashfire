@@ -1,35 +1,85 @@
+use itertools::Itertools;
+use std::fmt::{self, Display, Formatter, Result};
+
 #[derive(Clone, Copy)]
 pub enum WasmType {
-    MutI32,
     I32,
 }
 
+impl Display for WasmType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            WasmType::I32 => write!(f, "i32"),
+        }
+    }
+}
+
 pub struct WasmValue {
-    pub wasm_type: WasmType,
-    pub value: i32,
+    pub(crate) wasm_type: WasmType,
+    pub(crate) value: i32,
+    pub(crate) is_mut: bool,
 }
 
 pub struct FuncType {
-    pub param: Vec<WasmType>,
-    pub result: Vec<WasmType>,
+    pub(crate) param: Vec<WasmType>,
+    pub(crate) result: Vec<WasmType>,
 }
 
-pub struct Memory {}
+impl Display for FuncType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let mut res = String::new();
+
+        if !self.param.is_empty() {
+            res += &format!("(param {})", self.param.iter().join(" "));
+        }
+
+        if !self.result.is_empty() {
+            res += &format!(" (result {})", self.result.iter().join(" "))
+        }
+
+        write!(f, "{res}")
+    }
+}
+
+pub struct Memory {
+    pages: usize,
+}
+
+impl Default for Memory {
+    fn default() -> Self {
+        Self { pages: 1 }
+    }
+}
+
+impl Display for Memory {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "(memory {})", self.pages)
+    }
+}
 
 pub struct Import {
-    pub module: String,
-    pub label: String,
-    pub import: Bind,
+    pub(crate) module: String,
+    pub(crate) label: String,
+    pub(crate) bind: Bind,
 }
 
 pub struct Export {
-    pub label: String,
-    pub export: Bind,
+    pub(crate) label: String,
+    pub(crate) bind: Bind,
 }
 
 pub enum Ident {
     Id(usize),
     Label(String),
+}
+
+impl Display for Ident {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Ident::Id(id) => write!(f, "{id}"),
+            Ident::Label(label) => write!(f, "${label}"),
+        }
+    }
 }
 
 impl From<&str> for Ident {
@@ -45,22 +95,19 @@ pub enum Bind {
 }
 
 pub struct Global {
-    pub value: WasmValue,
-}
-
-pub struct Data {
-    pub position: usize,
-    pub bytes: Vec<u8>,
+    pub(crate) value: WasmValue,
 }
 
 pub struct Func {
-    pub contract: Ident,
-    pub code: Vec<Instruction>,
+    pub(crate) contract: usize,
+    pub(crate) code: Vec<Instruction>,
 }
 
+#[derive(Debug)]
+#[allow(non_camel_case_types)]
 pub enum Scope {
-    Local,
-    Global,
+    local,
+    global,
 }
 
 pub enum Instruction {
@@ -76,12 +123,31 @@ pub enum Instruction {
     End,
 }
 
+impl Display for Instruction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let text = match self {
+            Instruction::Block(_, _) => todo!(),
+            Instruction::Get(s, i) => format!("{0:?}.get {i}", s),
+            Instruction::Set(s, i) => format!("{0:?}.set {i}", s),
+            Instruction::I32(n) => format!("i32.{0:?}", n),
+            Instruction::Const(v) => format!("i32.const {v}"),
+            Instruction::Call(i) => format!("call {i}"),
+            Instruction::BrIf(_) => todo!(),
+            Instruction::Br(_) => todo!(),
+            Instruction::Drop => "drop".to_string(),
+            Instruction::End => "end".to_string(),
+        };
+        write!(f, "{text}")
+    }
+}
+
 pub enum BlockType {
     If,
     Loop(Option<Ident>),
     Block(Option<Ident>),
 }
 
+#[derive(Debug)]
 #[allow(non_camel_case_types)]
 pub enum NumMethod {
     add,
@@ -95,26 +161,4 @@ pub enum NumMethod {
     ge_s,
     le_s,
     gt_s,
-}
-
-pub enum WasmIR {
-    OpenParen,
-    CloseParen,
-    Keyword(Keyword),
-    Type(WasmType),
-    Local(Instruction),
-}
-
-#[allow(non_camel_case_types)]
-pub enum Keyword {
-    module,
-    func,
-    param,
-    result,
-    import,
-    export,
-    global,
-    memory,
-    data,
-    r#type,
 }

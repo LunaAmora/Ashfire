@@ -1,15 +1,16 @@
-#![allow(unreachable_code)]
-#![allow(dead_code)]
 use std::{collections::HashMap, fs::File, io::BufWriter, path::PathBuf};
 
-use super::types::{Contract, Op, OpType, Program, ProgramVisitor};
-use anyhow::{bail, Result};
+use super::types::{Contract, IntrinsicType, Op, OpType, Program, ProgramVisitor};
+use anyhow::{bail, Context, Result};
+use itertools::Itertools;
 use wasm_backend::{wasm_types::*, Module};
+use Ident::*;
+use Instruction::*;
+use Scope::*;
 
 pub struct Generator {
-    writer: BufWriter<File>,
     current_proc: Option<usize>,
-    block_map: HashMap<i32, i32>,
+    _block_map: HashMap<i32, i32>,
     current_func: Option<FuncGen>,
 }
 
@@ -23,21 +24,16 @@ impl ProgramVisitor for Generator {
     }
 }
 
-use Ident::*;
-use Instruction::*;
-use Scope::*;
-
 impl Generator {
-    fn new(writer: BufWriter<File>) -> Self {
+    fn new() -> Self {
         Self {
-            writer,
             current_proc: None,
-            block_map: HashMap::new(),
+            _block_map: HashMap::new(),
             current_func: None,
         }
     }
 
-    fn generate(&mut self, program: &Program) -> Result<()> {
+    fn generate_module(&mut self, program: &Program) -> Result<Module> {
         let i1 = &[WasmType::I32; 1];
         let i2 = &[WasmType::I32; 2];
         let i3 = &[WasmType::I32; 3];
@@ -50,39 +46,39 @@ impl Generator {
         let mem = wasm.new_mem();
         wasm.add_export("memory", Bind::Mem(Id(mem)));
 
-        wasm.new_fn("dup", i1, i2, vec![Get(Local, Id(0)), Get(Local, Id(0))]);
-        wasm.new_fn("swap", i2, i2, vec![Get(Local, Id(1)), Get(Local, Id(0))]);
-        wasm.new_fn("over", i2, i3, vec![Get(Local, Id(0)), Get(Local, Id(1)), Get(Local, Id(0))]);
-        wasm.new_fn("rot", i3, i3, vec![Get(Local, Id(1)), Get(Local, Id(2)), Get(Local, Id(0))]);
+        wasm.add_fn("dup", i1, i2, vec![Get(local, Id(0)), Get(local, Id(0))]);
+        wasm.add_fn("swap", i2, i2, vec![Get(local, Id(1)), Get(local, Id(0))]);
+        wasm.add_fn("over", i2, i3, vec![Get(local, Id(0)), Get(local, Id(1)), Get(local, Id(0))]);
+        wasm.add_fn("rot", i3, i3, vec![Get(local, Id(1)), Get(local, Id(2)), Get(local, Id(0))]);
 
         let stack_start = program.mem_size + program.final_data_size() + program.total_vars_size();
-        let stk = wasm.add_global("LOCAL_STACK", WasmType::MutI32, stack_start);
+        let stk = wasm.add_global("LOCAL_STACK", WasmType::I32, stack_start, true);
 
-        let aloc_local = wasm.new_fn("aloc_local", i1, &[], vec![
-            Get(Global, Id(stk)),
-            Get(Local, Id(0)),
+        let aloc_local = wasm.add_fn("aloc_local", i1, &[], vec![
+            Get(global, Id(stk)),
+            Get(local, Id(0)),
             I32(NumMethod::add),
-            Set(Global, Id(stk)),
+            Set(global, Id(stk)),
         ]);
 
-        wasm.new_fn("free_local", i1, &[], vec![
-            Get(Global, Id(stk)),
-            Get(Local, Id(0)),
+        wasm.add_fn("free_local", i1, &[], vec![
+            Get(global, Id(stk)),
+            Get(local, Id(0)),
             I32(NumMethod::sub),
-            Set(Global, Id(stk)),
+            Set(global, Id(stk)),
         ]);
 
-        wasm.new_fn("bind_local", i1, &[], vec![
-            Get(Global, Id(stk)),
-            Get(Local, Id(0)),
+        wasm.add_fn("bind_local", i1, &[], vec![
+            Get(global, Id(stk)),
+            Get(local, Id(0)),
             I32(NumMethod::store),
             Const(4),
             Call(Id(aloc_local)),
         ]);
 
-        wasm.new_fn("push_local", i1, i1, vec![
-            Get(Global, Id(stk)),
-            Get(Local, Id(0)),
+        wasm.add_fn("push_local", i1, i1, vec![
+            Get(global, Id(stk)),
+            Get(local, Id(0)),
             I32(NumMethod::sub),
         ]);
 
@@ -90,35 +86,110 @@ impl Generator {
             self.generate_op(op, program, &mut wasm)?;
         }
 
-        todo!("Generate data section");
+        wasm.add_export("_start", Bind::Func("start".into()));
 
-        Ok(())
+        for data in program
+            .data
+            .clone()
+            .iter()
+            .filter(|d| d.offset >= 0)
+            .sorted_by_key(|d| d.offset)
+        {
+            wasm.add_data(data)
+        }
+
+        for _var in &program.global_vars {
+            todo!("align vars padding");
+        }
+
+        Ok(wasm)
     }
 
-    fn generate_op(&mut self, op: Op, program: &Program, _module: &mut Module) -> Result<()> {
+    fn generate_op(&mut self, op: Op, program: &Program, module: &mut Module) -> Result<()> {
         match op.typ {
-            OpType::PushData(_) => todo!(),
-            OpType::PushStr => todo!(),
-            OpType::PushLocalMem => todo!(),
+            OpType::PushData(_) => self.current_fn()?.push(Const(op.operand)),
+            OpType::PushStr => {
+                let data = program.data.get(op.operand as usize).unwrap();
+                self.current_fn()?
+                    .extend(vec![Const(data.size()), Const(data.offset)])
+            }
+            OpType::PushLocalMem => {
+                let ptr = self.current_fn()?.bind_count * 4 + op.operand;
+
+                self.current_fn()?
+                    .extend(vec![Const(ptr), Call("push_local".into())]);
+            }
             OpType::PushGlobalMem => todo!(),
-            OpType::PushLocal => todo!(),
+            OpType::PushLocal => {
+                let proc = self.current_proc(program).unwrap();
+                let ptr = (self.current_fn()?.bind_count + 1 + op.operand) * 4 + proc.mem_size;
+
+                self.current_fn()?
+                    .extend(vec![Const(ptr), Call("push_local".into())]);
+            }
             OpType::PushGlobal => todo!(),
             OpType::OffsetLoad => todo!(),
-            OpType::Offset => todo!(),
-            OpType::Intrinsic => todo!(),
-            OpType::Dup => self.current_fn()?.push(Call("dup".into())),
-            OpType::Drop => todo!(),
-            OpType::Swap => todo!(),
+            OpType::Offset => self
+                .current_fn()?
+                .extend(vec![Const(op.operand), I32(NumMethod::add)]),
+            OpType::Intrinsic => match IntrinsicType::from(op.operand) {
+                IntrinsicType::Plus => self.current_fn()?.push(I32(NumMethod::add)),
+                IntrinsicType::Minus => self.current_fn()?.push(I32(NumMethod::sub)),
+                IntrinsicType::Times => todo!(),
+                IntrinsicType::Div => todo!(),
+                IntrinsicType::Greater => todo!(),
+                IntrinsicType::GreaterE => todo!(),
+                IntrinsicType::Lesser => todo!(),
+                IntrinsicType::LesserE => todo!(),
+                IntrinsicType::And => self.current_fn()?.push(I32(NumMethod::and)),
+                IntrinsicType::Or => self.current_fn()?.push(I32(NumMethod::or)),
+                IntrinsicType::Xor => todo!(),
+                IntrinsicType::Load8 => todo!(),
+                IntrinsicType::Store8 => todo!(),
+                IntrinsicType::Load16 => todo!(),
+                IntrinsicType::Store16 => todo!(),
+                IntrinsicType::Load32 => todo!(),
+                IntrinsicType::Store32 => self
+                    .current_fn()?
+                    .extend(vec![Call("swap".into()), I32(NumMethod::store)]),
+                IntrinsicType::FdWrite => self.push_call("fd_write")?,
+                IntrinsicType::Cast(_) => {}
+            },
+            OpType::Dup => self.push_call("dup")?,
+            OpType::Drop => self.current_fn()?.push(Drop),
+            OpType::Swap => self.push_call("swap")?,
             OpType::Over => todo!(),
             OpType::Rot => todo!(),
-            OpType::Call => todo!(),
+            OpType::Call => {
+                let id = program
+                    .procs
+                    .get(op.operand as usize)
+                    .unwrap()
+                    .name
+                    .to_owned();
+                self.current_fn()?.push(Call(Label(id)));
+            }
             OpType::Equal => todo!(),
             OpType::PrepProc => self.prep_proc(program, op)?,
             OpType::IfStart => todo!(),
             OpType::Else => todo!(),
             OpType::EndIf => todo!(),
             OpType::EndElse => todo!(),
-            OpType::EndProc => todo!(),
+            OpType::EndProc => {
+                let mut func = self
+                    .current_func
+                    .take()
+                    .with_context(|| "No Wasm function block is open")?;
+
+                let proc = self.current_proc(program).unwrap();
+                let mem_to_free = proc.mem_size + (proc.local_vars.len() as i32 * 4);
+
+                if mem_to_free > 0 {
+                    func.extend(vec![Const(mem_to_free), Call("free_local".into())]);
+                }
+
+                module.add_fn(&func.label, &func.contract.0, &func.contract.1, func.code);
+            }
             OpType::BindStack => todo!(),
             OpType::PushBind => todo!(),
             OpType::PopBind => todo!(),
@@ -126,12 +197,17 @@ impl Generator {
             OpType::Do => todo!(),
             OpType::EndWhile => todo!(),
             OpType::Unpack => self.unpack_struct(program, op.operand as usize)?,
-            OpType::ExpectType => todo!(),
+            OpType::ExpectType => {}
             OpType::CaseStart => todo!(),
             OpType::CaseMatch => todo!(),
             OpType::CaseOption => todo!(),
             OpType::EndCase => todo!(),
         };
+        Ok(())
+    }
+
+    fn push_call(&mut self, label: &str) -> Result<()> {
+        self.current_fn()?.push(Call(label.into()));
         Ok(())
     }
 
@@ -166,17 +242,16 @@ impl Generator {
         }
 
         for i in 0..proc.contract.ins.len() {
-            func.push(Get(Local, Id(i)));
+            func.push(Get(local, Id(i)));
         }
 
         Ok(())
     }
 
     fn current_fn(&mut self) -> Result<&mut FuncGen> {
-        Ok(self
-            .current_func
+        self.current_func
             .as_mut()
-            .expect("No Wasm function block is open"))
+            .with_context(|| "No Wasm function block is open")
     }
 
     fn unpack_struct(&mut self, program: &Program, index: usize) -> Result<()> {
@@ -219,6 +294,7 @@ struct FuncGen {
     label: String,
     contract: (Vec<WasmType>, Vec<WasmType>),
     code: Vec<Instruction>,
+    bind_count: i32,
 }
 
 impl FuncGen {
@@ -227,6 +303,7 @@ impl FuncGen {
             label: label.to_owned(),
             contract: contract.into(),
             code: Vec::new(),
+            bind_count: 0,
         }
     }
 
@@ -247,13 +324,12 @@ impl From<&Contract> for (Vec<WasmType>, Vec<WasmType>) {
     }
 }
 
-pub fn generate_wasm(program: &Program, path: PathBuf, output: Option<PathBuf>) -> Result<()> {
-    let mut out = output.unwrap_or(path);
-    out.set_extension("wat");
-    info!("Generating {:?}", out);
+pub fn generate_wasm(program: &Program, output: PathBuf) -> Result<()> {
+    info!("Generating {:?}", output);
 
-    let file = File::create(out)?;
-    Generator::new(BufWriter::new(file)).generate(program)?;
+    let writer = BufWriter::new(File::create(output)?);
+    let mut module = Generator::new().generate_module(program)?;
+    module.write_text(writer)?;
 
     Ok(())
 }
