@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use super::types::*;
-use anyhow::{anyhow, bail, ensure, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use ashlib::{EvalStack, Stack};
 use firelib::equals_any;
 use itertools::Itertools;
@@ -118,7 +118,7 @@ impl TypeChecker {
 
                     let cast: TokenType = match n {
                         1.. => ValueType::from((n - 1) as usize).into(),
-                        0 => todo!("invalid value"),
+                        0 => unreachable!(),
                         n => TokenType::DataPtr(ValueType::from((-n - 1) as usize)),
                     };
                     self.push_frame(cast, loc);
@@ -302,17 +302,17 @@ pub trait Expect<T>: Stack<T> {
 
     fn expect_peek(&mut self, arity_t: ArityType, program: &Program, loc: &Loc) -> Result<&T> {
         self.expect_arity(1, arity_t, program, loc)?;
-        self.peek().ok_or_else(|| anyhow!("unreachable"))
+        Ok(self.peek().unwrap())
     }
 
     fn expect_pop(&mut self, loc: &Loc) -> Result<T> {
         self.expect_stack_size(1, loc)?;
-        self.pop().ok_or_else(|| anyhow!("unreachable"))
+        Ok(self.pop().unwrap())
     }
 
     fn expect_pop_type(&mut self, arity_t: TokenType, program: &Program, loc: &Loc) -> Result<T> {
         self.expect_arity(1, ArityType::Type(arity_t), program, loc)?;
-        self.pop().ok_or_else(|| anyhow!("unreachable"))
+        Ok(self.pop().unwrap())
     }
 
     fn expect_arity(&self, n: usize, arity: ArityType, program: &Program, loc: &Loc) -> Result<()> {

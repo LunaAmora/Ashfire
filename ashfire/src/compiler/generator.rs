@@ -99,7 +99,7 @@ impl Generator {
         }
 
         for _var in &program.global_vars {
-            todo!("align vars padding");
+            todo!("align data padding and add vars to module");
         }
 
         Ok(wasm)

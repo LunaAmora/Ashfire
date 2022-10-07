@@ -127,11 +127,11 @@ impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let text = match self {
             Instruction::Block(_, _) => todo!(),
-            Instruction::Get(s, i) => format!("{0:?}.get {i}", s),
-            Instruction::Set(s, i) => format!("{0:?}.set {i}", s),
-            Instruction::I32(n) => format!("i32.{0:?}", n),
-            Instruction::Const(v) => format!("i32.const {v}"),
-            Instruction::Call(i) => format!("call {i}"),
+            Instruction::Get(scope, ident) => format!("{:?}.get {ident}", scope),
+            Instruction::Set(scope, ident) => format!("{:?}.set {ident}", scope),
+            Instruction::I32(num_method) => format!("i32.{:?}", num_method),
+            Instruction::Const(value) => format!("i32.const {value}"),
+            Instruction::Call(ident) => format!("call {ident}"),
             Instruction::BrIf(_) => todo!(),
             Instruction::Br(_) => todo!(),
             Instruction::Drop => "drop".to_string(),

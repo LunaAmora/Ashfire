@@ -595,7 +595,7 @@ impl Parser {
 
                             let cast = match n {
                                 1.. => ValueType::from((n - 1) as usize).into(),
-                                0 => todo!("invalid value"),
+                                0 => unreachable!(),
                                 _ => todo!("casting to ptr type not implemented yet"),
                             };
 

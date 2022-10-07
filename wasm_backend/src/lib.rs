@@ -115,7 +115,7 @@ impl Module {
 
                     writer.write_all(
                         format!(
-                            "(import \"{0}\" \"{1}\" (func ${2} {3}))\n",
+                            "(import \"{}\" \"{}\" (func ${} {}))\n",
                             import.module, import.label, label, contr
                         )
                         .as_bytes(),
@@ -159,7 +159,7 @@ impl Module {
             let contr = self.types.get(func.contract).unwrap();
 
             writer.write_all(
-                format!("(func ${0} {1}\n  {2}\n)\n", label, contr, func.code.iter().join(" "))
+                format!("(func ${} {}\n  {}\n)\n", label, contr, func.code.iter().join(" "))
                     .as_bytes(),
             )?;
         }
