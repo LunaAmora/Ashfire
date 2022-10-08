@@ -14,11 +14,11 @@ use clap_verbosity_flag::{InfoLevel, Verbosity};
 use std::{path::PathBuf, process::Command};
 
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[command(author, version, about, long_about = None)]
 struct Cli {
-    #[clap(subcommand)]
+    #[command(subcommand)]
     command: Commands,
-    #[clap(flatten)]
+    #[command(flatten)]
     verbose: Verbosity<InfoLevel>,
 }
 
@@ -26,15 +26,15 @@ struct Cli {
 enum Commands {
     /// Compile a `.fire` file to WebAssembly.
     Com {
-        #[clap(parse(from_os_str))]
+        #[arg(value_name = "FILE")]
         path: PathBuf,
-        #[clap(short, long)]
+        #[arg(short, long)]
         output: Option<PathBuf>,
         /// Run the `.wasm` file with a runtime.
-        #[clap(short, long)]
+        #[arg(short, long)]
         run: bool,
         /// Optimize the `.wasm` file to reduce it's size. (Needs Binaryen).
-        #[clap(short = 'p', long)]
+        #[arg(short = 'p', long)]
         opt: bool,
     },
 }

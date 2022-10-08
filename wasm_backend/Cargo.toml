@@ -9,4 +9,4 @@ description = "Wasm backend used by the Ashfire compiler"
 
 [dependencies]
 anyhow = "1.0"
-itertools = "0.10.3"
+itertools = "0.10.5"

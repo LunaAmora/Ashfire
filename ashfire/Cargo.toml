@@ -8,15 +8,15 @@ readme = "README.md"
 license-file = "LICENSE"
 
 [dependencies]
-clap = { version = "3.2.14", features = ["derive"] }
-clap-verbosity-flag = "1.0.1"
+clap = { version = "4.0.10", features = ["derive"] }
+clap-verbosity-flag = "2.0.0"
 anyhow = "1.0"
 log = "0.4.17"
-env_logger = "0.9.0"
+env_logger = "0.9.1"
 num = "0.4.0"
 num-traits = "0.2"
 num-derive = "0.3"
-itertools = "0.10.3"
+itertools = "0.10.5"
 firelib = {path = "../firelib"}
 wasm_backend = {path = "../wasm_backend"}
 
