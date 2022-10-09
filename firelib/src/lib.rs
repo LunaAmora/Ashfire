@@ -22,12 +22,12 @@ pub trait __Alternative: Alternative {
     }
 }
 
-/// Chain [`Alternative::from`][Alternative] calls,
+/// Chain lazily evaluated [`Alternative::from`][Alternative] calls,
 /// returning early when a valid value for the given
 /// type is found.
 ///
 /// # See also
-/// 
+///
 /// The choice function for Alternatives in haskell.
 ///
 /// # Examples
@@ -36,6 +36,8 @@ pub trait __Alternative: Alternative {
 /// # #![feature(try_trait_v2)]
 /// # use firelib::{choice, alternative};
 /// # use std::ops::{FromResidual, ControlFlow, Try};
+/// // Here we create an struct that implements the Alternative
+/// // trait with a neutral matching pattern of `value: None`.
 /// #[alternative(value, None)]
 /// struct Alter<T> {
 ///     pub value: Option<T>,
@@ -50,11 +52,21 @@ pub trait __Alternative: Alternative {
 /// #         Self { value }
 /// #     }
 /// # }
+/// # fn usize_with_side_effect() -> usize {
+/// #     panic!()
+/// # }
 ///
+/// // Next we can use the `choice` macro with the name of the
+/// // struct preceding by any value or fn call that can be
+/// // converted to it via `From`.
+/// // Obs: A basic impl of `From<T>` and `From<Option<T>>` are
+/// // given, but hidden in this example for the sake of brevity.
 /// fn choose() -> Alter<usize> {
-///     choice!(Alter, None, 1, 2)
+///     choice!(Alter, None, 1, usize_with_side_effect())
 /// }
 ///
+/// // The `choose` fn will then lazily try each of its alternatives,
+/// // returning early on the first non neutral-matching value.
 /// fn main() {
 ///     assert_eq!(choose().value, Some(1));
 /// }
