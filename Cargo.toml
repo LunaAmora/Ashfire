@@ -6,3 +6,10 @@ members = [
     "firelib_macro",
     "wasm_backend",
 ]
+
+[workspace.package]
+authors = ["Luna Amora <luna.mberry@gmail.com>"]
+version = "0.1.0"
+edition = "2021"
+readme = "README.md"
+license-file = "LICENSE"

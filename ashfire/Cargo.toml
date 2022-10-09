@@ -1,11 +1,11 @@
 [package]
 name = "ashfire"
-version = "0.1.0"
-edition = "2021"
-authors = ["Luna Amora <luna.mberry@gmail.com>"]
 description = "Compiler for the Firelang language"
-readme = "README.md"
-license-file = "LICENSE"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+readme.workspace = true
+license-file.workspace = true
 
 [dependencies]
 clap = { version = "4.0.10", features = ["derive"] }

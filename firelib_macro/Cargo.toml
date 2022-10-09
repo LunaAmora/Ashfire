@@ -1,9 +1,11 @@
 [package]
 name = "firelib_macro"
-version = "0.1.0"
-edition = "2021"
-authors = ["Luna Amora <luna.mberry@gmail.com>"]
 description = "Library macros used by the Ashfire compiler"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+readme.workspace = true
+license-file.workspace = true
 
 [dependencies]
 syn = "1.0"
