@@ -113,7 +113,7 @@ impl Lexer {
                     .map_or_else(|| self.read_string_literal(&tok.loc), |word| Ok(word.to_string()))
                     .map(|name| {
                         (
-                            Word::new(&name, (name.len() - scapped_len(&name)) as i32),
+                            Word::new(&name, (name.len() - escaped_len(&name)) as i32),
                             program.data.len() as i32,
                         )
                     })
@@ -151,7 +151,7 @@ impl Lexer {
     }
 }
 
-fn scapped_len(name: &str) -> usize {
+fn escaped_len(name: &str) -> usize {
     name.chars()
         .filter(|c| c.eq(&'\\'))
         .collect::<String>()

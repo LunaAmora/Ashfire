@@ -24,15 +24,30 @@ impl ProgramVisitor for Parser {
     }
 }
 
+impl LocWord {
+    /// Returns an `Vec<Op>` if the word started with a `.`
+    fn get_offset(&self, operand: i32) -> Option<Vec<Op>> {
+        self.strip_prefix('.').map(|strip| {
+            Op::from(strip.strip_prefix('*').map_or_else(
+                || (OpType::OffsetLoad, operand, self.loc.clone()),
+                |_| (OpType::Offset, operand, self.loc.clone()),
+            ))
+            .into()
+        })
+    }
+}
+
 impl Parser {
     pub fn new() -> Self {
         Self { ..Default::default() }
     }
 
+    /// Pops and returns the next [`IRToken`] of this [`Parser`].
     fn next(&mut self) -> Option<IRToken> {
         self.ir_tokens.pop_front()
     }
 
+    /// Pops `n` elements and returns the last [`IRToken`] of this [`Parser`].
     fn skip(&mut self, n: usize) -> Option<IRToken> {
         let mut result = None;
         for _ in 0..n {
@@ -41,6 +56,12 @@ impl Parser {
         result
     }
 
+    /// Parse each [`IRToken`] from this [`Parser`] to an [`Op`],
+    /// appending to the given [`Program`].
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if any problem is encountered during parsing.
     fn parse_tokens(&mut self, prog: &mut Program) -> Result<()> {
         while let Some(token) = self.next() {
             if let Some(mut op) = self.define_op(token, prog).value? {
@@ -78,7 +99,7 @@ impl Parser {
                 choice!(
                     OptionErr,
                     self.get_const_struct(word, prog),
-                    Self::get_offset(word, tok.operand),
+                    word.get_offset(tok.operand),
                     self.get_binding(word, prog),
                     prog.get_intrinsic(word),
                     self.get_local_mem(word, prog),
@@ -172,48 +193,41 @@ impl Parser {
         OptionErr::new(vec![op])
     }
 
+    /// Creates a logic block starting from the given [`Op`].
+    fn push_block(&mut self, op: Op) -> Op {
+        self.op_blocks.push(op.clone());
+        op
+    }
+
+    /// Pops the last opened logic block, returning a clone of the [`Op`] that started it.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if no block is open.
     fn pop_block(&mut self, loc: &Loc, closing_type: KeywordType) -> Result<Op> {
         self.op_blocks.pop().with_context(|| {
             format!("{}There are no open blocks to close with `{:?}`", loc, closing_type)
         })
     }
 
-    fn push_block(&mut self, op: Op) -> Op {
-        self.op_blocks.push(op.clone());
-        op
-    }
-
+    /// Searches for struct fields that starts with the given [`word`][LocWord]
+    /// on the `consts` [Vec]. Parsing each one as an [`IRToken`] to an [`Op`].
     fn get_const_struct(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        empty_or_some(flatten(self.def_ops_from_fields(self.get_const_struct_fields(word), prog)?))
-            .into()
+        let ops = flatten(
+            self.consts
+                .iter()
+                .filter(|cnst| cnst.starts_with(&format!("{}.", word.name)))
+                .map(|tword| (tword, &word.loc).into())
+                .collect::<Vec<IRToken>>()
+                .into_iter()
+                .filter_map(|tok| self.define_op(tok, prog).value.transpose())
+                .collect::<Result<Vec<Vec<Op>>>>()?,
+        );
+        empty_or_some(ops).into()
     }
 
-    fn get_const_struct_fields(&self, word: &LocWord) -> Vec<IRToken> {
-        self.consts
-            .iter()
-            .filter(|cnst| cnst.starts_with(&format!("{}.", word.name)))
-            .map(|tword| (tword, &word.loc).into())
-            .collect()
-    }
-
-    fn def_ops_from_fields(
-        &mut self, toks: Vec<IRToken>, prog: &mut Program,
-    ) -> Result<Vec<Vec<Op>>> {
-        toks.into_iter()
-            .filter_map(|tok| self.define_op(tok, prog).value.transpose())
-            .collect()
-    }
-
-    fn get_offset(word: &LocWord, operand: i32) -> Option<Vec<Op>> {
-        word.strip_prefix('.').map(|strip| {
-            Op::from(strip.strip_prefix('*').map_or_else(
-                || (OpType::OffsetLoad, operand, word.loc.clone()),
-                |_| (OpType::Offset, operand, word.loc.clone()),
-            ))
-            .into()
-        })
-    }
-
+    /// Searches for a `binding` that matches the given [`word`][LocWord]
+    /// on the current [`Proc`].
     fn get_binding(&self, word: &LocWord, prog: &Program) -> Option<Vec<Op>> {
         self.current_proc(prog)
             .and_then(|proc| {
@@ -225,12 +239,15 @@ impl Parser {
             .map(|index| Op::new(OpType::PushBind, index, &word.loc).into())
     }
 
+    /// Searches for a `mem` that matches the given [`word`][LocWord]
+    /// on the current [`Proc`].
     fn get_local_mem(&self, word: &LocWord, prog: &Program) -> Option<Vec<Op>> {
         self.current_proc(prog)
             .and_then(|proc| proc.local_mem_names.iter().find(|mem| word == mem.as_str()))
             .map(|local| Op::new(OpType::PushLocalMem, local.value, &word.loc).into())
     }
 
+    /// Searches for a `global mem` that matches the given [`word`][LocWord].
     fn get_global_mem(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.global_mems
             .iter()
@@ -238,16 +255,21 @@ impl Parser {
             .map(|global| Op::new(OpType::PushGlobalMem, global.value, &word.loc).into())
     }
 
+    /// Searches for a `const` that matches the given [`word`][LocWord].
     fn try_get_const_name(&self, word: &LocWord) -> Option<&TypedWord> {
         self.consts.iter().find(|cnst| word == cnst.as_str())
     }
 
+    /// Searches for a `const` that matches the given[`word`][LocWord]
+    /// and parses it as an [`IRToken`] to an [`Op`].
     fn get_const_name(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
         self.try_get_const_name(word)
             .map(|tword| (tword, &word.loc).into())
             .map_or_else(OptionErr::default, |tok| self.define_op(tok, prog))
     }
 
+    /// Searches for a `variable` that matches the given [`word`][LocWord]
+    /// and parses `store` and `pointer` information.
     fn get_variable(&mut self, loc_word: &LocWord, prog: &Program) -> OptionErr<Vec<Op>> {
         let (word, var_typ) = match loc_word.split_at(1) {
             ("!", rest) => (rest, Some(VarWordType::Store)),
@@ -353,6 +375,8 @@ impl Parser {
         OptionErr::default()
     }
 
+    /// Searches for a `struct` that matches the given [`word`][LocWord],
+    /// returning its type.
     fn try_get_struct_type<'a>(&self, word: &LocWord, prog: &'a Program) -> Option<&'a StructType> {
         self.structs
             .iter()
@@ -364,6 +388,8 @@ impl Parser {
             })
     }
 
+    /// Tries to define the parsing context to use
+    /// based on the preceding [`IRTokens`][IRToken].
     fn define_context(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
         let mut i = 0;
         let mut colons = 0;
@@ -554,7 +580,7 @@ impl Parser {
                 if result.is_empty() && i == 0 {
                     result.push(IRToken::new(ValueType::Any.into(), 0, &tok.loc));
                 } else if result.len() != n {
-                    todo!("handle mismath of expected types")
+                    todo!("handle mismatch of expected types")
                 }
                 break;
             }

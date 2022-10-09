@@ -8,6 +8,7 @@ use std::{
     path::Path,
 };
 
+/// A trait for giving a type [`choice`] macro support.
 pub trait Alternative: Try<Residual = Self> {}
 
 #[doc(hidden)]
@@ -21,11 +22,43 @@ pub trait __Alternative: Alternative {
     }
 }
 
-/// Chain `Alternative::from` calls
-/// in a short_circuit way with the try trait.
+/// Chain [`Alternative::from`][Alternative] calls,
+/// returning early when a valid value for the given
+/// type is found.
 ///
 /// # See also
+/// 
 /// The choice function for Alternatives in haskell.
+///
+/// # Examples
+///
+/// ```
+/// # #![feature(try_trait_v2)]
+/// # use firelib::{choice, alternative};
+/// # use std::ops::{FromResidual, ControlFlow, Try};
+/// #[alternative(value, None)]
+/// struct Alter<T> {
+///     pub value: Option<T>,
+/// }
+/// # impl<T> From<T> for Alter<T> {
+/// #     fn from(value: T) -> Self {
+/// #         Self { value: Some(value) }
+/// #     }
+/// # }
+/// # impl<T> From<Option<T>> for Alter<T> {
+/// #     fn from(value: Option<T>) -> Self {
+/// #         Self { value }
+/// #     }
+/// # }
+///
+/// fn choose() -> Alter<usize> {
+///     choice!(Alter, None, 1, 2)
+/// }
+///
+/// fn main() {
+///     assert_eq!(choose().value, Some(1));
+/// }
+/// ```
 #[macro_export]
 macro_rules! choice {
     ($typ:ident, $( $x:expr ),* $(,)?) => {
@@ -40,15 +73,24 @@ macro_rules! choice {
     }
 }
 
+/// Provides the [`success`][Success::success] method
+/// that returns a default-like success value.
+///
+/// A trait for giving a type [`success`] macro support.
 pub trait Success {
     fn success() -> Self;
 }
 
-pub trait SucessFrom {
+/// Provides the [`success_from`][SuccessFrom::success_from] method
+/// that pass a value to a `SuccessFrom` constructor.
+///
+/// A trait for giving a type [`success_from`] macro support.
+pub trait SuccessFrom {
     type From;
     fn success_from(from: Self::From) -> Self;
 }
 
+/// A trait for giving a type [`bail`] and [`ensure`] macro support.
 pub trait FlowControl:
     Sized
     + FromResidual<ControlFlow<Self, Infallible>>
@@ -75,11 +117,11 @@ pub trait FlowControl:
         ControlFlow::Break(<Self as Success>::success())
     }
 
-    fn flow_success_from(from: <Self as SucessFrom>::From) -> ControlFlow<Self, !>
+    fn flow_success_from(from: <Self as SuccessFrom>::From) -> ControlFlow<Self, !>
     where
-        Self: SucessFrom,
+        Self: SuccessFrom,
     {
-        ControlFlow::Break(<Self as SucessFrom>::success_from(from))
+        ControlFlow::Break(<Self as SuccessFrom>::success_from(from))
     }
 
     #[doc(hidden)]
@@ -102,6 +144,7 @@ pub trait FlowControl:
     }
 }
 
+/// Emulates [`anyhow::ensure`] for returning types that implements [`FlowControl`].
 #[macro_export]
 macro_rules! ensure {
     ($expr:expr, $( $fmt:expr ),*) => {
@@ -109,6 +152,7 @@ macro_rules! ensure {
     };
 }
 
+/// Emulates [`anyhow::bail`] for returning types that implements [`FlowControl`].
 #[macro_export]
 macro_rules! bail {
     ($( $fmt:expr ),*) => {
@@ -116,6 +160,9 @@ macro_rules! bail {
     };
 }
 
+/// Checks the condition to ensure it is true.
+/// Otherwise returns early with the [`Default`]
+/// value of the type that implements [`FlowControl`].
 #[macro_export]
 macro_rules! short_circuit {
     ($cond:expr) => {
@@ -123,6 +170,7 @@ macro_rules! short_circuit {
     };
 }
 
+/// Returns early with the [`Success`][Success::success] impl of the returning type.
 #[macro_export]
 macro_rules! success {
     () => {
@@ -134,6 +182,7 @@ macro_rules! success {
     }};
 }
 
+/// Returns early with the [`SuccessFrom`][SuccessFrom::success_from] impl of the returning type.
 #[macro_export]
 macro_rules! success_from {
     ($expr:expr) => {
@@ -141,6 +190,8 @@ macro_rules! success_from {
     };
 }
 
+/// Checks if the the first element is equivalent (using `==`)
+/// to any of the preceding elements.
 #[macro_export]
 macro_rules! equals_any {
     ($expression:expr, $( $equal:expr ),+) => {
@@ -148,6 +199,9 @@ macro_rules! equals_any {
     };
 }
 
+/// Ternary-like macro with special support to [`Option`],
+/// returning a [`None`] if the condition was false and
+/// no false branch was given.
 #[macro_export]
 macro_rules! fold_bool {
     ($expression:expr, $true:expr) => {
@@ -166,10 +220,13 @@ macro_rules! fold_bool {
     };
 }
 
+/// Gets the directory of the [`Path`],
+/// or [`None`] if is empty.
 pub fn get_dir(current: &Path) -> Option<&Path> {
     current.ancestors().nth(1)
 }
 
+/// Maps an empty vector to [`None`], and a non empty to [`Some<Vec<T>>`].
 pub fn empty_or_some<T>(vec: Vec<T>) -> Option<Vec<T>> {
     if vec.is_empty() {
         None
@@ -178,10 +235,12 @@ pub fn empty_or_some<T>(vec: Vec<T>) -> Option<Vec<T>> {
     }
 }
 
+/// Consumes and flatten a nested [`Vec`].
 pub fn flatten<T>(vec: Vec<Vec<T>>) -> Vec<T> {
     vec.into_iter().flatten().collect()
 }
 
+/// Push a value `T` to different [`Vec<T>`] based on the given condition.
 pub fn push_by_condition<T>(cond: bool, value: T, if_true: &mut Vec<T>, if_false: &mut Vec<T>) {
     match cond {
         true => if_true.push(value),
@@ -189,12 +248,20 @@ pub fn push_by_condition<T>(cond: bool, value: T, if_true: &mut Vec<T>, if_false
     }
 }
 
+/// Gets the index in the [`Vec`] that matches the given predicate.
+///
+/// # Panics
+/// Panics if no matching element is found.
 pub fn expect_index<T>(vec: &[T], pred: impl FnMut(&T) -> bool) -> usize {
     vec.iter()
         .position(pred)
         .expect("no item matched the given predicate")
 }
 
+/// Returns a reference to a element on the [`Vec`] by the index position.
+///
+/// # Panics
+/// Panics if the index is out of bounds.
 pub fn expect_get<T>(vec: &[T], index: usize) -> &T {
     vec.get(index).expect("index out of bounds")
 }

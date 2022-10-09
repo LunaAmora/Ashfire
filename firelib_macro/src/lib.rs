@@ -2,6 +2,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput, NestedMeta};
 
+/// Derive macro generating an impl of the trait `FlowControl`.
 #[proc_macro_derive(FlowControl)]
 pub fn derive_flow(item: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(item as DeriveInput);
@@ -24,6 +25,17 @@ pub fn derive_flow(item: TokenStream) -> TokenStream {
     })
 }
 
+/// Attribute macro generating a simple impl of the trait `Alternative`
+/// based on the given pairs of field names and patterns.
+/// 
+/// # Examples
+/// 
+/// ```compile_fail
+/// #[alternative(value, None)]
+/// struct Alter<T> {
+///     pub value: Option<T>,
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn alternative(attr: TokenStream, item: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(item as DeriveInput);
@@ -70,7 +82,7 @@ fn generate_matcher(args: Vec<NestedMeta>) -> QuoteStream {
     loop {
         let (name, pattern) = (
             args.get(i).expect("Missing match attribute name"),
-            args.get(i + 1).expect("Missing match atribute pattern"),
+            args.get(i + 1).expect("Missing match attribute pattern"),
         );
 
         matcher = if i == 0 {

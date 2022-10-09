@@ -1,6 +1,6 @@
 #![feature(try_trait_v2)]
 use anyhow::{Error, Result};
-use firelib::{alternative, FlowControl, Success, SucessFrom};
+use firelib::{alternative, FlowControl, Success, SuccessFrom};
 use std::{
     convert::Infallible,
     ops::{ControlFlow, Deref, FromResidual, Try},
@@ -48,7 +48,7 @@ impl<T> Success for OptionErr<Vec<T>> {
     }
 }
 
-impl<T> SucessFrom for OptionErr<Vec<T>> {
+impl<T> SuccessFrom for OptionErr<Vec<T>> {
     type From = T;
 
     fn success_from(from: Self::From) -> Self {
