@@ -59,7 +59,7 @@ pub trait __Alternative: Alternative {
 /// // Next we can use the `choice` macro with the name of the
 /// // struct preceding by any value or fn call that can be
 /// // converted to it via `From`.
-/// // Obs: A basic impl of `From<T>` and `From<Option<T>>` are
+/// // Note: A basic impl of `From<T>` and `From<Option<T>>` are
 /// // given, but hidden in this example for the sake of brevity.
 /// fn choose() -> Alter<usize> {
 ///     choice!(Alter, None, 1, usize_with_side_effect())
@@ -67,6 +67,8 @@ pub trait __Alternative: Alternative {
 ///
 /// // The `choose` fn will then lazily try each of its alternatives,
 /// // returning early on the first non neutral-matching value.
+/// // Note: As `1` is the value found as an alternative,
+/// // `usize_with_side_effect` is never called, because `choice` is lazy.
 /// fn main() {
 ///     assert_eq!(choose().value, Some(1));
 /// }
