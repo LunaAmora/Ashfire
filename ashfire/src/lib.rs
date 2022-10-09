@@ -56,14 +56,12 @@ impl<T> SuccessFrom for OptionErr<Vec<T>> {
     }
 }
 
-pub trait Stack<T> {
+pub trait Stack<T>: Deref<Target = [T]> {
     fn push(&mut self, item: T);
     fn pop(&mut self) -> Option<T>;
     fn pop_n(&mut self, n: usize) -> Vec<T>;
     fn peek(&mut self) -> Option<&T>;
     fn get(&self, n: usize) -> Option<&T>;
-    fn len(&self) -> usize;
-    fn is_empty(&self) -> bool;
 }
 
 pub struct EvalStack<T> {
@@ -135,13 +133,5 @@ impl<T> Stack<T> for EvalStack<T> {
 
     fn get(&self, n: usize) -> Option<&T> {
         self.frames.get(self.len() - 1 - n)
-    }
-
-    fn len(&self) -> usize {
-        self.frames.len()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.frames.is_empty()
     }
 }
