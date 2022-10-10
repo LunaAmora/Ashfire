@@ -1,8 +1,12 @@
 #![feature(try_trait_v2)]
-use std::ops::Deref;
+use std::{
+    convert::Infallible,
+    ops::{ControlFlow, Deref, FromResidual, Try},
+};
 
 use anyhow::{Error, Result};
 use firelib::{alternative, FlowControl, Success, SuccessFrom};
+use itertools::Either;
 
 #[derive(FlowControl)]
 #[alternative(value, Ok(None))]
@@ -51,6 +55,62 @@ impl<T> SuccessFrom for OptionErr<Vec<T>> {
 
     fn success_from(from: Self::From) -> Self {
         OptionErr::from(Ok(Some(vec![from])))
+    }
+}
+
+#[derive(FlowControl)]
+pub struct DoubleResult<T, E> {
+    pub value: Result<T, Either<E, Error>>,
+}
+
+impl<T, E> DoubleResult<T, E> {
+    pub fn new(value: T) -> Self {
+        Self { value: Ok(value) }
+    }
+}
+
+impl<T, E> From<Error> for DoubleResult<T, E> {
+    fn from(err: Error) -> Self {
+        Self { value: Err(Either::Right(err)) }
+    }
+}
+
+impl<T, E> Deref for DoubleResult<T, E> {
+    type Target = Result<T, Either<E, Error>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
+}
+
+impl<T, E> Try for DoubleResult<T, E> {
+    type Output = T;
+    type Residual = Either<E, Error>;
+
+    fn from_output(output: Self::Output) -> Self {
+        Self { value: Ok(output) }
+    }
+
+    fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
+        match self.value {
+            Ok(o) => ControlFlow::Continue(o),
+            Err(r) => ControlFlow::Break(r),
+        }
+    }
+}
+
+impl<T, E> FromResidual<Either<E, Error>> for DoubleResult<T, E> {
+    fn from_residual(residual: Either<E, Error>) -> Self {
+        Self { value: Err(residual) }
+    }
+}
+
+impl<T, E> FromResidual<Result<Infallible, Either<E, Error>>> for DoubleResult<T, E> {
+    fn from_residual(residual: Result<Infallible, Either<E, Error>>) -> Self {
+        match residual {
+            Ok(_) => unreachable!(),
+            Err(r) => Self { value: Err(r) },
+        }
     }
 }
 

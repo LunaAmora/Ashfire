@@ -3,8 +3,11 @@ use std::{collections::VecDeque, fs::File, io::BufReader, path::PathBuf};
 use anyhow::{Context, Result};
 use ashlib::*;
 use firelib::*;
+use itertools::Either;
 
-use super::{lexer::Lexer, types::*};
+use super::{lexer::Lexer, typechecker::Expect, types::*};
+
+type CompEvalStack = EvalStack<IRToken>;
 
 #[derive(Default)]
 struct Parser {
@@ -473,7 +476,7 @@ impl Parser {
 
             (1, KeywordType::Equal) => {
                 self.skip(2);
-                match self.compile_eval(prog) {
+                match self.compile_eval(prog).value {
                     Ok((result, eval)) => {
                         ensure!(
                             result.typ != ValueType::Any,
@@ -489,7 +492,10 @@ impl Parser {
 
                         success!();
                     }
-                    Err(tok) => bail!(prog.invalid_token(tok, "context declaration")),
+                    Err(either) => match either {
+                        Either::Left(tok) => bail!(prog.invalid_token(tok, "context declaration")),
+                        Either::Right(err) => Err(err)?,
+                    },
                 }
             }
 
@@ -525,7 +531,7 @@ impl Parser {
         }
 
         self.skip(2);
-        if let Ok((eval, skip)) = self.compile_eval(prog) {
+        if let Ok((eval, skip)) = self.compile_eval(prog).value {
             if eval.typ != ValueType::Any {
                 self.skip(skip);
                 self.consts
@@ -565,17 +571,15 @@ impl Parser {
         Ok(self.push_block(Op::new(OpType::PrepProc, operand as i32, &name.loc)))
     }
 
-    fn compile_eval(&self, prog: &mut Program) -> Result<(IRToken, usize), IRToken> {
-        match self.compile_eval_n(1, prog) {
-            Ok((mut result, skip)) => Ok((result.pop().unwrap(), skip)),
-            Err(tok) => Err(tok),
-        }
+    fn compile_eval(&self, prog: &mut Program) -> DoubleResult<(IRToken, usize), IRToken> {
+        let (mut result, skip) = self.compile_eval_n(1, prog)?;
+        DoubleResult::new((result.pop().unwrap(), skip))
     }
 
     fn compile_eval_n(
         &self, n: usize, prog: &mut Program,
-    ) -> Result<(Vec<IRToken>, usize), IRToken> {
-        let mut result = Vec::new();
+    ) -> DoubleResult<(Vec<IRToken>, usize), IRToken> {
+        let mut result = CompEvalStack::new();
         let mut i = 0;
 
         while let Some(tok) = self.ir_tokens.get(i).cloned() {
@@ -592,12 +596,13 @@ impl Parser {
 
             i += 1;
         }
-        Ok((result, i + 1))
+
+        DoubleResult::new((result.to_vec(), i + 1))
     }
 
     fn eval_token(
-        &self, tok: IRToken, result: &mut Vec<IRToken>, prog: &mut Program,
-    ) -> Result<(), IRToken> {
+        &self, tok: IRToken, result: &mut CompEvalStack, prog: &mut Program,
+    ) -> DoubleResult<(), IRToken> {
         match tok.typ {
             TokenType::Keyword => {
                 let key = from_i32(tok.operand);
@@ -608,7 +613,9 @@ impl Parser {
                     KeywordType::Over => todo!(),
                     KeywordType::Rot => todo!(),
                     KeywordType::Equal => todo!(),
-                    _ => return Err(IRToken::new(TokenType::Keyword, tok.operand, &tok.loc)),
+                    _ => {
+                        Err(Either::Left(IRToken::new(TokenType::Keyword, tok.operand, &tok.loc)))?
+                    }
                 }
             }
 
@@ -620,7 +627,7 @@ impl Parser {
                         IntrinsicType::Minus => todo!(),
 
                         IntrinsicType::Cast(n) => {
-                            let a = result.pop().expect("Todo:: report error");
+                            let a = result.expect_pop(&tok.loc)?;
 
                             let cast = match n {
                                 1.. => ValueType::from((n - 1) as usize).into(),
@@ -631,13 +638,15 @@ impl Parser {
                             result.push(IRToken::new(cast, a.operand, &tok.loc));
                         }
 
-                        _ => return Err(IRToken::new(TokenType::Word, tok.operand, &tok.loc)),
+                        _ => {
+                            Err(Either::Left(IRToken::new(TokenType::Word, tok.operand, &tok.loc)))?
+                        }
                     },
                     None => match self.try_get_const_name(&loc_word) {
                         Some(cnst) => {
                             result.push(IRToken::new(cnst.typ, cnst.word.value, &tok.loc));
                         }
-                        None => return Err(tok),
+                        None => Err(Either::Left(tok))?,
                     },
                 }
             }
@@ -652,12 +661,13 @@ impl Parser {
 
             TokenType::DataType(value) => match value {
                 ValueType::Int | ValueType::Bool | ValueType::Ptr => result.push(tok),
-                _ => return Err(tok),
+                _ => Err(Either::Left(tok))?,
             },
 
-            _ => return Err(tok),
+            _ => Err(Either::Left(tok))?,
         }
-        Ok(())
+
+        DoubleResult::new(())
     }
 
     fn parse_procedure(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
@@ -795,7 +805,7 @@ impl Parser {
             .get_keyword()
             .unwrap();
 
-        let (mut result, eval) = match self.compile_eval_n(stk.members.len(), prog) {
+        let (mut result, eval) = match self.compile_eval_n(stk.members.len(), prog).value {
             Ok((result, eval)) => (result, eval),
             _ => bail!("Failed to parse an valid struct value at compile-time evaluation"),
         };
@@ -896,6 +906,28 @@ impl Parser {
             self.lex_file(&include, prog)?;
         }
         Ok(())
+    }
+}
+
+impl Expect<IRToken> for CompEvalStack {
+    fn get_type(&self, t: &IRToken) -> TokenType {
+        t.typ
+    }
+
+    fn program_arity(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()> {
+        let frames: Vec<TypeFrame> = self.iter().map(TypeFrame::from).collect();
+        program.expect_arity(&frames, contract, loc)
+    }
+
+    fn program_exact(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()> {
+        let frames: Vec<TypeFrame> = self.iter().map(TypeFrame::from).collect();
+        program.expect_exact(&frames, contract, loc)
+    }
+
+    fn program_type(
+        &self, program: &Program, frame: &IRToken, expected: TokenType, loc: &Loc,
+    ) -> Result<()> {
+        program.expect_type(expected, &frame.into(), loc)
     }
 }
 
