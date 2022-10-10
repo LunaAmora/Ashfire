@@ -1,5 +1,6 @@
-use itertools::Itertools;
 use std::fmt::{self, Display, Formatter, Result};
+
+use itertools::Itertools;
 
 #[derive(Clone, Copy)]
 pub enum WasmType {

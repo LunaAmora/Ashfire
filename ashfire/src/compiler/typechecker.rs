@@ -1,9 +1,10 @@
 #![allow(dead_code)]
-use super::types::*;
 use anyhow::{bail, ensure, Context, Result};
 use ashlib::{EvalStack, Stack};
 use firelib::equals_any;
 use itertools::Itertools;
+
+use super::types::*;
 
 type DataStack = EvalStack<TypeFrame>;
 

@@ -1,12 +1,13 @@
 use std::{collections::HashMap, fs::File, io::BufWriter, path::PathBuf};
 
-use super::types::{Contract, IntrinsicType, Op, OpType, Program, ProgramVisitor};
 use anyhow::{bail, Context, Result};
 use itertools::Itertools;
 use wasm_backend::{wasm_types::*, Module};
 use Ident::*;
 use Instruction::*;
 use Scope::*;
+
+use super::types::{Contract, IntrinsicType, Op, OpType, Program, ProgramVisitor};
 
 pub struct Generator {
     current_proc: Option<usize>,

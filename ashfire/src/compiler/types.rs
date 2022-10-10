@@ -1,9 +1,10 @@
-use firelib::{expect_get, fold_bool};
-use num::FromPrimitive;
 use std::{
     fmt::{Debug, Display, Formatter, Result},
     ops::Deref,
 };
+
+use firelib::{expect_get, fold_bool};
+use num::FromPrimitive;
 
 pub trait ProgramVisitor {
     fn set_index(&mut self, i: Option<usize>);

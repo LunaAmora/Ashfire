@@ -1,12 +1,13 @@
 pub mod wasm_types;
 
-use anyhow::Result;
-use itertools::Itertools;
 use std::{
     collections::HashMap,
     fs::File,
     io::{BufWriter, Write},
 };
+
+use anyhow::Result;
+use itertools::Itertools;
 use wasm_types::*;
 
 #[derive(Default)]

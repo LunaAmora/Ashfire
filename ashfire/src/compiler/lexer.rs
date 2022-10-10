@@ -1,13 +1,15 @@
-use super::types::*;
-use anyhow::{Context, Result};
-use ashlib::OptionErr;
-use firelib::{bail, choice, ensure};
 use std::{
     fs::File,
     io::{BufRead, BufReader},
     ops::Not,
     path::PathBuf,
 };
+
+use anyhow::{Context, Result};
+use ashlib::OptionErr;
+use firelib::{bail, choice, ensure};
+
+use super::types::*;
 
 struct Token {
     name: String,

@@ -1,8 +1,10 @@
-use super::{lexer::Lexer, types::*};
+use std::{collections::VecDeque, fs::File, io::BufReader, path::PathBuf};
+
 use anyhow::{Context, Result};
 use ashlib::*;
 use firelib::*;
-use std::{collections::VecDeque, fs::File, io::BufReader, path::PathBuf};
+
+use super::{lexer::Lexer, types::*};
 
 #[derive(Default)]
 struct Parser {

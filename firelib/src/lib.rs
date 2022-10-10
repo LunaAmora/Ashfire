@@ -1,12 +1,13 @@
 #![feature(try_trait_v2)]
 #![feature(never_type)]
-pub use anyhow;
-pub use firelib_macro::{alternative, FlowControl};
 use std::{
     convert::Infallible,
     ops::{ControlFlow, FromResidual, Try},
     path::Path,
 };
+
+pub use anyhow;
+pub use firelib_macro::{alternative, FlowControl};
 
 /// A trait for giving a type [`choice`] macro support.
 pub trait Alternative: Try<Residual = Self> {}

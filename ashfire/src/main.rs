@@ -7,11 +7,13 @@ extern crate num;
 mod compiler;
 mod logger;
 
-use crate::compiler::{generator::*, parser::*, typechecker::*};
+use std::{path::PathBuf, process::Command};
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
-use std::{path::PathBuf, process::Command};
+
+use crate::compiler::{generator::*, parser::*, typechecker::*};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
