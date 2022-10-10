@@ -331,50 +331,51 @@ impl Parser {
             .iter()
             .any(|val| val.starts_with(&format!("{}.", word.name))));
 
-        if let Some(struct_type) = self.try_get_struct_type(word, prog) {
-            let mut member = struct_type.members.first().unwrap();
-            if pointer {
-                let pattern = &format!("{}.{}", word.name, member.name);
-                let index = expect_index(&vars, |name| name.eq(pattern));
+        let Some(struct_type) = self.try_get_struct_type(word, prog) else {
+            return OptionErr::default()
+        };
 
-                let stk_id = prog.parse_data_type(struct_type.name.as_str()).unwrap();
-                let ptr_typ = IntrinsicType::Cast(-(stk_id as i32));
+        let mut member = struct_type.members.first().unwrap();
 
-                result.push(Op::new(push_type, index as i32, loc));
-                result.push(Op::new(OpType::Intrinsic, ptr_typ.into(), loc));
-            } else {
-                let mut members = struct_type.members.clone();
-                if store {
-                    members.reverse();
-                    member = struct_type.members.last().unwrap();
-                }
+        if pointer {
+            let pattern = &format!("{}.{}", word.name, member.name);
+            let index = expect_index(&vars, |name| name.eq(pattern));
 
-                let pattern = &format!("{}.{}", word.name, member.name);
-                let index = expect_index(&vars, |name| name.eq(pattern)) as i32;
+            let stk_id = prog.parse_data_type(struct_type.name.as_str()).unwrap();
+            let ptr_typ = IntrinsicType::Cast(-(stk_id as i32));
 
-                for (i, member) in (0_i32..).zip(members.into_iter()) {
-                    let operand = index + fold_bool!(local == store, i, -i);
-
-                    if store {
-                        result.push(Op::new(OpType::ExpectType, member.typ.into(), loc))
-                    }
-
-                    result.push(Op::new(push_type, operand, loc));
-
-                    if store {
-                        result.push(Op::new(OpType::Intrinsic, IntrinsicType::Store32.into(), loc))
-                    } else {
-                        let data_typ = IntrinsicType::Cast(member.typ.into());
-                        result.push(Op::new(OpType::Intrinsic, IntrinsicType::Load32.into(), loc));
-                        result.push(Op::new(OpType::Intrinsic, data_typ.into(), loc));
-                    }
-                }
+            result.push(Op::new(push_type, index as i32, loc));
+            result.push(Op::new(OpType::Intrinsic, ptr_typ.into(), loc));
+        } else {
+            let mut members = struct_type.members.clone();
+            if store {
+                members.reverse();
+                member = struct_type.members.last().unwrap();
             }
 
-            return OptionErr::new(result);
+            let pattern = &format!("{}.{}", word.name, member.name);
+            let index = expect_index(&vars, |name| name.eq(pattern)) as i32;
+
+            for (i, member) in (0_i32..).zip(members.into_iter()) {
+                let operand = index + fold_bool!(local == store, i, -i);
+
+                if store {
+                    result.push(Op::new(OpType::ExpectType, member.typ.into(), loc))
+                }
+
+                result.push(Op::new(push_type, operand, loc));
+
+                if store {
+                    result.push(Op::new(OpType::Intrinsic, IntrinsicType::Store32.into(), loc))
+                } else {
+                    let data_typ = IntrinsicType::Cast(member.typ.into());
+                    result.push(Op::new(OpType::Intrinsic, IntrinsicType::Load32.into(), loc));
+                    result.push(Op::new(OpType::Intrinsic, data_typ.into(), loc));
+                }
+            }
         }
 
-        OptionErr::default()
+        OptionErr::new(result)
     }
 
     /// Searches for a `struct` that matches the given [`word`][LocWord],
@@ -801,40 +802,39 @@ impl Parser {
 
         let end_token = self.skip(eval).unwrap();
         let mut members = stk.members;
-        members.reverse();
-        result.reverse(); //Todo:: check if this is correct
 
         if result.len() == 1 {
-            if let Some(eval) = result.pop() {
-                if eval.typ == ValueType::Any {
-                    for member in members {
-                        let name = format!("{}.{}", word.name, member.name);
-                        let struct_word = (name, member.default_value, member.typ).into();
-                        self.register_typed_word(&assign, struct_word, prog);
-                    }
-                } else {
-                    let member_type = members.pop().unwrap().typ;
-                    anyhow::ensure!(
-                        equals_any!(member_type, ValueType::Any, eval.typ),
-                        concat!(
-                            "{}Expected type `{:?}` on the stack at the end of ",
-                            "the compile-time evaluation, but found: `{:?}`"
-                        ),
-                        end_token.loc,
-                        member_type,
-                        eval.typ
-                    );
+            let eval = result.pop().unwrap();
 
-                    let struct_word = (word.to_string(), eval.operand, member_type).into();
+            if eval.typ == ValueType::Any {
+                for member in members.into_iter().rev() {
+                    //Todo:: check if the `.rev()` is correct
+                    let name = format!("{}.{}", word.name, member.name);
+                    let struct_word = (name, member.default_value, member.typ).into();
                     self.register_typed_word(&assign, struct_word, prog);
                 }
+            } else {
+                let member_type = members.pop().unwrap().typ;
+                anyhow::ensure!(
+                    equals_any!(member_type, ValueType::Any, eval.typ),
+                    concat!(
+                        "{}Expected type `{:?}` on the stack at the end of ",
+                        "the compile-time evaluation, but found: `{:?}`"
+                    ),
+                    end_token.loc,
+                    member_type,
+                    eval.typ
+                );
+
+                let struct_word = (word.to_string(), eval.operand, member_type).into();
+                self.register_typed_word(&assign, struct_word, prog);
             }
         } else {
             let stack: Vec<TypeFrame> = result.iter().map(|tok| tok.into()).collect();
             let contract: Vec<TokenType> = members.iter().map(|stk| stk.typ).collect();
             prog.expect_exact(&stack, &contract, &end_token.loc)?;
 
-            if !self.inside_proc() {
+            if self.inside_proc() {
                 members.reverse();
                 result.reverse();
             }

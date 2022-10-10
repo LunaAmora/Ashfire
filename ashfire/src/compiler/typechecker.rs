@@ -101,7 +101,10 @@ impl TypeChecker {
                     self.push_frame(INT, loc);
                 }
 
-                IntrinsicType::Load8 | IntrinsicType::Load16 | IntrinsicType::Load32 => todo!(),
+                IntrinsicType::Load8 | IntrinsicType::Load16 | IntrinsicType::Load32 => {
+                    self.data_stack.expect_contract_pop(&[PTR], program, loc)?;
+                    self.push_frame(ANY, loc)
+                }
 
                 IntrinsicType::Store8 | IntrinsicType::Store16 | IntrinsicType::Store32 => {
                     self.data_stack
@@ -176,7 +179,12 @@ impl TypeChecker {
                 let mut outs = self.current_proc(program).unwrap().contract.outs.clone();
                 outs.reverse();
 
-                self.data_stack.expect_exact_pop(&outs, program, loc)?;
+                if outs.is_empty() {
+                    self.data_stack.program_exact(program, &[], loc)?;
+                } else {
+                    self.data_stack.expect_exact_pop(&outs, program, loc)?;
+                }
+
                 self.data_stack = Default::default();
                 self.exit_proc();
             }
@@ -379,14 +387,16 @@ impl Program {
         Ok(())
     }
 
-    fn expect_arity(&self, stack: &[TypeFrame], contract: &[TokenType], loc: &Loc) -> Result<()> {
-        for (stk, contr) in stack.iter().zip(contract.iter()) {
+    pub fn expect_arity(
+        &self, stack: &[TypeFrame], contract: &[TokenType], loc: &Loc,
+    ) -> Result<()> {
+        for (stk, contr) in stack.iter().rev().zip(contract.iter().rev()) {
             self.expect_type(*contr, stk, loc)?;
         }
         Ok(())
     }
 
-    fn expect_type(&self, expected: TokenType, frame: &TypeFrame, loc: &Loc) -> Result<()> {
+    pub fn expect_type(&self, expected: TokenType, frame: &TypeFrame, loc: &Loc) -> Result<()> {
         ensure!(
             equals_any!(expected, ValueType::Any, TokenType::DataPtr(ValueType::Any), frame.typ),
             self.format_type_diff(expected, frame, loc)

@@ -1,8 +1,5 @@
 #![feature(try_trait_v2)]
-use std::{
-    convert::Infallible,
-    ops::{ControlFlow, Deref, FromResidual, Try},
-};
+use std::ops::Deref;
 
 use anyhow::{Error, Result};
 use firelib::{alternative, FlowControl, Success, SuccessFrom};
@@ -120,6 +117,10 @@ impl<T> Stack<T> for EvalStack<T> {
     }
 
     fn pop_n(&mut self, n: usize) -> Vec<T> {
+        if n == 0 {
+            return vec![];
+        };
+
         self.stack_minus(n);
         let len = self.len();
         let range = (len - n)..;

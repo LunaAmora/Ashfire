@@ -11,14 +11,14 @@ pub fn derive_flow(item: TokenStream) -> TokenStream {
     TokenStream::from(quote! {
         #imp firelib::FlowControl for #struct_name {}
 
-        #imp FromResidual<ControlFlow<#struct_name, Infallible>> for #struct_name {
-            fn from_residual(residual: ControlFlow<#struct_name, Infallible>) -> Self {
+        #imp std::ops::FromResidual<std::ops::ControlFlow<#struct_name, std::convert::Infallible>> for #struct_name {
+            fn from_residual(residual: std::ops::ControlFlow<#struct_name, std::convert::Infallible>) -> Self {
                 <Self as firelib::FlowControl>::__from_residual(residual)
             }
         }
 
-        #imp FromResidual<Result<Infallible, anyhow::Error>> for #struct_name {
-            fn from_residual(residual: Result<Infallible, anyhow::Error>) -> Self {
+        #imp std::ops::FromResidual<Result<std::convert::Infallible, anyhow::Error>> for #struct_name {
+            fn from_residual(residual: Result<std::convert::Infallible, anyhow::Error>) -> Self {
                 <Self as firelib::FlowControl>::__from_error(residual)
             }
         }
@@ -49,7 +49,7 @@ pub fn alternative(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         #imp firelib::Alternative for #struct_name {}
 
-        #imp Try for #struct_name {
+        #imp std::ops::Try for #struct_name {
             type Output = Self;
             type Residual = Self;
 
@@ -57,16 +57,16 @@ pub fn alternative(attr: TokenStream, item: TokenStream) -> TokenStream {
                 output
             }
 
-            fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
+            fn branch(self) -> std::ops::ControlFlow<Self::Residual, Self::Output> {
                 match self {
-                    Self {#matcher, ..} => ControlFlow::Continue(self),
-                    _ => ControlFlow::Break(self),
+                    Self {#matcher, ..} => std::ops::ControlFlow::Continue(self),
+                    _ => std::ops::ControlFlow::Break(self),
                 }
             }
         }
 
-        #imp FromResidual for #struct_name {
-            fn from_residual(residual: <Self as Try>::Residual) -> Self {
+        #imp std::ops::FromResidual for #struct_name {
+            fn from_residual(residual: <Self as std::ops::Try>::Residual) -> Self {
                 residual
             }
         }
