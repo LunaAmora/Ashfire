@@ -36,7 +36,6 @@ pub trait __Alternative: Alternative {
 /// ```
 /// # #![feature(try_trait_v2)]
 /// # use firelib::{choice, alternative};
-/// # use std::ops::{FromResidual, ControlFlow, Try};
 /// // Here we create an struct that implements the Alternative
 /// // trait with a neutral matching pattern of `value: None`.
 /// #[alternative(value, None)]
@@ -76,16 +75,21 @@ pub trait __Alternative: Alternative {
 /// ```
 #[macro_export]
 macro_rules! choice {
-    ($typ:ident, $( $x:expr ),* $(,)?) => {
-        {
-            use $crate::__Alternative as _;
-            let mut alternative;
-            $(
-                alternative = $typ::__from($x)?;
-            )*
-            alternative
-        }
-    }
+    ($typ:ident, $( $x:expr ),* ; bail!($( $fmt:expr ),*)) => {{
+        use $crate::__Alternative as _;
+        $( $typ::__from($x)?; )*
+
+        $crate::bail!($( $fmt ),*);
+        unreachable!();
+    }};
+    ($typ:ident, $( $x:expr ),* $(,)?) => {{
+        use $crate::__Alternative as _;
+        let mut alternative;
+        $(
+            alternative = $typ::__from($x)?;
+        )*
+        alternative
+    }}
 }
 
 /// Provides the [`success`][Success::success] method

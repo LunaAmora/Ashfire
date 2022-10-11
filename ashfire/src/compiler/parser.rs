@@ -112,10 +112,9 @@ impl Parser {
                     prog.get_proc_name(word),
                     self.get_const_name(word, prog),
                     self.get_variable(word, prog),
-                    self.define_context(word, prog),
-                );
-
-                bail!("{}Word was not declared on the program: `{}`", word.loc, word.name)
+                    self.define_context(word, prog);
+                    bail!("{}Word was not declared on the program: `{}`", word.loc, word.name)
+                )
             }
         });
 
@@ -403,15 +402,12 @@ impl Parser {
             match (colons, &tok.typ) {
                 (1, TokenType::DataType(ValueType::Int)) => success!(self.parse_memory(word, prog)),
 
-                (1, TokenType::Word) => {
-                    choice!(
-                        OptionErr,
-                        self.parse_proc_ctx(prog.get_word(tok.operand).to_owned(), word, prog),
-                        self.parse_struct_ctx(i, word, prog),
-                    );
-
-                    bail!(prog.invalid_token(tok, "context declaration"));
-                }
+                (1, TokenType::Word) => choice!(
+                    OptionErr,
+                    self.parse_proc_ctx(prog.get_word(tok.operand).to_owned(), word, prog),
+                    self.parse_struct_ctx(i, word, prog);
+                    bail!(prog.invalid_token(tok, "context declaration"))
+                ),
 
                 (_, TokenType::Keyword) => {
                     choice!(
