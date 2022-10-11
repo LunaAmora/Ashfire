@@ -5,8 +5,8 @@ use std::{
 };
 
 use anyhow::{Error, Result};
+use either::Either;
 use firelib::{alternative, FlowControl, Success, SuccessFrom};
-use itertools::Either;
 
 #[derive(FlowControl)]
 #[alternative(value, Ok(None))]

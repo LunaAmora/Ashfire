@@ -24,6 +24,7 @@ dependencies = [
  "anyhow",
  "clap",
  "clap-verbosity-flag",
+ "either",
  "env_logger",
  "firelib",
  "itertools",

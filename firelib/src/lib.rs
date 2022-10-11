@@ -77,10 +77,10 @@ pub trait __Alternative: Alternative {
 macro_rules! choice {
     ($typ:ident, $( $x:expr ),* ; bail!($( $fmt:expr ),*)) => {{
         use $crate::__Alternative as _;
-        $( $typ::__from($x)?; )*
-
+        $(
+            $typ::__from($x)?;
+        )*
         $crate::bail!($( $fmt ),*);
-        unreachable!();
     }};
     ($typ:ident, $( $x:expr ),* $(,)?) => {{
         use $crate::__Alternative as _;
@@ -167,7 +167,7 @@ pub trait FlowControl:
 #[macro_export]
 macro_rules! ensure {
     ($expr:expr, $( $fmt:expr ),*) => {
-        $crate::FlowControl::ensure($expr, || $crate::bail!($( $fmt ),*))?
+        $crate::FlowControl::ensure($expr, || Err($crate::anyhow::anyhow!( $( $fmt ),* ))?)?
     };
 }
 
@@ -175,7 +175,7 @@ macro_rules! ensure {
 #[macro_export]
 macro_rules! bail {
     ($( $fmt:expr ),*) => {
-        Err($crate::anyhow::anyhow!( $( $fmt ),* ))?
+        return Err($crate::anyhow::anyhow!( $( $fmt ),* ))?;
     };
 }
 

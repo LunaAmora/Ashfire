@@ -105,7 +105,7 @@ impl Module {
         .unwrap()
     }
 
-    fn write_imports(&mut self, writer: &mut BufWriter<File>) -> Result<()> {
+    fn write_imports(&mut self, writer: &mut BufWriter<File>) -> Result<&mut Self> {
         for import in &self.imports {
             match &import.bind {
                 Bind::Global(_) => todo!(),
@@ -127,17 +127,17 @@ impl Module {
                 Bind::Mem(_) => todo!(),
             }
         }
-        Ok(())
+        Ok(self)
     }
 
-    fn write_memories(&self, writer: &mut BufWriter<File>) -> Result<()> {
+    fn write_memories(&self, writer: &mut BufWriter<File>) -> Result<&Self> {
         for mem in &self.mems {
             writer.write_all(format!("{mem}\n").as_bytes())?;
         }
-        Ok(())
+        Ok(self)
     }
 
-    fn write_globals(&self, writer: &mut BufWriter<File>) -> Result<()> {
+    fn write_globals(&self, writer: &mut BufWriter<File>) -> Result<&Self> {
         for (label, index) in self.global_map.iter().sorted_by_key(|entry| entry.1) {
             let global = &self.globals.get(*index).unwrap().value;
 
@@ -151,10 +151,10 @@ impl Module {
                 .as_bytes(),
             )?;
         }
-        Ok(())
+        Ok(self)
     }
 
-    fn write_funcs(&self, writer: &mut BufWriter<File>) -> Result<()> {
+    fn write_funcs(&self, writer: &mut BufWriter<File>) -> Result<&Self> {
         for (label, index) in self.func_map.iter().sorted_by_key(|entry| entry.1) {
             let func = self.funcs.get(*index).unwrap();
             let contr = self.types.get(func.contract).unwrap();
@@ -164,10 +164,10 @@ impl Module {
                     .as_bytes(),
             )?;
         }
-        Ok(())
+        Ok(self)
     }
 
-    fn write_data(&self, _writer: &mut BufWriter<File>) -> Result<()> {
+    fn write_data(&self, _writer: &mut BufWriter<File>) -> Result<&Self> {
         _writer.write_all(
             format!(
                 "(data (i32.const 0)\n{}\n)\n",
@@ -175,7 +175,7 @@ impl Module {
             )
             .as_bytes(),
         )?;
-        Ok(())
+        Ok(self)
     }
 
     fn write_exports(&self, writer: &mut BufWriter<File>) -> Result<()> {
@@ -203,13 +203,12 @@ impl Module {
         Ok(())
     }
 
-    pub fn write_text(&mut self, mut writer: BufWriter<File>) -> Result<()> {
-        self.write_imports(&mut writer)?;
-        self.write_memories(&mut writer)?;
-        self.write_globals(&mut writer)?;
-        self.write_funcs(&mut writer)?;
-        self.write_data(&mut writer)?;
-        self.write_exports(&mut writer)?;
-        Ok(())
+    pub fn write_text(mut self, mut writer: BufWriter<File>) -> Result<()> {
+        self.write_imports(&mut writer)?
+            .write_memories(&mut writer)?
+            .write_globals(&mut writer)?
+            .write_funcs(&mut writer)?
+            .write_data(&mut writer)?
+            .write_exports(&mut writer)
     }
 }

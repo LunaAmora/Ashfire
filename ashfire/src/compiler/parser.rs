@@ -2,8 +2,8 @@ use std::{collections::VecDeque, fs::File, io::BufReader, path::PathBuf};
 
 use anyhow::{Context, Result};
 use ashlib::*;
+use either::Either;
 use firelib::*;
-use itertools::Either;
 
 use super::{lexer::Lexer, typechecker::Expect, types::*};
 
@@ -801,9 +801,8 @@ impl Parser {
             .get_keyword()
             .unwrap();
 
-        let (mut result, eval) = match self.compile_eval_n(stk.members.len(), prog).value {
-            Ok((result, eval)) => (result, eval),
-            _ => bail!("Failed to parse an valid struct value at compile-time evaluation"),
+        let Ok((mut result, eval)) = self.compile_eval_n(stk.members.len(), prog).value else {
+            bail!("Failed to parse an valid struct value at compile-time evaluation");
         };
 
         let end_token = self.skip(eval).unwrap();
@@ -1024,7 +1023,7 @@ impl Program {
 fn expect_token_by(
     value: Option<IRToken>, pred: impl FnOnce(&IRToken) -> bool, desc: &str, loc: Option<Loc>,
     fmt: impl FnOnce(IRToken) -> String,
-) -> anyhow::Result<IRToken> {
+) -> Result<IRToken> {
     match value {
         Some(tok) if pred(&tok) => Ok(tok),
         Some(tok) => bail!("{}Expected to find {}, but found: {}", tok.loc.clone(), desc, fmt(tok)),
