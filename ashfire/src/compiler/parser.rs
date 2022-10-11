@@ -10,7 +10,7 @@ use super::{lexer::Lexer, typechecker::Expect, types::*};
 type CompEvalStack = EvalStack<IRToken>;
 
 #[derive(Default)]
-struct Parser {
+pub struct Parser {
     ir_tokens: VecDeque<IRToken>,
     consts: Vec<TypedWord>,
     global_mems: Vec<Word>,
@@ -67,7 +67,7 @@ impl Parser {
     /// # Errors
     ///
     /// This function will return an error if any problem is encountered during parsing.
-    fn parse_tokens(&mut self, prog: &mut Program) -> Result<()> {
+    pub fn parse_tokens(&mut self, prog: &mut Program) -> Result<()> {
         while let Some(token) = self.next() {
             if let Some(mut op) = self.define_op(token, prog).value? {
                 prog.ops.append(&mut op)
@@ -876,7 +876,7 @@ impl Parser {
         }
     }
 
-    fn lex_file(&mut self, path: &PathBuf, prog: &mut Program) -> Result<()> {
+    pub fn lex_file(&mut self, path: &PathBuf, prog: &mut Program) -> Result<&mut Self> {
         let reader = BufReader::new(
             File::open(path).with_context(|| format!("could not read file `{:?}`", &path))?,
         );
@@ -905,7 +905,7 @@ impl Parser {
             info!("Including file: {:?}", include);
             self.lex_file(&include, prog)?;
         }
-        Ok(())
+        Ok(self)
     }
 }
 
@@ -1046,13 +1046,13 @@ fn format_block(error: &str, block: Op, loc: &Loc) -> String {
     )
 }
 
-pub fn compile_file(path: &PathBuf) -> Result<Program> {
+pub fn compile_file(path: &PathBuf, program: &mut Program) -> Result<()> {
     info!("Compiling file: {:?}", path);
-    let mut program = Program::new();
-    let mut parser = Parser::new();
-    parser.lex_file(path, &mut program)?;
-    parser.parse_tokens(&mut program)?;
+
+    Parser::new()
+        .lex_file(path, program)?
+        .parse_tokens(program)?;
 
     info!("Compilation done");
-    Ok(program)
+    Ok(())
 }

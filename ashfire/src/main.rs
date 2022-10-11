@@ -7,13 +7,14 @@ extern crate num;
 mod compiler;
 mod logger;
 
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
+use firelib::cmd_wait;
 
-use crate::compiler::{generator::*, parser::*, typechecker::*};
+use crate::compiler::{generator::*, parser::*, typechecker::*, types::Program};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -57,40 +58,24 @@ fn main() {
 }
 
 fn compile_command(path: PathBuf, output: Option<PathBuf>, run: bool, opt: bool) -> Result<()> {
-    let mut program = compile_file(&path)?;
+    let mut program = Program::new();
+    compile_file(&path, &mut program)?;
     type_check(&mut program)?;
 
     let mut out = output.unwrap_or(path);
     out.set_extension("wat");
 
-    generate_wasm(&program, out.clone())?;
+    generate_wasm(&program, &out)?;
 
     let mut out_wasm = out.clone();
     out_wasm.set_extension("wasm");
 
-    info!("Running wat2wasm");
-    Command::new("wat2wasm")
-        .arg(out)
-        .arg("-o")
-        .arg(out_wasm.clone())
-        .spawn()?
-        .wait()?;
-
+    cmd_wait!("wat2wasm", &out, "-o", &out_wasm);
     if opt {
-        info!("Running wasm-opt");
-        Command::new("wasm-opt")
-            .arg("-O4")
-            .arg("--enable-multivalue")
-            .arg(out_wasm.clone())
-            .arg("-o")
-            .arg(out_wasm.clone())
-            .spawn()?
-            .wait()?;
+        cmd_wait!("wasm-opt", "-O4", "--enable-multivalue", &out_wasm, "-o", &out_wasm);
     }
-
     if run {
-        info!("Running wasmtime");
-        Command::new("wasmtime").arg(out_wasm).spawn()?.wait()?;
+        cmd_wait!("wasmtime", &out_wasm);
     }
 
     Ok(())

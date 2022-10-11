@@ -14,7 +14,7 @@ struct TypeBlock {
 }
 
 #[derive(Default)]
-struct TypeChecker {
+pub struct TypeChecker {
     block_stack: Vec<TypeBlock>,
     bind_stack: Vec<TypeFrame>,
     data_stack: DataStack,
@@ -32,11 +32,11 @@ impl ProgramVisitor for TypeChecker {
 }
 
 impl TypeChecker {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self { ..Default::default() }
     }
 
-    fn type_check(&mut self, program: &mut Program) -> Result<()> {
+    pub fn type_check(&mut self, program: &mut Program) -> Result<()> {
         for ip in 0..program.ops.len() {
             self.type_check_op(ip, program)?;
         }
@@ -205,7 +205,7 @@ impl TypeChecker {
                         self.push_frame(typ, loc);
                     }
 
-                    set_operand(program, ip, index);
+                    program.set_operand(ip, index);
                 }
                 top => {
                     bail!("{loc}Cannot unpack element of type: `{}`", program.type_name(top));
@@ -259,17 +259,12 @@ impl TypeChecker {
 
                 let result = stk.members.get(index).unwrap().typ;
 
-                set_operand(program, ip, index * 4);
+                program.set_operand(ip, index * 4);
                 Ok(result)
             }
             typ => bail!("Cannot `.` access elements of type: `{}`", program.type_name(typ)),
         }
     }
-}
-
-fn set_operand(program: &mut Program, ip: usize, index: usize) {
-    let op = program.ops.get_mut(ip).unwrap();
-    op.operand = index as i32;
 }
 
 pub enum ArityType {
@@ -453,13 +448,16 @@ impl Program {
     fn format_frame(&self, t: &TypeFrame) -> String {
         format!("[INFO] {}Type `{}` was declared here", t.loc, self.type_name(t.typ))
     }
+
+    fn set_operand(&mut self, ip: usize, index: usize) {
+        let op = self.ops.get_mut(ip).unwrap();
+        op.operand = index as i32;
+    }
 }
 
-pub fn type_check(program: &mut Program) -> Result<()> {
+pub fn type_check(program: &mut Program) -> Result<(), anyhow::Error> {
     info!("Typechecking program");
-    let mut checker = TypeChecker::new();
-    checker.type_check(program)?;
-
+    TypeChecker::new().type_check(program)?;
     info!("Typechecking done");
     Ok(())
 }

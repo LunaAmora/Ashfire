@@ -235,6 +235,22 @@ macro_rules! fold_bool {
     };
 }
 
+/// Creates a new [`Command`][std::process::Command] with the given arguments,
+/// prints its content, executes it, then waits for the child process to finish.
+#[macro_export]
+macro_rules! cmd_wait {
+    ($cmd:expr) => {
+        info!("[CMD] {}", (format!("{:?}", $cmd).trim_matches('"')));
+        std::process::Command::new($cmd).spawn()?.wait()?
+    };
+    ($cmd:expr, $($arg:expr),*) => {
+        let mut __cmd = std::process::Command::new($cmd);
+        __cmd$(.arg($arg))*;
+        info!("[CMD] {}", (format!("{:?}", __cmd).replace("\"", "")));
+        __cmd.spawn()?.wait()?
+    };
+}
+
 /// Gets the directory of the [`Path`],
 /// or [`None`] if is empty.
 pub fn get_dir(current: &Path) -> Option<&Path> {

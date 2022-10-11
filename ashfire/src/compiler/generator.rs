@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File, io::BufWriter, path::PathBuf};
+use std::{collections::HashMap, fs::File, io::BufWriter, path::Path};
 
 use anyhow::{bail, Context, Result};
 use itertools::Itertools;
@@ -325,12 +325,11 @@ impl From<&Contract> for (Vec<WasmType>, Vec<WasmType>) {
     }
 }
 
-pub fn generate_wasm(program: &Program, output: PathBuf) -> Result<()> {
+pub fn generate_wasm(program: &Program, output: &Path) -> Result<()> {
     info!("Generating {:?}", output);
 
     let writer = BufWriter::new(File::create(output)?);
-    let mut module = Generator::new().generate_module(program)?;
-    module.write_text(writer)?;
-
-    Ok(())
+    Generator::new()
+        .generate_module(program)?
+        .write_text(writer)
 }
