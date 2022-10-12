@@ -841,7 +841,9 @@ impl Parser {
 
             if self.inside_proc() {
                 members.reverse();
-                result.reverse();
+                if let KeywordType::Equal = assign {
+                    result.reverse()
+                }
             }
 
             for (member, item) in members.into_iter().zip(result.into_iter()) {
@@ -860,7 +862,8 @@ impl Parser {
     ) {
         match assign {
             KeywordType::Colon => self.consts.push(struct_word),
-            _ => self.register_var(struct_word, prog),
+            KeywordType::Equal => self.register_var(struct_word, prog),
+            _ => unreachable!(),
         }
     }
 
