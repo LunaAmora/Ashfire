@@ -18,6 +18,7 @@ num-traits = "0.2"
 num-derive = "0.3"
 itertools = "0.10.5"
 either = "1.8.0"
+hex-string = "0.1.0"
 firelib = {path = "../firelib"}
 wasm_backend = {path = "../wasm_backend"}
 

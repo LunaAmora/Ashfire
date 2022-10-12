@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fs::File, io::BufWriter, path::Path};
 
 use anyhow::{bail, Context, Result};
+use hex_string::{u8_to_hex_string, HexString};
 use itertools::Itertools;
 use wasm_backend::{wasm_types::*, Module};
 use Ident::*;
@@ -99,8 +100,31 @@ impl Generator {
             wasm.add_data(data)
         }
 
-        for _var in &program.global_vars {
-            todo!("align data padding and add vars to module");
+        if !program.global_vars.is_empty() {
+            let padding = 4 - (program.data_size % 4) as usize;
+            if padding < 4 {
+                let pad_string = (0..padding).map(|_| "\\00").collect::<String>();
+                wasm.add_data(&pad_string);
+            }
+        }
+
+        for var in &program.global_vars {
+            let hex: String = HexString::from_string(&format!("{:08x}", var.value()))
+                .unwrap()
+                .as_bytes()
+                .iter()
+                .rev()
+                .map(|u| {
+                    let mut res = vec!['\\'];
+                    res.extend(u8_to_hex_string(u));
+                    res
+                })
+                .collect::<Vec<Vec<char>>>()
+                .into_iter()
+                .flatten()
+                .collect();
+
+            wasm.add_data(&hex);
         }
 
         Ok(wasm)
@@ -128,7 +152,9 @@ impl Generator {
                 self.current_fn()?
                     .extend(vec![Const(ptr), Call("push_local".into())]);
             }
-            OpType::PushGlobal => todo!(),
+            OpType::PushGlobal => self
+                .current_fn()?
+                .push(Const(program.final_data_size() + op.operand * 4)),
             OpType::OffsetLoad => todo!(),
             OpType::Offset => self
                 .current_fn()?
@@ -149,7 +175,7 @@ impl Generator {
                 IntrinsicType::Store8 => todo!(),
                 IntrinsicType::Load16 => todo!(),
                 IntrinsicType::Store16 => todo!(),
-                IntrinsicType::Load32 => todo!(),
+                IntrinsicType::Load32 => self.current_fn()?.push(I32(NumMethod::load)),
                 IntrinsicType::Store32 => self
                     .current_fn()?
                     .extend(vec![Call("swap".into()), I32(NumMethod::store)]),

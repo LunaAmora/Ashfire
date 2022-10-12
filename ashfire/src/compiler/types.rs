@@ -369,6 +369,12 @@ pub struct TypedWord {
     pub typ: TokenType,
 }
 
+impl TypedWord {
+    pub fn value(&self) -> i32 {
+        self.word.value
+    }
+}
+
 impl Deref for TypedWord {
     type Target = String;
 
