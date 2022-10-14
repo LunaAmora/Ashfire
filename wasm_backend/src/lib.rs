@@ -6,7 +6,8 @@ use std::{
     io::{BufWriter, Write},
 };
 
-use anyhow::Result;
+use anyhow::{bail, Result};
+use hexstring::LowerHexString;
 use itertools::Itertools;
 use wasm_types::*;
 
@@ -82,6 +83,10 @@ impl Module {
 
     pub fn add_data(&mut self, data: &str) {
         self.data.push(data.to_owned());
+    }
+
+    pub fn add_data_value(&mut self, data: i32) {
+        self.add_data(&inverse_hex_representation(data));
     }
 
     fn func_label_by_id(&self, id: &Ident) -> String {
@@ -210,5 +215,45 @@ impl Module {
             .write_funcs(&mut writer)?
             .write_data(&mut writer)?
             .write_exports(&mut writer)
+    }
+}
+
+fn inverse_hex_representation(data: i32) -> String {
+    bytes_from_value(data)
+        .iter()
+        .rev()
+        .flat_map(u8_to_hex_representation)
+        .collect()
+}
+
+fn bytes_from_value(data: i32) -> Vec<u8> {
+    LowerHexString::new(format!("{:08x}", data)).unwrap().into()
+}
+
+fn u8_to_hex_representation(b: &u8) -> [char; 3] {
+    let upper = nibble_to_hexchar(&((b & 0xf0) >> 4)).unwrap();
+    let lower = nibble_to_hexchar(&(b & 0x0f)).unwrap();
+    ['\\', upper, lower]
+}
+
+fn nibble_to_hexchar(b: &u8) -> Result<char> {
+    match b {
+        0 => Ok('0'),
+        1 => Ok('1'),
+        2 => Ok('2'),
+        3 => Ok('3'),
+        4 => Ok('4'),
+        5 => Ok('5'),
+        6 => Ok('6'),
+        7 => Ok('7'),
+        8 => Ok('8'),
+        9 => Ok('9'),
+        10 => Ok('a'),
+        11 => Ok('b'),
+        12 => Ok('c'),
+        13 => Ok('d'),
+        14 => Ok('e'),
+        15 => Ok('f'),
+        _ => bail!("Invalid nibble: {}", b),
     }
 }

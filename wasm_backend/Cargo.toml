@@ -10,3 +10,4 @@ license-file.workspace = true
 [dependencies]
 anyhow = "1.0"
 itertools = "0.10.5"
+hexstring = "0.1.3"

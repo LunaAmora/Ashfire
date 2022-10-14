@@ -1,7 +1,6 @@
 use std::{collections::HashMap, fs::File, io::BufWriter, path::Path};
 
 use anyhow::{bail, Context, Result};
-use hex_string::{u8_to_hex_string, HexString};
 use itertools::Itertools;
 use wasm_backend::{wasm_types::*, Module};
 use Ident::*;
@@ -109,22 +108,7 @@ impl Generator {
         }
 
         for var in &program.global_vars {
-            let hex: String = HexString::from_string(&format!("{:08x}", var.value()))
-                .unwrap()
-                .as_bytes()
-                .iter()
-                .rev()
-                .map(|u| {
-                    let mut res = vec!['\\'];
-                    res.extend(u8_to_hex_string(u));
-                    res
-                })
-                .collect::<Vec<Vec<char>>>()
-                .into_iter()
-                .flatten()
-                .collect();
-
-            wasm.add_data(&hex);
+            wasm.add_data_value(var.value());
         }
 
         Ok(wasm)
