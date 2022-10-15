@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use anyhow::{bail, ensure, Context, Result};
 use ashlib::{EvalStack, Stack};
 use firelib::equals_any;
@@ -13,10 +12,22 @@ struct TypeBlock {
     start_op: usize,
 }
 
+impl TypeBlock {
+    fn new(other: &DataStack, start_op: usize) -> Self {
+        Self { data_stack: DataStack::new(other), start_op }
+    }
+}
+
+impl From<TypeBlock> for (DataStack, usize) {
+    fn from(block: TypeBlock) -> Self {
+        (block.data_stack, block.start_op)
+    }
+}
+
 #[derive(Default)]
 pub struct TypeChecker {
     block_stack: Vec<TypeBlock>,
-    bind_stack: Vec<TypeFrame>,
+    _bind_stack: Vec<TypeFrame>,
     data_stack: DataStack,
     current_proc: Option<usize>,
 }
@@ -188,9 +199,38 @@ impl TypeChecker {
                 }
             }
 
-            OpType::IfStart => todo!(),
+            OpType::IfStart => {
+                self.data_stack.expect_contract_pop(&[BOOL], program, loc)?;
+                self.block_stack.push(TypeBlock::new(&self.data_stack, ip));
+                self.data_stack.reset_max_count();
+                program.set_operand(ip, ip);
+            }
+
             OpType::Else => todo!(),
-            OpType::EndIf => todo!(),
+
+            OpType::EndIf => {
+                let (expected, start_op) = self.block_stack.pop().unwrap().into();
+
+                self.expect_stack_arity(
+                    program,
+                    &expected,
+                    loc,
+                    concat!(
+                        "Else-less if block is not allowed to alter ",
+                        "the types of the arguments on the data stack."
+                    ),
+                )?;
+
+                let ins = self.data_stack.min_count.abs();
+                let outs = ins + self.data_stack.stack_count;
+                program
+                    .block_contracts
+                    .insert(start_op, (ins as usize, outs as usize));
+
+                self.data_stack.min_count += expected.stack_count;
+                self.data_stack.stack_count = expected.stack_count;
+            }
+
             OpType::EndElse => todo!(),
 
             OpType::EndProc => {
@@ -281,6 +321,17 @@ impl TypeChecker {
                 Ok(result)
             }
             typ => bail!("Cannot `.` access elements of type: `{}`", program.type_name(typ)),
+        }
+    }
+
+    fn expect_stack_arity(
+        &self, program: &Program, expected: &[TypeFrame], loc: &Loc, error_text: &str,
+    ) -> Result<()> {
+        let expected: Vec<TokenType> = expected.iter().map(|a| a.typ).collect();
+        if let Err(err) = program.expect_exact(&self.data_stack, &expected, loc) {
+            bail!("{}\n[ERROR] {}", error_text, err)
+        } else {
+            Ok(())
         }
     }
 }
@@ -432,7 +483,7 @@ impl Program {
     ) -> String {
         let fmt = format!(
             concat!(
-                "Found stack at the end of the context does match the expected types:\n",
+                "Found stack at the end of the context does not match the expected types:\n",
                 "[INFO] {}Expected types: {}\n",
                 "[INFO] {}Actual types:   {}"
             ),
@@ -442,7 +493,7 @@ impl Program {
             self.format_stack(stack, |frame| frame.typ)
         );
 
-        if verbose {
+        if verbose & !stack.is_empty() {
             format!("{fmt}\n{}", self.format_frames(stack))
         } else {
             fmt

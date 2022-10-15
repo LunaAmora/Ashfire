@@ -31,7 +31,7 @@ impl Display for FuncType {
         let mut res = String::new();
 
         if !self.param.is_empty() {
-            res += &format!("(param {})", self.param.iter().join(" "));
+            res += &format!(" (param {})", self.param.iter().join(" "));
         }
 
         if !self.result.is_empty() {
@@ -127,7 +127,7 @@ pub enum Instruction {
 impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let text = match self {
-            Instruction::Block(_, _) => todo!(),
+            Instruction::Block(_, _) => unimplemented!("Not possible to format"),
             Instruction::Get(scope, ident) => format!("{:?}.get {ident}", scope),
             Instruction::Set(scope, ident) => format!("{:?}.set {ident}", scope),
             Instruction::I32(num_method) => format!("i32.{:?}", num_method),
@@ -146,6 +146,17 @@ pub enum BlockType {
     If,
     Loop(Option<Ident>),
     Block(Option<Ident>),
+}
+
+impl Display for BlockType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let text = match self {
+            BlockType::If => "if".to_string(),
+            BlockType::Loop(_) => todo!(),
+            BlockType::Block(_) => todo!(),
+        };
+        write!(f, "{text}")
+    }
 }
 
 #[derive(Debug)]

@@ -165,11 +165,33 @@ impl Module {
             let contr = self.types.get(func.contract).unwrap();
 
             writer.write_all(
-                format!("(func ${} {}\n  {}\n)\n", label, contr, func.code.iter().join(" "))
-                    .as_bytes(),
+                format!(
+                    "(func ${}{}\n  {}\n)\n",
+                    label,
+                    contr,
+                    func.code
+                        .iter()
+                        .map(|inst| self.format_instruction(inst))
+                        .join(" ")
+                )
+                .as_bytes(),
             )?;
         }
         Ok(self)
+    }
+
+    fn format_instruction(&self, instruction: &Instruction) -> String {
+        match instruction {
+            Instruction::Block(block, ident) => match ident {
+                Some(id) => {
+                    let Ident::Id(id) = id else {unreachable!()};
+                    let contr = self.types.get(*id).unwrap();
+                    format!("{}{}", block, contr)
+                }
+                None => todo!(),
+            },
+            _ => format!("{}", instruction),
+        }
     }
 
     fn write_data(&self, _writer: &mut BufWriter<File>) -> Result<&Self> {

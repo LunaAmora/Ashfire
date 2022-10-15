@@ -579,7 +579,7 @@ impl Parser {
     fn compile_eval_n(
         &self, n: usize, prog: &mut Program,
     ) -> DoubleResult<(Vec<IRToken>, usize), IRToken> {
-        let mut result = CompEvalStack::new();
+        let mut result = CompEvalStack::default();
         let mut i = 0;
 
         while let Some(tok) = self.ir_tokens.get(i).cloned() {

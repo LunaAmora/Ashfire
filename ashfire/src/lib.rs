@@ -124,8 +124,8 @@ pub trait Stack<T>: Deref<Target = [T]> {
 
 pub struct EvalStack<T> {
     frames: Vec<T>,
-    min_count: i32,
-    stack_count: i32,
+    pub min_count: i32,
+    pub stack_count: i32,
 }
 
 impl<T> Deref for EvalStack<T> {
@@ -142,19 +142,17 @@ impl<T> Default for EvalStack<T> {
     }
 }
 
-impl<T: Clone> Clone for EvalStack<T> {
-    fn clone(&self) -> Self {
+impl<T: Clone> EvalStack<T> {
+    pub fn new(other: &EvalStack<T>) -> Self {
         Self {
-            frames: self.frames.clone(),
-            min_count: self.min_count,
+            frames: other.frames.clone(),
+            min_count: other.min_count,
             stack_count: 0,
         }
     }
-}
 
-impl<T> EvalStack<T> {
-    pub fn new() -> Self {
-        Self { ..Default::default() }
+    pub fn reset_max_count(&mut self) {
+        self.stack_count = 0;
     }
 
     fn stack_minus(&mut self, n: usize) {
@@ -165,7 +163,7 @@ impl<T> EvalStack<T> {
     }
 }
 
-impl<T> Stack<T> for EvalStack<T> {
+impl<T: Clone> Stack<T> for EvalStack<T> {
     fn push(&mut self, item: T) {
         self.stack_count += 1;
         self.frames.push(item)

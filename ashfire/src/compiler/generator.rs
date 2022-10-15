@@ -188,10 +188,16 @@ impl Generator {
             }
             OpType::Equal => self.current_fn()?.push(I32(NumMethod::eq)),
             OpType::PrepProc => self.prep_proc(program, op)?,
-            OpType::IfStart => todo!(),
+            OpType::IfStart => {
+                let (ins, outs) = program.block_contracts.get(&(op.operand as usize)).unwrap();
+                let contract =
+                    module.new_contract(&vec![WasmType::I32; *ins], &vec![WasmType::I32; *outs]);
+
+                self.current_fn()?
+                    .push(Block(BlockType::If, Some(Id(contract))));
+            }
             OpType::Else => todo!(),
-            OpType::EndIf => todo!(),
-            OpType::EndElse => todo!(),
+            OpType::EndIf | OpType::EndElse => self.current_fn()?.push(End),
             OpType::EndProc => {
                 let mut func = self
                     .current_func

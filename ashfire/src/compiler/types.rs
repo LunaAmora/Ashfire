@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fmt::{Debug, Display, Formatter, Result},
     ops::Deref,
 };
@@ -54,6 +55,7 @@ pub struct Program {
     pub global_vars: Vec<TypedWord>,
     pub structs_types: Vec<StructType>,
     pub procs: Vec<Proc>,
+    pub block_contracts: HashMap<usize, (usize, usize)>,
 }
 
 impl Program {
