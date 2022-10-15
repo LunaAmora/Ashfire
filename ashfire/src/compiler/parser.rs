@@ -291,13 +291,13 @@ impl Parser {
             self.current_proc(prog)
                 .map(|proc| proc.local_vars.clone())
                 .map_or_else(OptionErr::default, |vars| self
-                    .try_get_var(&word, vars, true, var_typ, prog)),
-            self.try_get_var(&word, prog.global_vars.clone(), false, var_typ, prog),
+                    .try_get_var(&word, &vars, true, var_typ, prog)),
+            self.try_get_var(&word, &prog.global_vars, false, var_typ, prog),
         )
     }
 
     fn try_get_var(
-        &self, word: &LocWord, vars: Vec<TypedWord>, local: bool, var_typ: Option<VarWordType>,
+        &self, word: &LocWord, vars: &[TypedWord], local: bool, var_typ: Option<VarWordType>,
         prog: &Program,
     ) -> OptionErr<Vec<Op>> {
         let mut result = Vec::new();
@@ -312,7 +312,7 @@ impl Parser {
         };
 
         if let Some(index) = vars.iter().position(|name| word == name.as_str()) {
-            let typ = expect_get(&vars, index).typ;
+            let typ = expect_get(vars, index).typ;
             if store {
                 result.push(Op::new(OpType::ExpectType, typ.into(), loc))
             }
@@ -345,7 +345,7 @@ impl Parser {
 
         if pointer {
             let pattern = &format!("{}.{}", word.name, member.name);
-            let index = expect_index(&vars, |name| name.eq(pattern));
+            let index = expect_index(vars, |name| name.eq(pattern));
 
             let stk_id = prog.parse_data_type(struct_type.name.as_str()).unwrap();
             let ptr_typ = IntrinsicType::Cast(-(stk_id as i32));
@@ -360,7 +360,7 @@ impl Parser {
             }
 
             let pattern = &format!("{}.{}", word.name, member.name);
-            let index = expect_index(&vars, |name| name.eq(pattern)) as i32;
+            let index = expect_index(vars, |name| name.eq(pattern)) as i32;
 
             for (i, member) in (0_i32..).zip(members.into_iter()) {
                 let operand = index + fold_bool!(local == store, i, -i);
@@ -874,8 +874,10 @@ impl Parser {
             let eval = result.pop().unwrap();
 
             if eval.typ == ValueType::Any {
-                for member in members.into_iter().rev() {
-                    //Todo:: check if the `.rev()` is correct
+                if self.inside_proc() {
+                    members.reverse();
+                }
+                for member in members.into_iter() {
                     let name = format!("{}.{}", word.name, member.name);
                     let struct_word = (name, member.default_value, member.typ).into();
                     self.register_typed_word(&assign, struct_word, prog);
