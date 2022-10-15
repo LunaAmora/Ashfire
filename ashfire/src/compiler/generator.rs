@@ -288,11 +288,11 @@ impl Program {
     fn unpack_struct(&self, index: usize) -> Vec<Instruction> {
         let stk = self.structs_types.get(index).unwrap();
         let count = stk.members.len() as i32;
-        let mut func = vec![];
+        let mut instructions = vec![];
 
         match count {
-            1 => func.push(I32(NumMethod::load)),
-            2 => func.extend(vec![
+            1 => instructions.push(I32(NumMethod::load)),
+            2 => instructions.extend(vec![
                 Call("dup".into()),
                 I32(NumMethod::load),
                 Call("swap".into()),
@@ -301,10 +301,10 @@ impl Program {
                 I32(NumMethod::load),
             ]),
             _ => {
-                func.push(Call("bind_local".into()));
+                instructions.push(Call("bind_local".into()));
 
                 for offset in 0..count {
-                    func.extend(vec![
+                    instructions.extend(vec![
                         Const(4),
                         Call("push_local".into()),
                         I32(NumMethod::load),
@@ -314,10 +314,10 @@ impl Program {
                     ]);
                 }
 
-                func.extend(vec![Const(4), Call("free_local".into())]);
+                instructions.extend(vec![Const(4), Call("free_local".into())]);
             }
         };
-        func
+        instructions
     }
 }
 
@@ -349,8 +349,8 @@ impl FuncGen {
 
 impl From<&Contract> for (Vec<WasmType>, Vec<WasmType>) {
     fn from(contract: &Contract) -> Self {
-        let ins = contract.ins.iter().map(|_| WasmType::I32).collect();
-        let outs = contract.outs.iter().map(|_| WasmType::I32).collect();
+        let ins = vec![WasmType::I32; contract.ins.len()];
+        let outs = vec![WasmType::I32; contract.outs.len()];
         (ins, outs)
     }
 }
