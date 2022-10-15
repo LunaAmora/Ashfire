@@ -417,6 +417,7 @@ impl LocWord {
     }
 }
 
+#[derive(Clone)]
 pub struct TypeFrame {
     pub typ: TokenType,
     pub loc: Loc,
@@ -569,10 +570,10 @@ pub enum IntrinsicType {
     Or,
     Xor,
     Load8,
-    Store8,
     Load16,
-    Store16,
     Load32,
+    Store8,
+    Store16,
     Store32,
     FdWrite,
     Cast(i32),

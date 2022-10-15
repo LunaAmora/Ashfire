@@ -148,8 +148,22 @@ impl TypeChecker {
                 self.data_stack.push(b);
             }
 
-            OpType::Over => todo!(),
-            OpType::Rot => todo!(),
+            OpType::Over => {
+                let a = self.data_stack.expect_pop(loc)?;
+                let b = self.data_stack.expect_pop(loc)?;
+                self.data_stack.push(b.clone());
+                self.data_stack.push(a);
+                self.data_stack.push(b);
+            }
+
+            OpType::Rot => {
+                let a = self.data_stack.expect_pop(loc)?;
+                let b = self.data_stack.expect_pop(loc)?;
+                let c = self.data_stack.expect_pop(loc)?;
+                self.data_stack.push(b);
+                self.data_stack.push(a);
+                self.data_stack.push(c);
+            }
 
             OpType::Call => {
                 let Proc { contract: Contract { ins, outs }, .. } =
@@ -162,7 +176,11 @@ impl TypeChecker {
                 }
             }
 
-            OpType::Equal => todo!(),
+            OpType::Equal => {
+                self.data_stack
+                    .expect_arity_pop(2, ArityType::Same, program, loc)?;
+                self.push_frame(BOOL, loc);
+            }
 
             OpType::PrepProc => {
                 for typ in &self.visit_proc(program, op.operand as usize).contract.ins {
@@ -441,7 +459,7 @@ impl Program {
         )
     }
 
-    fn format_frames(&self, stack: &[TypeFrame]) -> String {
+    pub fn format_frames(&self, stack: &[TypeFrame]) -> String {
         stack.iter().map(|t| self.format_frame(t)).join("\n")
     }
 

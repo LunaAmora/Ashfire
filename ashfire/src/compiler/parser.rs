@@ -5,7 +5,11 @@ use ashlib::*;
 use either::Either;
 use firelib::*;
 
-use super::{lexer::Lexer, typechecker::Expect, types::*};
+use super::{
+    lexer::Lexer,
+    typechecker::{ArityType, Expect},
+    types::*,
+};
 
 type CompEvalStack = EvalStack<IRToken>;
 
@@ -583,7 +587,20 @@ impl Parser {
                 if result.is_empty() && i == 0 {
                     result.push(IRToken::new(ValueType::Any.into(), 0, &tok.loc));
                 } else if result.len() != n {
-                    todo!("handle mismatch of expected types")
+                    let frames: Vec<TypeFrame> = result.iter().map(TypeFrame::from).collect();
+                    let fmt_frames = prog.format_frames(&frames);
+
+                    bail!(
+                        concat!(
+                            "Expected {} value{} on the stack ",
+                            "in the end of the compile-time evaluation, ",
+                            "but found {}:\n{}"
+                        ),
+                        n,
+                        fold_bool!(n > 1, "s", ""),
+                        result.len(),
+                        fmt_frames
+                    );
                 }
                 break;
             }
@@ -603,12 +620,40 @@ impl Parser {
             TokenType::Keyword => {
                 let key = from_i32(tok.operand);
                 match key {
-                    KeywordType::Dup => todo!(),
-                    KeywordType::Drop => todo!(),
-                    KeywordType::Swap => todo!(),
-                    KeywordType::Over => todo!(),
-                    KeywordType::Rot => todo!(),
-                    KeywordType::Equal => todo!(),
+                    KeywordType::Dup => {
+                        let top = (*result.expect_peek(ArityType::Any, prog, &tok.loc)?).clone();
+                        result.push(top);
+                    }
+                    KeywordType::Drop => {
+                        result.expect_pop(&tok.loc)?;
+                    }
+                    KeywordType::Swap => {
+                        let a = result.expect_pop(&tok.loc)?;
+                        let b = result.expect_pop(&tok.loc)?;
+                        result.push(a);
+                        result.push(b);
+                    }
+                    KeywordType::Over => {
+                        let a = result.expect_pop(&tok.loc)?;
+                        let b = result.expect_pop(&tok.loc)?;
+                        result.push(b.clone());
+                        result.push(a);
+                        result.push(b);
+                    }
+                    KeywordType::Rot => {
+                        let a = result.expect_pop(&tok.loc)?;
+                        let b = result.expect_pop(&tok.loc)?;
+                        let c = result.expect_pop(&tok.loc)?;
+                        result.push(b);
+                        result.push(a);
+                        result.push(c);
+                    }
+                    KeywordType::Equal => {
+                        let top = result.expect_arity_pop(2, ArityType::Same, prog, &tok.loc)?;
+                        let (a, b) = (top.get(0).unwrap(), top.get(1).unwrap());
+                        let value = fold_bool!(a.operand == b.operand, 1, 0);
+                        result.push(IRToken::new(BOOL, value, &tok.loc))
+                    }
                     _ => {
                         Err(Either::Left(IRToken::new(TokenType::Keyword, tok.operand, &tok.loc)))?
                     }
@@ -619,8 +664,21 @@ impl Parser {
                 let loc_word = LocWord::new(prog.get_word(tok.operand), tok.loc.clone());
                 match prog.get_intrinsic_type(&loc_word) {
                     Some(intrinsic) => match intrinsic {
-                        IntrinsicType::Plus => todo!(),
-                        IntrinsicType::Minus => todo!(),
+                        IntrinsicType::Plus => {
+                            let top =
+                                result.expect_arity_pop(2, ArityType::Same, prog, &tok.loc)?;
+                            let (a, b) = (top.get(0).unwrap(), top.get(1).unwrap());
+                            let value = a.operand + b.operand;
+                            result.push(IRToken::new(a.typ, value, &tok.loc))
+                        }
+
+                        IntrinsicType::Minus => {
+                            let top =
+                                result.expect_arity_pop(2, ArityType::Same, prog, &tok.loc)?;
+                            let (a, b) = (top.get(0).unwrap(), top.get(1).unwrap());
+                            let value = a.operand - b.operand;
+                            result.push(IRToken::new(a.typ, value, &tok.loc))
+                        }
 
                         IntrinsicType::Cast(n) => {
                             let a = result.expect_pop(&tok.loc)?;
@@ -801,8 +859,12 @@ impl Parser {
             .get_keyword()
             .unwrap();
 
-        let Ok((mut result, eval)) = self.compile_eval_n(stk.members.len(), prog).value else {
-            bail!("Failed to parse an valid struct value at compile-time evaluation");
+        let (mut result, eval) = match self.compile_eval_n(stk.members.len(), prog).value {
+            Ok(value) => value,
+            Err(either) => match either {
+                Either::Right(err) => return Err(err),
+                _ => bail!("Failed to parse an valid struct value at compile-time evaluation"),
+            },
         };
 
         let end_token = self.skip(eval).unwrap();

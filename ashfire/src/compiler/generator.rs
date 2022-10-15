@@ -128,7 +128,9 @@ impl Generator {
                 self.current_fn()?
                     .extend(vec![Const(ptr), Call("push_local".into())]);
             }
-            OpType::PushGlobalMem => todo!(),
+            OpType::PushGlobalMem => self
+                .current_fn()?
+                .push(Const(program.final_data_size() + program.mem_size + op.operand)),
             OpType::PushLocal => {
                 let proc = self.current_proc(program).unwrap();
                 let ptr = (self.current_fn()?.bind_count + 1 + op.operand) * 4 + proc.mem_size;
@@ -148,18 +150,22 @@ impl Generator {
                 IntrinsicType::Minus => self.current_fn()?.push(I32(NumMethod::sub)),
                 IntrinsicType::Times => todo!(),
                 IntrinsicType::Div => todo!(),
-                IntrinsicType::Greater => todo!(),
-                IntrinsicType::GreaterE => todo!(),
-                IntrinsicType::Lesser => todo!(),
-                IntrinsicType::LesserE => todo!(),
+                IntrinsicType::Greater => self.current_fn()?.push(I32(NumMethod::gt_s)),
+                IntrinsicType::GreaterE => self.current_fn()?.push(I32(NumMethod::ge_s)),
+                IntrinsicType::Lesser => self.current_fn()?.push(I32(NumMethod::lt_s)),
+                IntrinsicType::LesserE => self.current_fn()?.push(I32(NumMethod::le_s)),
                 IntrinsicType::And => self.current_fn()?.push(I32(NumMethod::and)),
                 IntrinsicType::Or => self.current_fn()?.push(I32(NumMethod::or)),
-                IntrinsicType::Xor => todo!(),
-                IntrinsicType::Load8 => todo!(),
-                IntrinsicType::Store8 => todo!(),
-                IntrinsicType::Load16 => todo!(),
-                IntrinsicType::Store16 => todo!(),
+                IntrinsicType::Xor => self.current_fn()?.push(I32(NumMethod::xor)),
+                IntrinsicType::Load8 => self.current_fn()?.push(I32(NumMethod::load8_s)),
+                IntrinsicType::Load16 => self.current_fn()?.push(I32(NumMethod::load16_s)),
                 IntrinsicType::Load32 => self.current_fn()?.push(I32(NumMethod::load)),
+                IntrinsicType::Store8 => self
+                    .current_fn()?
+                    .extend(vec![Call("swap".into()), I32(NumMethod::store8)]),
+                IntrinsicType::Store16 => self
+                    .current_fn()?
+                    .extend(vec![Call("swap".into()), I32(NumMethod::store16)]),
                 IntrinsicType::Store32 => self
                     .current_fn()?
                     .extend(vec![Call("swap".into()), I32(NumMethod::store)]),
@@ -169,8 +175,8 @@ impl Generator {
             OpType::Dup => self.push_call("dup")?,
             OpType::Drop => self.current_fn()?.push(Drop),
             OpType::Swap => self.push_call("swap")?,
-            OpType::Over => todo!(),
-            OpType::Rot => todo!(),
+            OpType::Over => self.push_call("over")?,
+            OpType::Rot => self.push_call("rot")?,
             OpType::Call => {
                 let id = program
                     .procs
@@ -180,7 +186,7 @@ impl Generator {
                     .to_owned();
                 self.current_fn()?.push(Call(Label(id)));
             }
-            OpType::Equal => todo!(),
+            OpType::Equal => self.current_fn()?.push(I32(NumMethod::eq)),
             OpType::PrepProc => self.prep_proc(program, op)?,
             OpType::IfStart => todo!(),
             OpType::Else => todo!(),
