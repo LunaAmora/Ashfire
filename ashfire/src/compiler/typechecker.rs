@@ -113,7 +113,7 @@ impl TypeChecker {
                 }
 
                 IntrinsicType::Load8 | IntrinsicType::Load16 | IntrinsicType::Load32 => {
-                    self.data_stack.expect_contract_pop(&[PTR], program, loc)?;
+                    self.data_stack.expect_pop_type(PTR, program, loc)?;
                     self.push_frame(ANY, loc)
                 }
 
@@ -140,16 +140,16 @@ impl TypeChecker {
                 }
             },
 
+            OpType::Drop => {
+                self.data_stack.expect_pop(loc)?;
+            }
+
             OpType::Dup => {
                 let typ = self
                     .data_stack
                     .expect_peek(ArityType::Any, program, loc)?
                     .typ;
                 self.push_frame(typ, loc);
-            }
-
-            OpType::Drop => {
-                self.data_stack.expect_pop(loc)?;
             }
 
             OpType::Swap => {
@@ -200,7 +200,7 @@ impl TypeChecker {
             }
 
             OpType::IfStart => {
-                self.data_stack.expect_contract_pop(&[BOOL], program, loc)?;
+                self.data_stack.expect_pop_type(BOOL, program, loc)?;
                 self.block_stack.push(TypeBlock::new(&self.data_stack, ip));
                 self.data_stack.reset_max_count();
                 program.set_operand(ip, ip);

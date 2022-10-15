@@ -117,20 +117,24 @@ impl Generator {
     fn generate_op(&mut self, op: Op, program: &Program, module: &mut Module) -> Result<()> {
         match op.typ {
             OpType::PushData(_) => self.current_fn()?.push(Const(op.operand)),
+
             OpType::PushStr => {
                 let data = program.data.get(op.operand as usize).unwrap();
                 self.current_fn()?
                     .extend(vec![Const(data.size()), Const(data.offset)])
             }
+
             OpType::PushLocalMem => {
                 let ptr = self.current_fn()?.bind_count * 4 + op.operand;
 
                 self.current_fn()?
                     .extend(vec![Const(ptr), Call("push_local".into())]);
             }
+
             OpType::PushGlobalMem => self
                 .current_fn()?
                 .push(Const(program.final_data_size() + program.mem_size + op.operand)),
+
             OpType::PushLocal => {
                 let proc = self.current_proc(program).unwrap();
                 let ptr = (self.current_fn()?.bind_count + 1 + op.operand) * 4 + proc.mem_size;
@@ -138,18 +142,23 @@ impl Generator {
                 self.current_fn()?
                     .extend(vec![Const(ptr), Call("push_local".into())]);
             }
+
             OpType::PushGlobal => self
                 .current_fn()?
                 .push(Const(program.final_data_size() + op.operand * 4)),
+
             OpType::OffsetLoad => todo!(),
+
             OpType::Offset => self
                 .current_fn()?
                 .extend(vec![Const(op.operand), I32(NumMethod::add)]),
+
             OpType::Intrinsic => match IntrinsicType::from(op.operand) {
+                IntrinsicType::Div => todo!(),
+                IntrinsicType::Times => todo!(),
+
                 IntrinsicType::Plus => self.current_fn()?.push(I32(NumMethod::add)),
                 IntrinsicType::Minus => self.current_fn()?.push(I32(NumMethod::sub)),
-                IntrinsicType::Times => todo!(),
-                IntrinsicType::Div => todo!(),
                 IntrinsicType::Greater => self.current_fn()?.push(I32(NumMethod::gt_s)),
                 IntrinsicType::GreaterE => self.current_fn()?.push(I32(NumMethod::ge_s)),
                 IntrinsicType::Lesser => self.current_fn()?.push(I32(NumMethod::lt_s)),
@@ -160,6 +169,7 @@ impl Generator {
                 IntrinsicType::Load8 => self.current_fn()?.push(I32(NumMethod::load8_s)),
                 IntrinsicType::Load16 => self.current_fn()?.push(I32(NumMethod::load16_s)),
                 IntrinsicType::Load32 => self.current_fn()?.push(I32(NumMethod::load)),
+
                 IntrinsicType::Store8 => self
                     .current_fn()?
                     .extend(vec![Call("swap".into()), I32(NumMethod::store8)]),
@@ -169,14 +179,18 @@ impl Generator {
                 IntrinsicType::Store32 => self
                     .current_fn()?
                     .extend(vec![Call("swap".into()), I32(NumMethod::store)]),
+
                 IntrinsicType::FdWrite => self.push_call("fd_write")?,
+
                 IntrinsicType::Cast(_) => {}
             },
-            OpType::Dup => self.push_call("dup")?,
+
             OpType::Drop => self.current_fn()?.push(Drop),
+            OpType::Dup => self.push_call("dup")?,
             OpType::Swap => self.push_call("swap")?,
             OpType::Over => self.push_call("over")?,
             OpType::Rot => self.push_call("rot")?,
+
             OpType::Call => {
                 let id = program
                     .procs
@@ -186,8 +200,11 @@ impl Generator {
                     .to_owned();
                 self.current_fn()?.push(Call(Label(id)));
             }
+
             OpType::Equal => self.current_fn()?.push(I32(NumMethod::eq)),
+
             OpType::PrepProc => self.prep_proc(program, op)?,
+
             OpType::IfStart => {
                 let (ins, outs) = program.block_contracts.get(&(op.operand as usize)).unwrap();
                 let contract =
@@ -196,8 +213,11 @@ impl Generator {
                 self.current_fn()?
                     .push(Block(BlockType::If, Some(Id(contract))));
             }
+
             OpType::Else => todo!(),
+
             OpType::EndIf | OpType::EndElse => self.current_fn()?.push(End),
+
             OpType::EndProc => {
                 let mut func = self
                     .current_func
@@ -213,14 +233,18 @@ impl Generator {
 
                 module.add_fn(&func.label, &func.contract.0, &func.contract.1, func.code);
             }
+
             OpType::BindStack => todo!(),
             OpType::PushBind => todo!(),
             OpType::PopBind => todo!(),
             OpType::While => todo!(),
             OpType::Do => todo!(),
             OpType::EndWhile => todo!(),
+
             OpType::Unpack => self.unpack_struct(program, op.operand as usize)?,
+
             OpType::ExpectType => {}
+
             OpType::CaseStart => todo!(),
             OpType::CaseMatch => todo!(),
             OpType::CaseOption => todo!(),

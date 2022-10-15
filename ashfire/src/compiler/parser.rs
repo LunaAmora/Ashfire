@@ -129,8 +129,8 @@ impl Parser {
         let key = from_i32(operand);
 
         let op = match key {
-            KeywordType::Dup => (OpType::Dup, loc).into(),
             KeywordType::Drop => (OpType::Drop, loc).into(),
+            KeywordType::Dup => (OpType::Dup, loc).into(),
             KeywordType::Swap => (OpType::Swap, loc).into(),
             KeywordType::Over => (OpType::Over, loc).into(),
             KeywordType::Rot => (OpType::Rot, loc).into(),
@@ -144,11 +144,9 @@ impl Parser {
                 Op { typ: OpType::CaseMatch, operand, .. } => {
                     (OpType::CaseOption, operand, loc).into()
                 }
-                block => bail!(format_block(
-                    "`do` can only come in a `while` or `case` block",
-                    block,
-                    &loc
-                )),
+                block => {
+                    bail!(block.format_err("`do` can only come in a `while` or `case` block", &loc))
+                }
             },
 
             KeywordType::Let => todo!(),
@@ -156,11 +154,8 @@ impl Parser {
 
             KeywordType::Colon => match self.pop_block(&loc, key)? {
                 Op { typ: OpType::CaseStart, .. } => todo!(),
-                block => bail!(format_block(
-                    "`:` can only be used on word or `case` block definition",
-                    block,
-                    &loc
-                )),
+                block => bail!(block
+                    .format_err("`:` can only be used on word or `case` block definition", &loc)),
             },
 
             KeywordType::If => self.push_block((OpType::IfStart, loc).into()),
@@ -168,11 +163,9 @@ impl Parser {
             KeywordType::Else => match self.pop_block(&loc, key)? {
                 Op { typ: OpType::IfStart, .. } => todo!(),
                 Op { typ: OpType::CaseOption, .. } => todo!(),
-                block => bail!(format_block(
-                    "`else` can only come in a `if` or `case` block",
-                    block,
-                    &loc,
-                )),
+                block => {
+                    bail!(block.format_err("`else` can only come in a `if` or `case` block", &loc,))
+                }
             },
 
             KeywordType::End => match self.pop_block(&loc, key)? {
@@ -188,7 +181,9 @@ impl Parser {
                     (OpType::EndProc, operand, loc).into()
                 }
 
-                block => bail!(format_block("Expected `end` to close a valid block", block, &loc)),
+                block => {
+                    bail!(block.format_err("Expected `end` to close a valid block", &loc))
+                }
             },
 
             KeywordType::Include |
@@ -494,7 +489,7 @@ impl Parser {
                     }
                     Err(either) => match either {
                         Either::Left(tok) => bail!(prog.invalid_token(tok, "context declaration")),
-                        Either::Right(err) => Err(err)?,
+                        Either::Right(err) => bail!(err),
                     },
                 }
             }
@@ -620,12 +615,12 @@ impl Parser {
             TokenType::Keyword => {
                 let key = from_i32(tok.operand);
                 match key {
+                    KeywordType::Drop => {
+                        result.expect_pop(&tok.loc)?;
+                    }
                     KeywordType::Dup => {
                         let top = (*result.expect_peek(ArityType::Any, prog, &tok.loc)?).clone();
                         result.push(top);
-                    }
-                    KeywordType::Drop => {
-                        result.expect_pop(&tok.loc)?;
                     }
                     KeywordType::Swap => {
                         let a = result.expect_pop(&tok.loc)?;
@@ -1033,6 +1028,15 @@ impl Program {
         })
     }
 
+    fn parse_cast_type(&self, word: &str) -> Option<i32> {
+        let (word, is_ptr) = match word.strip_prefix('*') {
+            Some(word) => (word, true),
+            None => (word, false),
+        };
+        self.parse_data_type(word)
+            .map(|u| fold_bool!(is_ptr, -1, 1) * u as i32)
+    }
+
     fn parse_data_type(&self, word: &str) -> Option<usize> {
         self.structs_types
             .iter()
@@ -1050,15 +1054,6 @@ impl Program {
 
     fn get_struct_type(&self, tok: &IRToken) -> Option<&StructType> {
         fold_bool!(tok == TokenType::Word, self.get_type_name(self.get_word(tok.operand)))
-    }
-
-    fn parse_cast_type(&self, word: &str) -> Option<i32> {
-        let (word, is_ptr) = match word.strip_prefix('*') {
-            Some(word) => (word, true),
-            None => (word, false),
-        };
-        self.parse_data_type(word)
-            .map(|u| fold_bool!(is_ptr, -1, 1) * u as i32)
     }
 
     fn get_data_pointer(&self, word: &str) -> Option<TokenType> {
@@ -1087,6 +1082,18 @@ impl Program {
     }
 }
 
+impl Op {
+    fn format_err(self, error: &str, loc: &Loc) -> String {
+        format!(
+            concat!(
+                "{}{}, but found a `{:?}` block instead\n",
+                "[INFO] {}The found block started here."
+            ),
+            loc, error, self.typ, self.loc
+        )
+    }
+}
+
 fn expect_token_by(
     value: Option<IRToken>, pred: impl FnOnce(&IRToken) -> bool, desc: &str, loc: Option<Loc>,
     fmt: impl FnOnce(IRToken) -> String,
@@ -1096,16 +1103,6 @@ fn expect_token_by(
         Some(tok) => bail!("{}Expected to find {}, but found: {}", tok.loc.clone(), desc, fmt(tok)),
         None => bail!("{}Expected to find {}, but found nothing", loc.unwrap_or_default(), desc),
     }
-}
-
-fn format_block(error: &str, block: Op, loc: &Loc) -> String {
-    format!(
-        concat!(
-            "{}{}, but found a `{:?}` block instead\n",
-            "[INFO] {}The found block started here"
-        ),
-        loc, error, block.typ, block.loc
-    )
 }
 
 pub fn compile_file(path: &PathBuf, program: &mut Program) -> Result<()> {
