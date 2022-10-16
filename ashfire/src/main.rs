@@ -34,9 +34,12 @@ enum Commands {
         /// Run the `.wasm` file with a runtime.
         #[arg(short, long)]
         run: bool,
-        /// Optimize the `.wasm` file to reduce it's size. (Needs Binaryen).
-        #[arg(short = 'p', long)]
-        opt: bool,
+        /// Decompile the `.wasm` file back into the `.wat`.
+        #[arg(short, long)]
+        wat: bool,
+        /// Sets the runtime to be used by the `-r` option.
+        #[arg(short = 't', long, default_value_t = format!("wasmtime"))]
+        runtime: String,
     },
 }
 
@@ -49,13 +52,17 @@ fn main() {
     }
 
     if let Err(err) = match args.command {
-        Commands::Com { path, output, run, opt } => compile_command(path, output, run, opt),
+        Commands::Com { path, output, run, wat, runtime } => {
+            compile_command(path, output, run, wat, runtime)
+        }
     } {
         error!("{:#}", err);
     }
 }
 
-fn compile_command(path: PathBuf, output: Option<PathBuf>, run: bool, opt: bool) -> Result<()> {
+fn compile_command(
+    path: PathBuf, output: Option<PathBuf>, run: bool, wat: bool, runtime: String,
+) -> Result<()> {
     let mut program = Program::new();
     compile_file(&path, &mut program)?;
     type_check(&mut program)?;
@@ -69,11 +76,11 @@ fn compile_command(path: PathBuf, output: Option<PathBuf>, run: bool, opt: bool)
     out_wasm.set_extension("wasm");
 
     cmd_wait!("wat2wasm", &out, "-o", &out_wasm);
-    if opt {
-        cmd_wait!("wasm-opt", "-O4", "--enable-multivalue", &out_wasm, "-o", &out_wasm);
+    if wat {
+        cmd_wait!("wasm2wat", &out_wasm, "-o", &out);
     }
     if run {
-        cmd_wait!("wasmtime", &out_wasm);
+        cmd_wait!(runtime, &out_wasm);
     }
 
     Ok(())
