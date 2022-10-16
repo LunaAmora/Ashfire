@@ -12,7 +12,7 @@ use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use firelib::cmd_wait;
 
-use crate::compiler::{generator::*, parser::*, typechecker::*, types::Program};
+use crate::compiler::types::Program;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -63,17 +63,14 @@ fn main() {
 fn compile_command(
     path: PathBuf, output: Option<PathBuf>, run: bool, wat: bool, runtime: String,
 ) -> Result<()> {
-    let mut program = Program::new();
-    compile_file(&path, &mut program)?;
-    type_check(&mut program)?;
+    let out = output.unwrap_or_else(|| path.clone()).with_extension("wat");
 
-    let mut out = output.unwrap_or(path);
-    out.set_extension("wat");
+    Program::new()
+        .compile_file(&path)?
+        .type_check()?
+        .generate_wasm(&out)?;
 
-    generate_wasm(&program, &out)?;
-
-    let mut out_wasm = out.clone();
-    out_wasm.set_extension("wasm");
+    let out_wasm = out.with_extension("wasm");
 
     cmd_wait!("wat2wasm", &out, "-o", &out_wasm);
     if wat {

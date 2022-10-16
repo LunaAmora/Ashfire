@@ -319,6 +319,13 @@ impl Program {
         };
         instructions
     }
+
+    pub fn generate_wasm(&self, output: &Path) -> Result<()> {
+        info!("Generating {:?}", output);
+
+        let writer = BufWriter::new(File::create(output)?);
+        Generator::new().generate_module(self)?.write_text(writer)
+    }
 }
 
 struct FuncGen {
@@ -353,13 +360,4 @@ impl From<&Contract> for (Vec<WasmType>, Vec<WasmType>) {
         let outs = vec![WasmType::I32; contract.outs.len()];
         (ins, outs)
     }
-}
-
-pub fn generate_wasm(program: &Program, output: &Path) -> Result<()> {
-    info!("Generating {:?}", output);
-
-    let writer = BufWriter::new(File::create(output)?);
-    Generator::new()
-        .generate_module(program)?
-        .write_text(writer)
 }

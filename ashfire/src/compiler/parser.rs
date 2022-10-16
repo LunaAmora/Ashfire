@@ -1080,6 +1080,15 @@ impl Program {
         let name = self.type_display(tok.typ, tok.operand);
         format!("{}Invalid `{desc}` found on {error_context}: `{name}`", tok.loc)
     }
+
+    pub fn compile_file(&mut self, path: &PathBuf) -> Result<&mut Self> {
+        info!("Compiling file: {:?}", path);
+
+        Parser::new().lex_file(path, self)?.parse_tokens(self)?;
+
+        info!("Compilation done");
+        Ok(self)
+    }
 }
 
 impl Op {
@@ -1103,15 +1112,4 @@ fn expect_token_by(
         Some(tok) => bail!("{}Expected to find {}, but found: {}", tok.loc.clone(), desc, fmt(tok)),
         None => bail!("{}Expected to find {}, but found nothing", loc.unwrap_or_default(), desc),
     }
-}
-
-pub fn compile_file(path: &PathBuf, program: &mut Program) -> Result<()> {
-    info!("Compiling file: {:?}", path);
-
-    Parser::new()
-        .lex_file(path, program)?
-        .parse_tokens(program)?;
-
-    info!("Compilation done");
-    Ok(())
 }

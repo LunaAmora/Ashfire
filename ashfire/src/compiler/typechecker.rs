@@ -554,11 +554,12 @@ impl Program {
         let op = self.ops.get_mut(ip).unwrap();
         op.operand = index as i32;
     }
-}
 
-pub fn type_check(program: &mut Program) -> Result<(), anyhow::Error> {
-    info!("Typechecking program");
-    TypeChecker::new().type_check(program)?;
-    info!("Typechecking done");
-    Ok(())
+    pub fn type_check(&mut self) -> Result<&mut Self> {
+        info!("Typechecking program");
+        TypeChecker::new().type_check(self)?;
+        info!("Typechecking done");
+
+        Ok(self)
+    }
 }
