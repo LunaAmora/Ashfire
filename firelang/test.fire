@@ -1,9 +1,12 @@
 include "lib/std.fire"
 
 hello str:= "Hello World!" end
+other str:= "Other Text" end
 
 start ::
   true if
     hello println
+  else
+    other println
   end
 end

@@ -7,6 +7,7 @@ use super::types::*;
 
 type DataStack = EvalStack<TypeFrame>;
 
+#[derive(Clone)]
 struct TypeBlock {
     data_stack: DataStack,
     start_op: usize,
@@ -14,7 +15,7 @@ struct TypeBlock {
 
 impl TypeBlock {
     fn new(other: &DataStack, start_op: usize) -> Self {
-        Self { data_stack: DataStack::new(other), start_op }
+        Self { data_stack: other.clone(), start_op }
     }
 }
 
@@ -206,7 +207,12 @@ impl TypeChecker {
                 program.set_operand(ip, ip);
             }
 
-            OpType::Else => todo!(),
+            OpType::Else => {
+                let (old_stack, start_op) = (self.block_stack.last().cloned().unwrap()).into();
+                self.block_stack
+                    .push(TypeBlock::new(&self.data_stack, start_op));
+                self.data_stack = DataStack::new(&old_stack);
+            }
 
             OpType::EndIf => {
                 let (expected, start_op) = self.block_stack.pop().unwrap().into();
@@ -222,16 +228,42 @@ impl TypeChecker {
                 )?;
 
                 let ins = self.data_stack.min_count.abs();
-                let outs = ins + self.data_stack.stack_count;
+                let out = self.data_stack.stack_count + ins;
+                info!("{op} {ins} {out}");
+
                 program
                     .block_contracts
-                    .insert(start_op, (ins as usize, outs as usize));
+                    .insert(start_op, (ins as usize, out as usize));
 
                 self.data_stack.min_count += expected.stack_count;
                 self.data_stack.stack_count = expected.stack_count;
             }
 
-            OpType::EndElse => todo!(),
+            OpType::EndElse => {
+                let (expected, start_op) = self.block_stack.pop().unwrap().into();
+
+                self.expect_stack_arity(
+                    program,
+                    &expected,
+                    loc,
+                    concat!(
+                        "Both branches of the if-block must produce ",
+                        "the same types of the arguments on the data stack"
+                    ),
+                )?;
+
+                let ins = (self.data_stack.min_count).min(expected.min_count).abs();
+                let out = (self.data_stack.stack_count).max(expected.stack_count) + ins;
+
+                program
+                    .block_contracts
+                    .insert(start_op, (ins as usize, out as usize));
+
+                let old_stack = self.block_stack.pop().unwrap().data_stack;
+
+                self.data_stack.min_count = old_stack.stack_count + ins;
+                self.data_stack.stack_count = old_stack.stack_count;
+            }
 
             OpType::EndProc => {
                 let mut outs = self.current_proc(program).unwrap().contract.outs.clone();

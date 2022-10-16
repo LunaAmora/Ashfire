@@ -122,6 +122,7 @@ pub trait Stack<T>: Deref<Target = [T]> {
     fn get(&self, n: usize) -> Option<&T>;
 }
 
+#[derive(Clone)]
 pub struct EvalStack<T> {
     frames: Vec<T>,
     pub min_count: i32,

@@ -161,7 +161,7 @@ impl Parser {
             KeywordType::If => self.push_block((OpType::IfStart, loc).into()),
 
             KeywordType::Else => match self.pop_block(&loc, key)? {
-                Op { typ: OpType::IfStart, .. } => todo!(),
+                Op { typ: OpType::IfStart, .. } => self.push_block((OpType::Else, loc).into()),
                 Op { typ: OpType::CaseOption, .. } => todo!(),
                 block => {
                     bail!(block.format_err("`else` can only come in a `if` or `case` block", &loc,))

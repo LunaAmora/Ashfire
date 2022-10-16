@@ -261,7 +261,7 @@ impl Program {
                 vec![Block(BlockType::If, Some(Id(contract)))]
             }
 
-            OpType::Else => todo!(),
+            OpType::Else => vec![Else],
 
             OpType::EndIf | OpType::EndElse => vec![End],
 

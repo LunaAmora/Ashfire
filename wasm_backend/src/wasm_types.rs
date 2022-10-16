@@ -120,6 +120,7 @@ pub enum Instruction {
     Call(Ident),
     BrIf(Ident),
     Br(Ident),
+    Else,
     Drop,
     End,
 }
@@ -135,6 +136,7 @@ impl Display for Instruction {
             Instruction::Call(ident) => format!("call {ident}"),
             Instruction::BrIf(_) => todo!(),
             Instruction::Br(_) => todo!(),
+            Instruction::Else => "else".to_string(),
             Instruction::Drop => "drop".to_string(),
             Instruction::End => "end".to_string(),
         };
