@@ -222,6 +222,12 @@ pub struct Loc {
     pub col: i32,
 }
 
+impl Loc {
+    pub fn new(file: String, line: i32, col: i32) -> Self {
+        Self { file, line, col }
+    }
+}
+
 impl Display for Loc {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if self.file.is_empty() {

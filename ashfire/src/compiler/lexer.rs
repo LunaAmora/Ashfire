@@ -16,6 +16,12 @@ struct Token {
     loc: Loc,
 }
 
+impl Token {
+    fn new(name: String, loc: Loc) -> Self {
+        Self { name, loc }
+    }
+}
+
 pub struct Lexer {
     buffer: Vec<char>,
     reader: BufReader<File>,
@@ -40,22 +46,7 @@ impl Lexer {
     fn read_line(&mut self) -> bool {
         let mut line = String::new();
         match self.reader.read_line(&mut line) {
-            Ok(read) if read > 0 => {
-                self.line_num += 1;
-
-                if line.trim().is_empty() {
-                    return self.read_line();
-                }
-
-                self.buffer = strip_trailing_newline(&line).chars().collect();
-                self.col_num = 0;
-                self.lex_pos = 0;
-
-                if !self.trim_left() {
-                    return self.read_line();
-                }
-                true
-            }
+            Ok(read) if read > 0 => self.setup_buffer(line),
             _ => {
                 self.buffer = Vec::new();
                 false
@@ -63,18 +54,38 @@ impl Lexer {
         }
     }
 
-    fn read_from_pos(&mut self) -> String {
+    fn setup_buffer(&mut self, line: String) -> bool {
+        self.line_num += 1;
+        (line.trim().is_empty() && self.read_line()) || self.setup_cursor_and_trim(line)
+    }
+
+    fn setup_cursor_and_trim(&mut self, line: String) -> bool {
+        self.buffer = strip_trailing_newline(&line).chars().collect();
+        self.col_num = 0;
+        self.lex_pos = 0;
+        self.trim_or_read_next_line()
+    }
+
+    fn trim_or_read_next_line(&mut self) -> bool {
+        self.trim_left() || self.read_line()
+    }
+
+    fn read_from_pos(&self) -> String {
         self.buffer.iter().skip(self.lex_pos).collect()
     }
 
     fn trim_left(&mut self) -> bool {
-        if self.lex_pos + 1 > self.buffer.len() || self.read_from_pos().trim().is_empty() {
-            false
-        } else {
-            self.advance_by_predicate(|c: char| c != ' ');
-            self.col_num = self.lex_pos;
-            self.read_from_pos().starts_with("//").not()
-        }
+        !self.buffer_done_or_empty() && self.advance_and_check_comments()
+    }
+
+    fn advance_and_check_comments(&mut self) -> bool {
+        self.advance_by_predicate(|c| c != ' ');
+        self.col_num = self.lex_pos;
+        self.read_from_pos().starts_with("//").not()
+    }
+
+    fn buffer_done_or_empty(&self) -> bool {
+        self.lex_pos + 1 > self.buffer.len() || self.read_from_pos().trim().is_empty()
     }
 
     fn advance_by_predicate(&mut self, func: impl Fn(char) -> bool) {
@@ -92,19 +103,20 @@ impl Lexer {
             .iter()
             .skip(self.col_num)
             .take(self.lex_pos - self.col_num)
-            .collect::<String>()
+            .collect()
     }
 
     fn next_token(&mut self) -> Option<Token> {
-        if !self.trim_left() && !self.read_line() {
-            return None;
-        }
-        let pred = |c: char| matches!(c, ' ' | ':');
-        let name = self.read_by_predicate(pred);
-        let file = self.file.as_path().display().to_string();
-        let col = self.col_num as i32 + 1;
-        let loc = Loc { file, line: self.line_num, col };
-        Some(Token { name, loc })
+        self.trim_or_read_next_line().then(|| {
+            Token::new(
+                self.read_by_predicate(|c| matches!(c, ' ' | ':')),
+                Loc::new(
+                    self.file.as_path().display().to_string(),
+                    self.line_num,
+                    self.col_num as i32 + 1,
+                ),
+            )
+        })
     }
 
     fn try_parse_string(&mut self, tok: &Token, program: &mut Program) -> OptionErr<IRToken> {
