@@ -124,23 +124,15 @@ impl Lexer {
     }
 
     fn try_parse_string(&mut self, tok: &Token, program: &mut Program) -> OptionErr<IRToken> {
-        tok.name
-            .strip_prefix('\"')
-            .map_or_else(OptionErr::default, |word| {
-                word.strip_suffix('\"')
-                    .map_or_else(|| self.read_string_literal(&tok.loc), |word| Ok(word.to_string()))
-                    .map(|name| {
-                        (
-                            Word::new(&name, (name.len() - escaped_len(&name)) as i32),
-                            program.data.len() as i32,
-                        )
-                    })
-                    .map(|(word, operand)| {
-                        program.data.push(word.into());
-                        Some(IRToken::new(TokenType::Str, operand, &tok.loc))
-                    })
-                    .into()
-            })
+        let Some(word) = tok.name.strip_prefix('\"') else {
+            return OptionErr::default();
+        };
+
+        let name = word
+            .strip_suffix('\"')
+            .map_or_else(|| self.read_string_literal(&tok.loc), |word| Ok(word.to_string()))?;
+
+        OptionErr::new(program.define_string(name, tok))
     }
 
     fn read_string_literal(&mut self, loc: &Loc) -> Result<String> {
@@ -162,10 +154,29 @@ impl Lexer {
                 try_parse_char(&tok),
                 parse_keyword(&tok),
                 parse_number(&tok),
-                OptionErr::new(parse_word(tok, program))
+                OptionErr::new(program.define_word(tok))
             ),
             None => OptionErr::default(),
         }
+    }
+}
+
+impl Program {
+    fn define_string(&mut self, name: String, tok: &Token) -> IRToken {
+        let word = Word::new(&name, (name.len() - escaped_len(&name)) as i32);
+        let operand = self.data.len() as i32;
+
+        self.data.push(word.into());
+        IRToken::new(TokenType::Str, operand, &tok.loc)
+    }
+
+    fn define_word(&mut self, tok: Token) -> IRToken {
+        IRToken::new(TokenType::Word, self.add_word(tok.name), &tok.loc)
+    }
+
+    fn add_word(&mut self, name: String) -> i32 {
+        self.words.push(name);
+        self.words.len() as i32 - 1
     }
 }
 
@@ -174,15 +185,6 @@ fn escaped_len(name: &str) -> usize {
         .filter(|c| c.eq(&'\\'))
         .collect::<String>()
         .len()
-}
-
-fn parse_word(tok: Token, program: &mut Program) -> IRToken {
-    IRToken::new(TokenType::Word, define_word(tok.name, program), &tok.loc)
-}
-
-fn define_word(name: String, program: &mut Program) -> i32 {
-    program.words.push(name);
-    program.words.len() as i32 - 1
 }
 
 fn strip_trailing_newline(input: &str) -> &str {
