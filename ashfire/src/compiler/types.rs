@@ -4,7 +4,7 @@ use std::{
     ops::Deref,
 };
 
-use firelib::{expect_get, fold_bool};
+use firelib::fold_bool;
 use num::FromPrimitive;
 
 pub trait ProgramVisitor {
@@ -80,11 +80,11 @@ impl Program {
     }
 
     pub fn get_word(&self, index: i32) -> &String {
-        expect_get(&self.words, index as usize)
+        self.words.get(index as usize).unwrap()
     }
 
     pub fn get_string(&self, index: i32) -> &SizedWord {
-        expect_get(&self.data, index as usize)
+        self.data.get(index as usize).unwrap()
     }
 
     pub fn data_name(&self, value: ValueType) -> String {
@@ -94,7 +94,7 @@ impl Program {
             ValueType::Ptr => "Pointer",
             ValueType::Any => "Any",
             ValueType::Type(n) => {
-                return expect_get(&self.structs_types, n as usize).name.to_owned()
+                return self.structs_types.get(n as usize).unwrap().name.to_owned()
             }
         }
         .to_owned()

@@ -307,7 +307,7 @@ impl Parser {
         };
 
         if let Some(index) = vars.iter().position(|name| word == name.as_str()) {
-            let typ = expect_get(vars, index).typ;
+            let typ = vars.get(index).unwrap().typ;
             if store {
                 result.push(Op::new(OpType::ExpectType, typ.into(), loc))
             }

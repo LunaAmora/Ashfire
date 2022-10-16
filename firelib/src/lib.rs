@@ -292,11 +292,3 @@ pub fn expect_index<T>(vec: &[T], pred: impl FnMut(&T) -> bool) -> usize {
         .position(pred)
         .expect("no item matched the given predicate")
 }
-
-/// Returns a reference to a element on the [`Vec`] by the index position.
-///
-/// # Panics
-/// Panics if the index is out of bounds.
-pub fn expect_get<T>(vec: &[T], index: usize) -> &T {
-    vec.get(index).expect("index out of bounds")
-}
