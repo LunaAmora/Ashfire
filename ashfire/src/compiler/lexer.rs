@@ -63,10 +63,10 @@ impl Lexer {
         self.buffer = strip_trailing_newline(&line).chars().collect();
         self.col_num = 0;
         self.lex_pos = 0;
-        self.trim_or_read_next_line()
+        self.seek_next_token()
     }
 
-    fn trim_or_read_next_line(&mut self) -> bool {
+    fn seek_next_token(&mut self) -> bool {
         self.trim_left() || self.read_line()
     }
 
@@ -107,16 +107,20 @@ impl Lexer {
     }
 
     fn next_token(&mut self) -> Option<Token> {
-        self.trim_or_read_next_line().then(|| {
-            Token::new(
-                self.read_by_predicate(|c| matches!(c, ' ' | ':')),
-                Loc::new(
-                    self.file.as_path().display().to_string(),
-                    self.line_num,
-                    self.col_num as i32 + 1,
-                ),
-            )
-        })
+        self.seek_next_token()
+            .then(|| Token::new(self.read_token(), self.current_loc()))
+    }
+
+    fn read_token(&mut self) -> String {
+        self.read_by_predicate(|c| matches!(c, ' ' | ':'))
+    }
+
+    fn current_loc(&self) -> Loc {
+        Loc::new(
+            self.file.as_path().display().to_string(),
+            self.line_num,
+            self.col_num as i32 + 1,
+        )
     }
 
     fn try_parse_string(&mut self, tok: &Token, program: &mut Program) -> OptionErr<IRToken> {
