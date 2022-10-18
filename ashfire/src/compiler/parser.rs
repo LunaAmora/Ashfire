@@ -438,9 +438,7 @@ impl Parser {
     fn parse_struct_ctx(
         &mut self, top_index: usize, word: &LocWord, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
-        if let (Some(n1), Some(n2)) =
-            (self.ir_tokens.get(top_index + 1), self.ir_tokens.get(top_index + 2))
-        {
+        if let Ok([n1, n2]) = get_range_ref(&self.ir_tokens, top_index + 1) {
             if prog.get_struct_type(n1).is_some() &&
                 equals_any!(n2, KeywordType::End, TokenType::Word)
             {
@@ -623,29 +621,19 @@ impl Parser {
                         result.push(top);
                     }
                     KeywordType::Swap => {
-                        let a = result.expect_pop(&tok.loc)?;
-                        let b = result.expect_pop(&tok.loc)?;
-                        result.push(a);
-                        result.push(b);
+                        let [a, b] = result.expect_pop_n(&tok.loc)?;
+                        result.push_n([b, a]);
                     }
                     KeywordType::Over => {
-                        let a = result.expect_pop(&tok.loc)?;
-                        let b = result.expect_pop(&tok.loc)?;
-                        result.push(b.clone());
-                        result.push(a);
-                        result.push(b);
+                        let [a, b] = result.expect_pop_n(&tok.loc)?;
+                        result.push_n([a.clone(), b, a]);
                     }
                     KeywordType::Rot => {
-                        let a = result.expect_pop(&tok.loc)?;
-                        let b = result.expect_pop(&tok.loc)?;
-                        let c = result.expect_pop(&tok.loc)?;
-                        result.push(b);
-                        result.push(a);
-                        result.push(c);
+                        let [a, b, c] = result.expect_pop_n(&tok.loc)?;
+                        result.push_n([b, c, a]);
                     }
                     KeywordType::Equal => {
-                        let top = result.expect_arity_pop(2, ArityType::Same, prog, &tok.loc)?;
-                        let (a, b) = (top.get(0).unwrap(), top.get(1).unwrap());
+                        let [a, b] = result.expect_arity_pop(ArityType::Same, prog, &tok.loc)?;
                         let value = fold_bool!(a.operand == b.operand, 1, 0);
                         result.push(IRToken::new(BOOL, value, &tok.loc))
                     }
@@ -660,17 +648,15 @@ impl Parser {
                 match prog.get_intrinsic_type(&loc_word) {
                     Some(intrinsic) => match intrinsic {
                         IntrinsicType::Plus => {
-                            let top =
-                                result.expect_arity_pop(2, ArityType::Same, prog, &tok.loc)?;
-                            let (a, b) = (top.get(0).unwrap(), top.get(1).unwrap());
+                            let [a, b] =
+                                result.expect_arity_pop(ArityType::Same, prog, &tok.loc)?;
                             let value = a.operand + b.operand;
                             result.push(IRToken::new(a.typ, value, &tok.loc))
                         }
 
                         IntrinsicType::Minus => {
-                            let top =
-                                result.expect_arity_pop(2, ArityType::Same, prog, &tok.loc)?;
-                            let (a, b) = (top.get(0).unwrap(), top.get(1).unwrap());
+                            let [a, b] =
+                                result.expect_arity_pop(ArityType::Same, prog, &tok.loc)?;
                             let value = a.operand - b.operand;
                             result.push(IRToken::new(a.typ, value, &tok.loc))
                         }

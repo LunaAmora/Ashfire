@@ -92,11 +92,10 @@ impl TypeChecker {
 
             OpType::Intrinsic => match IntrinsicType::from(op.operand) {
                 IntrinsicType::Plus | IntrinsicType::Minus => {
-                    let top = self
-                        .data_stack
-                        .expect_arity_pop(2, ArityType::Same, program, loc)?;
-                    let top_typ = top.get(0).unwrap().typ;
-                    self.push_frame(top_typ, loc);
+                    let [top, _] =
+                        self.data_stack
+                            .expect_arity_pop(ArityType::Same, program, loc)?;
+                    self.push_frame(top.typ, loc);
                 }
 
                 IntrinsicType::Times => todo!(),
@@ -108,8 +107,7 @@ impl TypeChecker {
                 IntrinsicType::LesserE => todo!(),
 
                 IntrinsicType::And | IntrinsicType::Or | IntrinsicType::Xor => {
-                    self.data_stack
-                        .expect_contract_pop(&[INT, INT], program, loc)?;
+                    self.data_stack.expect_array_pop([INT, INT], program, loc)?;
                     self.push_frame(INT, loc);
                 }
 
@@ -119,13 +117,12 @@ impl TypeChecker {
                 }
 
                 IntrinsicType::Store8 | IntrinsicType::Store16 | IntrinsicType::Store32 => {
-                    self.data_stack
-                        .expect_contract_pop(&[ANY, ANY], program, loc)?;
+                    self.data_stack.expect_array_pop([ANY, ANY], program, loc)?;
                 }
 
                 IntrinsicType::FdWrite => {
                     self.data_stack
-                        .expect_contract_pop(&[INT, PTR, INT, PTR], program, loc)?;
+                        .expect_array_pop([INT, PTR, INT, PTR], program, loc)?;
                     self.push_frame(PTR, loc);
                 }
 
@@ -154,27 +151,18 @@ impl TypeChecker {
             }
 
             OpType::Swap => {
-                let a = self.data_stack.expect_pop(loc)?;
-                let b = self.data_stack.expect_pop(loc)?;
-                self.data_stack.push(a);
-                self.data_stack.push(b);
+                let [a, b] = self.data_stack.expect_pop_n(loc)?;
+                self.data_stack.push_n([b, a]);
             }
 
             OpType::Over => {
-                let a = self.data_stack.expect_pop(loc)?;
-                let b = self.data_stack.expect_pop(loc)?;
-                self.data_stack.push(b.clone());
-                self.data_stack.push(a);
-                self.data_stack.push(b);
+                let [a, b] = self.data_stack.expect_pop_n(loc)?;
+                self.data_stack.push_n([a.clone(), b, a]);
             }
 
             OpType::Rot => {
-                let a = self.data_stack.expect_pop(loc)?;
-                let b = self.data_stack.expect_pop(loc)?;
-                let c = self.data_stack.expect_pop(loc)?;
-                self.data_stack.push(b);
-                self.data_stack.push(a);
-                self.data_stack.push(c);
+                let [a, b, c] = self.data_stack.expect_pop_n(loc)?;
+                self.data_stack.push_n([b, c, a]);
             }
 
             OpType::Call => {
@@ -190,7 +178,7 @@ impl TypeChecker {
 
             OpType::Equal => {
                 self.data_stack
-                    .expect_arity_pop(2, ArityType::Same, program, loc)?;
+                    .expect_arity_pop::<2>(ArityType::Same, program, loc)?;
                 self.push_frame(BOOL, loc);
             }
 
@@ -387,7 +375,7 @@ pub trait Expect<T>: Stack<T> {
     ) -> Result<Vec<T>> {
         self.expect_stack_size(contract.len(), loc)?;
         self.program_exact(program, contract, loc)?;
-        Ok(self.pop_n(contract.len()))
+        self.pop_n(contract.len())
     }
 
     fn expect_contract_pop(
@@ -395,14 +383,22 @@ pub trait Expect<T>: Stack<T> {
     ) -> Result<Vec<T>> {
         self.expect_stack_size(contr.len(), loc)?;
         self.program_arity(program, contr, loc)?;
-        Ok(self.pop_n(contr.len()))
+        self.pop_n(contr.len())
     }
 
-    fn expect_arity_pop(
-        &mut self, n: usize, arity: ArityType, program: &Program, loc: &Loc,
-    ) -> Result<Vec<T>> {
-        self.expect_arity(n, arity, program, loc)?;
-        Ok(self.pop_n(n))
+    fn expect_array_pop<const N: usize>(
+        &mut self, contr: [TokenType; N], program: &Program, loc: &Loc,
+    ) -> Result<[T; N]> {
+        self.expect_stack_size(contr.len(), loc)?;
+        self.program_arity(program, &contr, loc)?;
+        self.pop_array()
+    }
+
+    fn expect_arity_pop<const N: usize>(
+        &mut self, arity: ArityType, program: &Program, loc: &Loc,
+    ) -> Result<[T; N]> {
+        self.expect_arity(N, arity, program, loc)?;
+        self.pop_array()
     }
 
     fn expect_peek(&mut self, arity_t: ArityType, program: &Program, loc: &Loc) -> Result<&T> {
@@ -413,6 +409,11 @@ pub trait Expect<T>: Stack<T> {
     fn expect_pop(&mut self, loc: &Loc) -> Result<T> {
         self.expect_stack_size(1, loc)?;
         Ok(self.pop().unwrap())
+    }
+
+    fn expect_pop_n<const N: usize>(&mut self, loc: &Loc) -> Result<[T; N]> {
+        self.expect_stack_size(N, loc)?;
+        self.pop_array()
     }
 
     fn expect_pop_type(&mut self, arity_t: TokenType, program: &Program, loc: &Loc) -> Result<T> {

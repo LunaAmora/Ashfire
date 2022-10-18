@@ -1,6 +1,7 @@
 #![feature(try_trait_v2)]
 #![feature(never_type)]
 use std::{
+    collections::VecDeque,
     convert::Infallible,
     ops::{ControlFlow, FromResidual, Try},
     path::Path,
@@ -291,4 +292,24 @@ pub fn expect_index<T>(vec: &[T], pred: impl FnMut(&T) -> bool) -> usize {
     vec.iter()
         .position(pred)
         .expect("no item matched the given predicate")
+}
+
+pub fn get_range_ref<T, const N: usize>(
+    deque: &VecDeque<T>, index: usize,
+) -> anyhow::Result<[&T; N]> {
+    if deque.len() > (index + N + 1) {
+        let range: Vec<&T> = deque.range(index..(index + N)).collect();
+
+        match range.try_into() {
+            Ok(t) => Ok(t),
+            _ => unreachable!("Failed to collect into an correctly sized array"),
+        }
+    } else {
+        anyhow::bail!(
+            "Invalid range of elements to get from the deque: `{}`..`{}` of `{}`",
+            index,
+            index + N,
+            deque.len()
+        )
+    }
 }
