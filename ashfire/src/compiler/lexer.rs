@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use ashlib::OptionErr;
-use firelib::{bail, choice, ensure};
+use firelib::{bail, choice, ensure, ShortCircuit};
 
 use super::types::*;
 
@@ -124,9 +124,7 @@ impl Lexer {
     }
 
     fn try_parse_string(&mut self, tok: &Token, program: &mut Program) -> OptionErr<IRToken> {
-        let Some(word) = tok.name.strip_prefix('\"') else {
-            return OptionErr::default();
-        };
+        let word = tok.name.strip_prefix('\"').or_return(OptionErr::default)?;
 
         let name = word
             .strip_suffix('\"')

@@ -328,13 +328,12 @@ impl Parser {
             return OptionErr::new(result);
         }
 
-        short_circuit!(!vars
+        let struct_type = vars
             .iter()
-            .any(|val| val.starts_with(&format!("{}.", word.name))));
-
-        let Some(struct_type) = self.try_get_struct_type(word, prog) else {
-            return OptionErr::default()
-        };
+            .any(|val| val.starts_with(&format!("{}.", word.name)))
+            .then(|| self.try_get_struct_type(word, prog))
+            .flatten()
+            .or_return(OptionErr::default)?;
 
         let mut member = struct_type.members.first().unwrap();
 
@@ -428,11 +427,10 @@ impl Parser {
     fn parse_proc_ctx(
         &mut self, found_word: String, word: &LocWord, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
-        if prog.get_type_name(&found_word).is_some() || prog.get_data_pointer(&found_word).is_some()
-        {
-            return self.parse_procedure(word, prog);
+        match (prog.get_type_name(&found_word), prog.get_data_pointer(&found_word)) {
+            (None, None) => OptionErr::default(),
+            _ => self.parse_procedure(word, prog),
         }
-        OptionErr::default()
     }
 
     fn parse_struct_ctx(
@@ -510,7 +508,7 @@ impl Parser {
     fn parse_end_ctx(
         &mut self, colons: i32, ctx_size: usize, word: &LocWord, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
-        short_circuit!(colons != 2);
+        (colons == 2).or_return(OptionErr::default)?;
 
         self.parse_static_ctx(ctx_size, word, prog)?;
         success_from!(self.define_proc(word, Contract::default(), prog));
@@ -519,9 +517,7 @@ impl Parser {
     fn parse_static_ctx(
         &mut self, ctx_size: usize, word: &LocWord, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
-        if ctx_size != 1 {
-            return self.parse_procedure(word, prog);
-        }
+        (ctx_size == 1).or_return(|| self.parse_procedure(word, prog))?;
 
         self.skip(2);
         if let Ok((eval, skip)) = self.compile_eval(prog).value {

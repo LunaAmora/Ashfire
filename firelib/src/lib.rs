@@ -123,13 +123,6 @@ pub trait FlowControl:
         }
     }
 
-    fn short_circuit(condition: bool) -> ControlFlow<Self, ()>
-    where
-        Self: Default,
-    {
-        Self::ensure(!condition, Self::default)
-    }
-
     fn flow_success() -> ControlFlow<Self, !>
     where
         Self: Success,
@@ -177,16 +170,6 @@ macro_rules! ensure {
 macro_rules! bail {
     ($( $fmt:expr ),*) => {
         return Err($crate::anyhow::anyhow!( $( $fmt ),* ))?;
-    };
-}
-
-/// Checks the condition to ensure it is true.
-/// Otherwise returns early with the [`Default`]
-/// value of the type that implements [`FlowControl`].
-#[macro_export]
-macro_rules! short_circuit {
-    ($cond:expr) => {
-        $crate::FlowControl::short_circuit($cond)?
     };
 }
 
@@ -311,5 +294,60 @@ pub fn get_range_ref<T, const N: usize>(
             index + N,
             deque.len()
         )
+    }
+}
+
+pub trait ShortCircuit<R, T>: crate::private::Sealed<Internal = R>
+where
+    T: FromResidual<ControlFlow<T, Infallible>>,
+{
+    fn or_return<F>(self, f: F) -> ControlFlow<T, R>
+    where
+        F: FnOnce() -> T;
+}
+
+impl<A: private::Sealed<Internal = R>, R, T> ShortCircuit<R, T> for A
+where
+    T: FromResidual<ControlFlow<T, Infallible>>,
+{
+    fn or_return<F>(self, f: F) -> ControlFlow<T, R>
+    where
+        F: FnOnce() -> T,
+    {
+        match self.value() {
+            Some(v) => ControlFlow::Continue(v),
+            None => ControlFlow::Break(f()),
+        }
+    }
+}
+
+pub(crate) mod private {
+    pub trait Sealed {
+        type Internal;
+        fn value(self) -> Option<Self::Internal>;
+    }
+
+    impl<T> Sealed for anyhow::Result<T> {
+        type Internal = T;
+
+        fn value(self) -> Option<T> {
+            self.ok()
+        }
+    }
+
+    impl<T> Sealed for Option<T> {
+        type Internal = T;
+
+        fn value(self) -> Option<T> {
+            self
+        }
+    }
+
+    impl Sealed for bool {
+        type Internal = bool;
+
+        fn value(self) -> Option<bool> {
+            self.then_some(self)
+        }
     }
 }
