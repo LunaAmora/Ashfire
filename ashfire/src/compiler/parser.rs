@@ -398,7 +398,9 @@ impl Parser {
         let mut colons = 0;
         while let Some(tok) = self.ir_tokens.get(i).cloned() {
             match (colons, &tok.typ) {
-                (1, TokenType::DataType(ValueType::Int)) => success!(self.parse_memory(word, prog)),
+                (1, TokenType::DataType(ValueType::Int)) => {
+                    self.parse_memory(word, prog).try_success()?
+                }
 
                 (1, TokenType::Word) => choice!(
                     OptionErr,
@@ -452,7 +454,7 @@ impl Parser {
         match (*colons, from_i32(tok.operand)) {
             (0, KeywordType::Mem) => {
                 self.next();
-                success!(self.parse_memory(word, prog));
+                self.parse_memory(word, prog).try_success()?;
             }
 
             (0, KeywordType::Struct) => {
@@ -511,7 +513,8 @@ impl Parser {
         (colons == 2).or_return(OptionErr::default)?;
 
         self.parse_static_ctx(ctx_size, word, prog)?;
-        success_from!(self.define_proc(word, Contract::default(), prog));
+        self.define_proc(word, Contract::default(), prog)
+            .into_success()?
     }
 
     fn parse_static_ctx(
@@ -537,7 +540,8 @@ impl Parser {
         if tok == TokenType::Word {
             if let Some(stk) = prog.get_struct_type(tok).cloned() {
                 self.next();
-                success!(self.parse_const_or_var(word, tok.operand, stk, prog));
+                self.parse_const_or_var(word, tok.operand, stk, prog)
+                    .try_success()?;
             }
         }
         OptionErr::default()
@@ -720,7 +724,7 @@ impl Parser {
                         continue;
                     }
                     KeywordType::Colon => {
-                        success_from!(self.define_proc(word, Contract { ins, outs }, prog))
+                        (self.define_proc(word, Contract { ins, outs }, prog)).into_success()?
                     }
                     _ => {}
                 }

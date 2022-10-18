@@ -93,18 +93,18 @@ macro_rules! choice {
     }}
 }
 
-/// Provides the [`success`][Success::success] method
+/// Provides the [`success`][Success::success_value] method
 /// that returns a default-like success value.
 ///
-/// A trait for giving a type [`success`] macro support.
+/// A trait for giving a type [`success`] macro and [`try_success`][TrySuccess::try_success] support.
 pub trait Success {
-    fn success() -> Self;
+    fn success_value() -> Self;
 }
 
 /// Provides the [`success_from`][SuccessFrom::success_from] method
 /// that pass a value to a `SuccessFrom` constructor.
 ///
-/// A trait for giving a type [`success_from`] macro support.
+/// A trait for giving a type [`into_success`][TrySuccess::into_success] support.
 pub trait SuccessFrom {
     type From;
     fn success_from(from: Self::From) -> Self;
@@ -123,18 +123,11 @@ pub trait FlowControl:
         }
     }
 
-    fn flow_success() -> ControlFlow<Self, !>
+    fn success() -> ControlFlow<Self, !>
     where
         Self: Success,
     {
-        ControlFlow::Break(<Self as Success>::success())
-    }
-
-    fn flow_success_from(from: <Self as SuccessFrom>::From) -> ControlFlow<Self, !>
-    where
-        Self: SuccessFrom,
-    {
-        ControlFlow::Break(<Self as SuccessFrom>::success_from(from))
+        ControlFlow::Break(<Self as Success>::success_value())
     }
 
     #[doc(hidden)]
@@ -157,6 +150,37 @@ pub trait FlowControl:
     }
 }
 
+pub trait TrySuccess: Sized {
+    fn try_success<T, R>(self) -> ControlFlow<T, !>
+    where
+        Self: Try<Residual = R>,
+        T: Success,
+        T: FromResidual<R>,
+    {
+        match self.branch() {
+            ControlFlow::Continue(_) => ControlFlow::Break(<T as Success>::success_value()),
+            ControlFlow::Break(residual) => ControlFlow::Break(T::from_residual(residual)),
+        }
+    }
+
+    fn into_success<T, R>(self) -> ControlFlow<T, !>
+    where
+        Self: crate::private::Sealed,
+        Self: Try<Residual = R, Output = Self::Internal>,
+        T: SuccessFrom<From = Self::Internal>,
+        T: FromResidual<R>,
+    {
+        match self.branch() {
+            ControlFlow::Continue(output) => {
+                ControlFlow::Break(<T as SuccessFrom>::success_from(output))
+            }
+            ControlFlow::Break(residual) => ControlFlow::Break(T::from_residual(residual)),
+        }
+    }
+}
+
+impl<T> TrySuccess for T {}
+
 /// Emulates [`anyhow::ensure`] for returning types that implements [`FlowControl`].
 #[macro_export]
 macro_rules! ensure {
@@ -173,23 +197,11 @@ macro_rules! bail {
     };
 }
 
-/// Returns early with the [`Success`][Success::success] impl of the returning type.
+/// Returns early with the [`Success`][Success::success_value] impl of the returning type.
 #[macro_export]
 macro_rules! success {
     () => {
-        $crate::FlowControl::flow_success()?;
-    };
-    ($expr:expr) => {{
-        $expr?;
-        success!();
-    }};
-}
-
-/// Returns early with the [`SuccessFrom`][SuccessFrom::success_from] impl of the returning type.
-#[macro_export]
-macro_rules! success_from {
-    ($expr:expr) => {
-        $crate::FlowControl::flow_success_from($expr?)?;
+        $crate::FlowControl::success()?;
     };
 }
 

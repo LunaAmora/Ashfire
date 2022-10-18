@@ -45,7 +45,7 @@ impl<T> From<Error> for OptionErr<T> {
 }
 
 impl<T> Success for OptionErr<Vec<T>> {
-    fn success() -> Self {
+    fn success_value() -> Self {
         OptionErr::from(Ok(Some(vec![])))
     }
 }
@@ -99,14 +99,14 @@ impl<T, E> Try for DoubleResult<T, E> {
     }
 }
 
-impl<T, E> FromResidual<Either<E, Error>> for DoubleResult<T, E> {
-    fn from_residual(residual: Either<E, Error>) -> Self {
+impl<T, E> FromResidual for DoubleResult<T, E> {
+    fn from_residual(residual: <Self as Try>::Residual) -> Self {
         Self { value: Err(residual) }
     }
 }
 
-impl<T, E> FromResidual<Result<Infallible, Either<E, Error>>> for DoubleResult<T, E> {
-    fn from_residual(residual: Result<Infallible, Either<E, Error>>) -> Self {
+impl<T, E> FromResidual<Result<Infallible, <Self as Try>::Residual>> for DoubleResult<T, E> {
+    fn from_residual(residual: Result<Infallible, <Self as Try>::Residual>) -> Self {
         match residual {
             Ok(_) => unreachable!(),
             Err(r) => Self { value: Err(r) },
