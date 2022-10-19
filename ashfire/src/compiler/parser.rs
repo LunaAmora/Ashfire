@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fs::File, io::BufReader, path::PathBuf};
+use std::{collections::VecDeque, fs::File, io::BufReader, ops::Deref, path::PathBuf};
 
 use anyhow::{Context, Result};
 use ashlib::*;
@@ -6,13 +6,47 @@ use either::Either;
 use firelib::*;
 
 use super::{
+    evaluator::{CompEvalStack, Evaluator},
     lexer::Lexer,
     program::*,
-    typechecker::{ArityType, Expect},
     types::*,
 };
 
-type CompEvalStack = EvalStack<IRToken>;
+pub struct LocWord {
+    pub name: String,
+    pub loc: Loc,
+}
+
+impl PartialEq<str> for LocWord {
+    fn eq(&self, other: &str) -> bool {
+        self.name == other
+    }
+}
+
+impl Deref for LocWord {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.name
+    }
+}
+
+impl LocWord {
+    pub fn new(name: &String, loc: Loc) -> Self {
+        Self { name: name.to_owned(), loc }
+    }
+
+    /// Returns an `Vec<Op>` if the word started with a `.`
+    fn get_offset(&self, operand: i32) -> Option<Vec<Op>> {
+        self.strip_prefix('.').map(|strip| {
+            Op::from(strip.strip_prefix('*').map_or_else(
+                || (OpType::OffsetLoad, operand, self.loc.clone()),
+                |_| (OpType::Offset, operand, self.loc.clone()),
+            ))
+            .into()
+        })
+    }
+}
 
 #[derive(Default)]
 pub struct Parser {
@@ -31,19 +65,6 @@ impl ProgramVisitor for Parser {
 
     fn get_index(&self) -> Option<usize> {
         self.current_proc
-    }
-}
-
-impl LocWord {
-    /// Returns an `Vec<Op>` if the word started with a `.`
-    fn get_offset(&self, operand: i32) -> Option<Vec<Op>> {
-        self.strip_prefix('.').map(|strip| {
-            Op::from(strip.strip_prefix('*').map_or_else(
-                || (OpType::OffsetLoad, operand, self.loc.clone()),
-                |_| (OpType::Offset, operand, self.loc.clone()),
-            ))
-            .into()
-        })
     }
 }
 
@@ -259,8 +280,8 @@ impl Parser {
             .map(|global| Op::new(OpType::PushGlobalMem, global.value, &word.loc).into())
     }
 
-    /// Searches for a `const` that matches the given [`word`][LocWord].
-    fn try_get_const_name(&self, word: &LocWord) -> Option<&TypedWord> {
+    /// Searches for a `const` that matches the given `&str`.
+    pub fn try_get_const_name(&self, word: &str) -> Option<&TypedWord> {
         self.consts.iter().find(|cnst| word == cnst.as_str())
     }
 
@@ -342,7 +363,7 @@ impl Parser {
             let pattern = &format!("{}.{}", word.name, member.name);
             let index = expect_index(vars, |name| name.eq(pattern));
 
-            let stk_id = prog.parse_data_type(struct_type.name.as_str()).unwrap();
+            let stk_id = prog.get_data_type(struct_type.name.as_str()).unwrap();
             let ptr_typ = IntrinsicType::Cast(-(stk_id as i32));
 
             result.push(Op::new(push_type, index as i32, loc));
@@ -599,111 +620,12 @@ impl Parser {
                 break;
             }
 
-            self.eval_token(tok, &mut result, prog)?;
+            result.evaluate(tok, self, prog)?;
 
             i += 1;
         }
 
         DoubleResult::new((result.to_vec(), i + 1))
-    }
-
-    fn eval_token(
-        &self, tok: IRToken, result: &mut CompEvalStack, prog: &mut Program,
-    ) -> DoubleResult<(), IRToken> {
-        match tok.typ {
-            TokenType::Keyword => {
-                let key = from_i32(tok.operand);
-                match key {
-                    KeywordType::Drop => {
-                        result.expect_pop(&tok.loc)?;
-                    }
-                    KeywordType::Dup => {
-                        let top = (*result.expect_peek(ArityType::Any, prog, &tok.loc)?).clone();
-                        result.push(top);
-                    }
-                    KeywordType::Swap => {
-                        let [a, b] = result.expect_pop_n(&tok.loc)?;
-                        result.push_n([b, a]);
-                    }
-                    KeywordType::Over => {
-                        let [a, b] = result.expect_pop_n(&tok.loc)?;
-                        result.push_n([a.clone(), b, a]);
-                    }
-                    KeywordType::Rot => {
-                        let [a, b, c] = result.expect_pop_n(&tok.loc)?;
-                        result.push_n([b, c, a]);
-                    }
-                    KeywordType::Equal => {
-                        let [a, b] = result.expect_arity_pop(ArityType::Same, prog, &tok.loc)?;
-                        let value = fold_bool!(a.operand == b.operand, 1, 0);
-                        result.push(IRToken::new(BOOL, value, &tok.loc))
-                    }
-                    _ => {
-                        Err(Either::Left(IRToken::new(TokenType::Keyword, tok.operand, &tok.loc)))?
-                    }
-                }
-            }
-
-            TokenType::Word => {
-                let loc_word = LocWord::new(prog.get_word(tok.operand), tok.loc.clone());
-                match prog.get_intrinsic_type(&loc_word) {
-                    Some(intrinsic) => match intrinsic {
-                        IntrinsicType::Plus => {
-                            let [a, b] =
-                                result.expect_arity_pop(ArityType::Same, prog, &tok.loc)?;
-                            let value = a.operand + b.operand;
-                            result.push(IRToken::new(a.typ, value, &tok.loc))
-                        }
-
-                        IntrinsicType::Minus => {
-                            let [a, b] =
-                                result.expect_arity_pop(ArityType::Same, prog, &tok.loc)?;
-                            let value = a.operand - b.operand;
-                            result.push(IRToken::new(a.typ, value, &tok.loc))
-                        }
-
-                        IntrinsicType::Cast(n) => {
-                            let a = result.expect_pop(&tok.loc)?;
-
-                            let cast = match n {
-                                1.. => ValueType::from((n - 1) as usize).into(),
-                                0 => unreachable!(),
-                                _ => todo!("casting to ptr type not implemented yet"),
-                            };
-
-                            result.push(IRToken::new(cast, a.operand, &tok.loc));
-                        }
-
-                        _ => {
-                            Err(Either::Left(IRToken::new(TokenType::Word, tok.operand, &tok.loc)))?
-                        }
-                    },
-                    None => match self.try_get_const_name(&loc_word) {
-                        Some(cnst) => {
-                            result.push(IRToken::new(cnst.typ, cnst.word.value, &tok.loc));
-                        }
-                        None => Err(Either::Left(tok))?,
-                    },
-                }
-            }
-
-            TokenType::Str => {
-                prog.register_string(tok.operand);
-                let data = prog.get_string(tok.operand);
-
-                result.push(IRToken::new(INT, data.size(), &tok.loc));
-                result.push(IRToken::new(PTR, data.offset, &tok.loc));
-            }
-
-            TokenType::DataType(value) => match value {
-                ValueType::Int | ValueType::Bool | ValueType::Ptr => result.push(tok),
-                _ => Err(Either::Left(tok))?,
-            },
-
-            _ => Err(Either::Left(tok))?,
-        }
-
-        DoubleResult::new(())
     }
 
     fn parse_procedure(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
@@ -729,7 +651,7 @@ impl Parser {
                     }
                     _ => {}
                 }
-            } else if let Some(found_word) = prog.try_get_word(&tok) {
+            } else if let Some(found_word) = prog.get_word_from_token(&tok) {
                 if let Some(stk) = prog.get_type_name(found_word) {
                     for member in stk.members.iter() {
                         push_by_condition(arrow, member.typ, &mut outs, &mut ins);
@@ -953,100 +875,10 @@ impl Parser {
     }
 }
 
-impl Expect<IRToken> for CompEvalStack {
-    fn get_type(&self, t: &IRToken) -> TokenType {
-        t.typ
-    }
-
-    fn program_arity(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()> {
-        let frames: Vec<TypeFrame> = self.iter().map(TypeFrame::from).collect();
-        program.expect_arity(&frames, contract, loc)
-    }
-
-    fn program_exact(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()> {
-        let frames: Vec<TypeFrame> = self.iter().map(TypeFrame::from).collect();
-        program.expect_exact(&frames, contract, loc)
-    }
-
-    fn program_type(
-        &self, program: &Program, frame: &IRToken, expected: TokenType, loc: &Loc,
-    ) -> Result<()> {
-        program.expect_type(expected, &frame.into(), loc)
-    }
-}
-
 impl Program {
-    fn register_string(&mut self, operand: i32) -> i32 {
-        if let Some(data) = self.data.get_mut(operand as usize) {
-            if data.offset == -1 {
-                data.offset = self.data_size;
-                self.data_size += data.size();
-            }
-        }
-        operand
-    }
-
     fn get_intrinsic(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.get_intrinsic_type(word)
             .map(|i| vec![Op::new(OpType::Intrinsic, i.into(), &word.loc)])
-    }
-
-    fn get_intrinsic_type(&self, word: &str) -> Option<IntrinsicType> {
-        Some(match word {
-            "+" => IntrinsicType::Plus,
-            "-" => IntrinsicType::Minus,
-            "*" => IntrinsicType::Times,
-            "%" => IntrinsicType::Div,
-            ">" => IntrinsicType::Greater,
-            ">=" => IntrinsicType::GreaterE,
-            "<" => IntrinsicType::Lesser,
-            "<=" => IntrinsicType::LesserE,
-            "or" => IntrinsicType::Or,
-            "and" => IntrinsicType::And,
-            "xor" => IntrinsicType::Xor,
-            "@8" => IntrinsicType::Load8,
-            "!8" => IntrinsicType::Store8,
-            "@16" => IntrinsicType::Load16,
-            "!16" => IntrinsicType::Store16,
-            "@32" => IntrinsicType::Load32,
-            "!32" => IntrinsicType::Store32,
-            "fd_write" => IntrinsicType::FdWrite,
-            _ => IntrinsicType::Cast(self.parse_cast_type(word.strip_prefix('#')?)?),
-        })
-    }
-
-    fn parse_cast_type(&self, word: &str) -> Option<i32> {
-        let (word, is_ptr) = match word.strip_prefix('*') {
-            Some(word) => (word, true),
-            None => (word, false),
-        };
-        self.parse_data_type(word)
-            .map(|u| fold_bool!(is_ptr, -1, 1) * u as i32)
-    }
-
-    fn parse_data_type(&self, word: &str) -> Option<usize> {
-        self.structs_types
-            .iter()
-            .position(|s| s.name == word)
-            .map(|u| u + 1)
-    }
-
-    fn try_get_word(&self, tok: &IRToken) -> Option<&String> {
-        fold_bool!(tok == TokenType::Word, Some(self.get_word(tok.operand)))
-    }
-
-    fn get_type_name(&self, word: &str) -> Option<&StructType> {
-        self.structs_types.iter().find(|s| s.name == word)
-    }
-
-    fn get_struct_type(&self, tok: &IRToken) -> Option<&StructType> {
-        fold_bool!(tok == TokenType::Word, self.get_type_name(self.get_word(tok.operand)))
-    }
-
-    fn get_data_pointer(&self, word: &str) -> Option<TokenType> {
-        word.strip_prefix('*')
-            .and_then(|word| self.parse_data_type(word))
-            .map(|i| TokenType::DataPtr(ValueType::from(i - 1)))
     }
 
     fn get_proc_name(&self, word: &LocWord) -> Option<Vec<Op>> {
@@ -1054,6 +886,14 @@ impl Program {
             .iter()
             .position(|proc| word == proc.name.as_str())
             .map(|index| Op::new(OpType::Call, index as i32, &word.loc).into())
+    }
+
+    fn get_struct_type(&self, tok: &IRToken) -> Option<&StructType> {
+        fold_bool!(tok == TokenType::Word, self.get_type_name(self.get_word(tok.operand)))
+    }
+
+    fn get_word_from_token(&self, tok: &IRToken) -> Option<&String> {
+        fold_bool!(tok == TokenType::Word, Some(self.get_word(tok.operand)))
     }
 
     fn format_token(&self, tok: IRToken) -> String {

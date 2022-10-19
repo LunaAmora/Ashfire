@@ -271,31 +271,6 @@ impl From<(String, i32, TokenType)> for TypedWord {
     }
 }
 
-pub struct LocWord {
-    pub name: String,
-    pub loc: Loc,
-}
-
-impl PartialEq<str> for LocWord {
-    fn eq(&self, other: &str) -> bool {
-        self.name == other
-    }
-}
-
-impl Deref for LocWord {
-    type Target = String;
-
-    fn deref(&self) -> &Self::Target {
-        &self.name
-    }
-}
-
-impl LocWord {
-    pub fn new(name: &String, loc: Loc) -> Self {
-        Self { name: name.to_owned(), loc }
-    }
-}
-
 #[derive(Clone)]
 pub struct TypeFrame {
     pub typ: TokenType,

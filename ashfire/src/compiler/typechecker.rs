@@ -3,9 +3,29 @@ use ashlib::{EvalStack, Stack};
 use firelib::equals_any;
 use itertools::Itertools;
 
-use super::{program::*, types::*};
+use super::{evaluator::*, program::*, types::*};
 
 type DataStack = EvalStack<TypeFrame>;
+
+impl Expect<TypeFrame> for DataStack {
+    fn get_type(&self, t: &TypeFrame) -> TokenType {
+        t.typ
+    }
+
+    fn program_arity(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()> {
+        program.expect_arity(self, contract, loc)
+    }
+
+    fn program_exact(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()> {
+        program.expect_exact(self, contract, loc)
+    }
+
+    fn program_type(
+        &self, program: &Program, frame: &TypeFrame, expected: TokenType, loc: &Loc,
+    ) -> Result<()> {
+        program.expect_type(expected, frame, loc)
+    }
+}
 
 #[derive(Clone)]
 struct TypeBlock {
@@ -353,123 +373,6 @@ impl TypeChecker {
         } else {
             Ok(())
         }
-    }
-}
-
-pub enum ArityType {
-    Any,
-    Same,
-    Type(TokenType),
-}
-
-pub trait Expect<T>: Stack<T> {
-    fn program_arity(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()>;
-    fn program_exact(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()>;
-    fn program_type(
-        &self, program: &Program, frame: &T, expected: TokenType, loc: &Loc,
-    ) -> Result<()>;
-    fn get_type(&self, t: &T) -> TokenType;
-
-    fn expect_exact_pop(
-        &mut self, contract: &[TokenType], program: &Program, loc: &Loc,
-    ) -> Result<Vec<T>> {
-        self.expect_stack_size(contract.len(), loc)?;
-        self.program_exact(program, contract, loc)?;
-        self.pop_n(contract.len())
-    }
-
-    fn expect_contract_pop(
-        &mut self, contr: &[TokenType], program: &Program, loc: &Loc,
-    ) -> Result<Vec<T>> {
-        self.expect_stack_size(contr.len(), loc)?;
-        self.program_arity(program, contr, loc)?;
-        self.pop_n(contr.len())
-    }
-
-    fn expect_array_pop<const N: usize>(
-        &mut self, contr: [TokenType; N], program: &Program, loc: &Loc,
-    ) -> Result<[T; N]> {
-        self.expect_stack_size(contr.len(), loc)?;
-        self.program_arity(program, &contr, loc)?;
-        self.pop_array()
-    }
-
-    fn expect_arity_pop<const N: usize>(
-        &mut self, arity: ArityType, program: &Program, loc: &Loc,
-    ) -> Result<[T; N]> {
-        self.expect_arity(N, arity, program, loc)?;
-        self.pop_array()
-    }
-
-    fn expect_peek(&mut self, arity_t: ArityType, program: &Program, loc: &Loc) -> Result<&T> {
-        self.expect_arity(1, arity_t, program, loc)?;
-        Ok(self.peek().unwrap())
-    }
-
-    fn expect_pop(&mut self, loc: &Loc) -> Result<T> {
-        self.expect_stack_size(1, loc)?;
-        Ok(self.pop().unwrap())
-    }
-
-    fn expect_pop_n<const N: usize>(&mut self, loc: &Loc) -> Result<[T; N]> {
-        self.expect_stack_size(N, loc)?;
-        self.pop_array()
-    }
-
-    fn expect_pop_type(&mut self, arity_t: TokenType, program: &Program, loc: &Loc) -> Result<T> {
-        self.expect_arity(1, ArityType::Type(arity_t), program, loc)?;
-        Ok(self.pop().unwrap())
-    }
-
-    fn expect_arity(&self, n: usize, arity: ArityType, program: &Program, loc: &Loc) -> Result<()> {
-        self.expect_stack_size(n, loc)?;
-
-        let (typ, start) = match arity {
-            ArityType::Any => return Ok(()),
-            ArityType::Same => (self.get_type(self.get(0).unwrap()), 1),
-            ArityType::Type(typ) => (typ, 0),
-        };
-
-        for i in start..n {
-            self.program_type(program, self.get(i).unwrap(), typ, loc)?;
-        }
-
-        Ok(())
-    }
-
-    fn expect_stack_size(&self, n: usize, loc: &Loc) -> Result<()> {
-        let len = self.len();
-        ensure!(
-            len >= n,
-            concat!(
-                "Stack has less elements than expected\n",
-                "[INFO] {}Expected `{}` elements, but found `{}`"
-            ),
-            loc,
-            n,
-            len
-        );
-        Ok(())
-    }
-}
-
-impl Expect<TypeFrame> for DataStack {
-    fn get_type(&self, t: &TypeFrame) -> TokenType {
-        t.typ
-    }
-
-    fn program_arity(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()> {
-        program.expect_arity(self, contract, loc)
-    }
-
-    fn program_exact(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()> {
-        program.expect_exact(self, contract, loc)
-    }
-
-    fn program_type(
-        &self, program: &Program, frame: &TypeFrame, expected: TokenType, loc: &Loc,
-    ) -> Result<()> {
-        program.expect_type(expected, frame, loc)
     }
 }
 

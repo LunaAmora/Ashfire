@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ashlib::from_i32;
 use firelib::fold_bool;
 
-use super::types::{KeywordType, Op, Proc, SizedWord, StructType, TokenType, TypedWord, ValueType};
+use super::types::*;
 
 #[derive(Default)]
 pub struct Program {
@@ -29,6 +29,16 @@ impl Program {
             ],
             ..Default::default()
         }
+    }
+
+    pub fn register_string(&mut self, operand: i32) -> i32 {
+        if let Some(data) = self.data.get_mut(operand as usize) {
+            if data.offset == -1 {
+                data.offset = self.data_size;
+                self.data_size += data.size();
+            }
+        }
+        operand
     }
 
     pub fn final_data_size(&self) -> i32 {
@@ -88,6 +98,56 @@ impl Program {
             }
             TokenType::Str => self.get_string(operand).to_string(),
         }
+    }
+
+    pub fn get_intrinsic_type(&self, word: &str) -> Option<IntrinsicType> {
+        Some(match word {
+            "+" => IntrinsicType::Plus,
+            "-" => IntrinsicType::Minus,
+            "*" => IntrinsicType::Times,
+            "%" => IntrinsicType::Div,
+            ">" => IntrinsicType::Greater,
+            ">=" => IntrinsicType::GreaterE,
+            "<" => IntrinsicType::Lesser,
+            "<=" => IntrinsicType::LesserE,
+            "or" => IntrinsicType::Or,
+            "and" => IntrinsicType::And,
+            "xor" => IntrinsicType::Xor,
+            "@8" => IntrinsicType::Load8,
+            "!8" => IntrinsicType::Store8,
+            "@16" => IntrinsicType::Load16,
+            "!16" => IntrinsicType::Store16,
+            "@32" => IntrinsicType::Load32,
+            "!32" => IntrinsicType::Store32,
+            "fd_write" => IntrinsicType::FdWrite,
+            _ => IntrinsicType::Cast(self.get_cast_type(word.strip_prefix('#')?)?),
+        })
+    }
+
+    pub fn get_cast_type(&self, word: &str) -> Option<i32> {
+        let (word, is_ptr) = match word.strip_prefix('*') {
+            Some(word) => (word, true),
+            None => (word, false),
+        };
+        self.get_data_type(word)
+            .map(|u| fold_bool!(is_ptr, -1, 1) * u as i32)
+    }
+
+    pub fn get_data_type(&self, word: &str) -> Option<usize> {
+        self.structs_types
+            .iter()
+            .position(|s| s.name == word)
+            .map(|u| u + 1)
+    }
+
+    pub fn get_data_pointer(&self, word: &str) -> Option<TokenType> {
+        word.strip_prefix('*')
+            .and_then(|word| self.get_data_type(word))
+            .map(|i| TokenType::DataPtr(ValueType::from(i - 1)))
+    }
+
+    pub fn get_type_name(&self, word: &str) -> Option<&StructType> {
+        self.structs_types.iter().find(|s| s.name == word)
     }
 }
 
