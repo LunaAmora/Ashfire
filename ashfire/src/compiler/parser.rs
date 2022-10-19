@@ -51,7 +51,6 @@ impl LocWord {
 #[derive(Default)]
 pub struct Parser {
     ir_tokens: VecDeque<IRToken>,
-    consts: Vec<TypedWord>,
     global_mems: Vec<Word>,
     op_blocks: Vec<Op>,
     structs: Vec<Word>,
@@ -239,7 +238,7 @@ impl Parser {
     /// on the `consts` [Vec]. Parsing each one as an [`IRToken`] to an [`Op`].
     fn get_const_struct(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
         let ops = flatten(
-            self.consts
+            prog.consts
                 .iter()
                 .filter(|cnst| cnst.starts_with(&format!("{}.", word.name)))
                 .map(|tword| (tword, &word.loc).into())
@@ -280,15 +279,10 @@ impl Parser {
             .map(|global| Op::new(OpType::PushGlobalMem, global.value, &word.loc).into())
     }
 
-    /// Searches for a `const` that matches the given `&str`.
-    pub fn try_get_const_name(&self, word: &str) -> Option<&TypedWord> {
-        self.consts.iter().find(|cnst| word == cnst.as_str())
-    }
-
     /// Searches for a `const` that matches the given[`word`][LocWord]
     /// and parses it as an [`IRToken`] to an [`Op`].
     fn get_const_name(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        self.try_get_const_name(word)
+        prog.get_const_name(word)
             .map(|tword| (tword, &word.loc).into())
             .map_or_else(OptionErr::default, |tok| self.define_op(tok, prog))
     }
@@ -548,7 +542,7 @@ impl Parser {
         if let Ok((eval, skip)) = self.compile_eval(prog).value {
             if eval.typ != ValueType::Any {
                 self.skip(skip);
-                self.consts
+                prog.consts
                     .push((word.to_string(), eval.operand, eval.typ).into());
                 success!();
             }
@@ -620,7 +614,7 @@ impl Parser {
                 break;
             }
 
-            result.evaluate(tok, self, prog)?;
+            result.evaluate(tok, prog)?;
 
             i += 1;
         }
@@ -829,7 +823,7 @@ impl Parser {
         &mut self, assign: &KeywordType, struct_word: TypedWord, prog: &mut Program,
     ) {
         match assign {
-            KeywordType::Colon => self.consts.push(struct_word),
+            KeywordType::Colon => prog.consts.push(struct_word),
             KeywordType::Equal => self.register_var(struct_word, prog),
             _ => unreachable!(),
         }

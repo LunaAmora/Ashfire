@@ -10,6 +10,7 @@ pub struct Program {
     pub ops: Vec<Op>,
     pub words: Vec<String>,
     pub data: Vec<SizedWord>,
+    pub consts: Vec<TypedWord>,
     pub mem_size: i32,
     pub data_size: i32,
     pub global_vars: Vec<TypedWord>,
@@ -148,6 +149,11 @@ impl Program {
 
     pub fn get_type_name(&self, word: &str) -> Option<&StructType> {
         self.structs_types.iter().find(|s| s.name == word)
+    }
+
+    /// Searches for a `const` that matches the given `&str`.
+    pub fn get_const_name(&self, word: &str) -> Option<&TypedWord> {
+        self.consts.iter().find(|cnst| word == cnst.as_str())
     }
 }
 

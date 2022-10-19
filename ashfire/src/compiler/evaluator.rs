@@ -3,7 +3,7 @@ use ashlib::{from_i32, DoubleResult, EvalStack, Stack};
 use either::Either;
 use firelib::fold_bool;
 
-use super::{parser::Parser, program::Program, types::*};
+use super::{program::Program, types::*};
 
 pub enum ArityType<T: Copy> {
     Any,
@@ -118,13 +118,11 @@ impl Expect<IRToken, TokenType> for CompEvalStack {
 }
 
 pub trait Evaluator<T> {
-    fn evaluate(&mut self, item: T, parser: &Parser, prog: &mut Program) -> DoubleResult<(), T>;
+    fn evaluate(&mut self, item: T, prog: &mut Program) -> DoubleResult<(), T>;
 }
 
 impl Evaluator<IRToken> for CompEvalStack {
-    fn evaluate(
-        &mut self, tok: IRToken, parser: &Parser, prog: &mut Program,
-    ) -> DoubleResult<(), IRToken> {
+    fn evaluate(&mut self, tok: IRToken, prog: &mut Program) -> DoubleResult<(), IRToken> {
         match tok.typ {
             TokenType::Keyword => match from_i32(tok.operand) {
                 KeywordType::Drop => {
@@ -193,7 +191,7 @@ impl Evaluator<IRToken> for CompEvalStack {
                         }
                     },
 
-                    None => match parser.try_get_const_name(word) {
+                    None => match prog.get_const_name(word) {
                         Some(cnst) => self.push(IRToken::new(cnst.typ, cnst.value(), &tok.loc)),
                         None => Err(Either::Left(tok))?,
                     },
