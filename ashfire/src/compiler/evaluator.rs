@@ -5,38 +5,31 @@ use firelib::fold_bool;
 
 use super::{parser::Parser, program::Program, types::*};
 
-pub enum ArityType {
+pub enum ArityType<T: Copy> {
     Any,
     Same,
-    Type(TokenType),
+    Type(T),
 }
 
-pub trait Expect<T>: Stack<T> {
-    fn program_arity(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()>;
-    fn program_exact(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()>;
-    fn program_type(
-        &self, program: &Program, frame: &T, expected: TokenType, loc: &Loc,
-    ) -> Result<()>;
-    fn get_type(&self, t: &T) -> TokenType;
+pub trait Expect<T: Clone, B: From<T> + Copy>: Stack<T> {
+    fn program_arity(&self, program: &Program, contract: &[B], loc: &Loc) -> Result<()>;
+    fn program_exact(&self, program: &Program, contract: &[B], loc: &Loc) -> Result<()>;
+    fn program_type(&self, program: &Program, frame: &T, expected: B, loc: &Loc) -> Result<()>;
 
-    fn expect_exact_pop(
-        &mut self, contract: &[TokenType], program: &Program, loc: &Loc,
-    ) -> Result<Vec<T>> {
+    fn expect_exact_pop(&mut self, contract: &[B], program: &Program, loc: &Loc) -> Result<Vec<T>> {
         self.expect_stack_size(contract.len(), loc)?;
         self.program_exact(program, contract, loc)?;
         self.pop_n(contract.len())
     }
 
-    fn expect_contract_pop(
-        &mut self, contr: &[TokenType], program: &Program, loc: &Loc,
-    ) -> Result<Vec<T>> {
+    fn expect_contract_pop(&mut self, contr: &[B], program: &Program, loc: &Loc) -> Result<Vec<T>> {
         self.expect_stack_size(contr.len(), loc)?;
         self.program_arity(program, contr, loc)?;
         self.pop_n(contr.len())
     }
 
     fn expect_array_pop<const N: usize>(
-        &mut self, contr: [TokenType; N], program: &Program, loc: &Loc,
+        &mut self, contr: [B; N], program: &Program, loc: &Loc,
     ) -> Result<[T; N]> {
         self.expect_stack_size(contr.len(), loc)?;
         self.program_arity(program, &contr, loc)?;
@@ -44,13 +37,13 @@ pub trait Expect<T>: Stack<T> {
     }
 
     fn expect_arity_pop<const N: usize>(
-        &mut self, arity: ArityType, program: &Program, loc: &Loc,
+        &mut self, arity: ArityType<B>, program: &Program, loc: &Loc,
     ) -> Result<[T; N]> {
         self.expect_arity(N, arity, program, loc)?;
         self.pop_array()
     }
 
-    fn expect_peek(&mut self, arity_t: ArityType, program: &Program, loc: &Loc) -> Result<&T> {
+    fn expect_peek(&mut self, arity_t: ArityType<B>, program: &Program, loc: &Loc) -> Result<&T> {
         self.expect_arity(1, arity_t, program, loc)?;
         Ok(self.peek().unwrap())
     }
@@ -65,17 +58,19 @@ pub trait Expect<T>: Stack<T> {
         self.pop_array()
     }
 
-    fn expect_pop_type(&mut self, arity_t: TokenType, program: &Program, loc: &Loc) -> Result<T> {
+    fn expect_pop_type(&mut self, arity_t: B, program: &Program, loc: &Loc) -> Result<T> {
         self.expect_arity(1, ArityType::Type(arity_t), program, loc)?;
         Ok(self.pop().unwrap())
     }
 
-    fn expect_arity(&self, n: usize, arity: ArityType, program: &Program, loc: &Loc) -> Result<()> {
+    fn expect_arity(
+        &self, n: usize, arity: ArityType<B>, program: &Program, loc: &Loc,
+    ) -> Result<()> {
         self.expect_stack_size(n, loc)?;
 
         let (typ, start) = match arity {
             ArityType::Any => return Ok(()),
-            ArityType::Same => (self.get_type(self.get(0).unwrap()), 1),
+            ArityType::Same => (B::from(self.get(0).cloned().unwrap()), 1),
             ArityType::Type(typ) => (typ, 0),
         };
 
@@ -104,11 +99,7 @@ pub trait Expect<T>: Stack<T> {
 
 pub type CompEvalStack = EvalStack<IRToken>;
 
-impl Expect<IRToken> for CompEvalStack {
-    fn get_type(&self, t: &IRToken) -> TokenType {
-        t.typ
-    }
-
+impl Expect<IRToken, TokenType> for CompEvalStack {
     fn program_arity(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()> {
         let frames: Vec<TypeFrame> = self.iter().map(TypeFrame::from).collect();
         program.expect_arity(&frames, contract, loc)
@@ -135,38 +126,39 @@ impl Evaluator<IRToken> for CompEvalStack {
         &mut self, tok: IRToken, parser: &Parser, prog: &mut Program,
     ) -> DoubleResult<(), IRToken> {
         match tok.typ {
-            TokenType::Keyword => {
-                let key = from_i32(tok.operand);
-                match key {
-                    KeywordType::Drop => {
-                        self.expect_pop(&tok.loc)?;
-                    }
-                    KeywordType::Dup => {
-                        let top = (*self.expect_peek(ArityType::Any, prog, &tok.loc)?).clone();
-                        self.push(top);
-                    }
-                    KeywordType::Swap => {
-                        let [a, b] = self.expect_pop_n(&tok.loc)?;
-                        self.push_n([b, a]);
-                    }
-                    KeywordType::Over => {
-                        let [a, b] = self.expect_pop_n(&tok.loc)?;
-                        self.push_n([a.clone(), b, a]);
-                    }
-                    KeywordType::Rot => {
-                        let [a, b, c] = self.expect_pop_n(&tok.loc)?;
-                        self.push_n([b, c, a]);
-                    }
-                    KeywordType::Equal => {
-                        let [a, b] = self.expect_arity_pop(ArityType::Same, prog, &tok.loc)?;
-                        let value = fold_bool!(a.operand == b.operand, 1, 0);
-                        self.push(IRToken::new(BOOL, value, &tok.loc))
-                    }
-                    _ => {
-                        Err(Either::Left(IRToken::new(TokenType::Keyword, tok.operand, &tok.loc)))?
-                    }
+            TokenType::Keyword => match from_i32(tok.operand) {
+                KeywordType::Drop => {
+                    self.expect_pop(&tok.loc)?;
                 }
-            }
+
+                KeywordType::Dup => {
+                    let top = (*self.expect_peek(ArityType::Any, prog, &tok.loc)?).clone();
+                    self.push(top);
+                }
+
+                KeywordType::Swap => {
+                    let [a, b] = self.expect_pop_n(&tok.loc)?;
+                    self.push_n([b, a]);
+                }
+
+                KeywordType::Over => {
+                    let [a, b] = self.expect_pop_n(&tok.loc)?;
+                    self.push_n([a.clone(), b, a]);
+                }
+
+                KeywordType::Rot => {
+                    let [a, b, c] = self.expect_pop_n(&tok.loc)?;
+                    self.push_n([b, c, a]);
+                }
+
+                KeywordType::Equal => {
+                    let [a, b] = self.expect_arity_pop(ArityType::Same, prog, &tok.loc)?;
+                    let value = fold_bool!(a.operand == b.operand, 1, 0);
+                    self.push(IRToken::new(BOOL, value, &tok.loc))
+                }
+
+                _ => Err(Either::Left(IRToken::new(TokenType::Keyword, tok.operand, &tok.loc)))?,
+            },
 
             TokenType::Word => {
                 let word = prog.get_word(tok.operand);
@@ -200,10 +192,9 @@ impl Evaluator<IRToken> for CompEvalStack {
                             Err(Either::Left(IRToken::new(TokenType::Word, tok.operand, &tok.loc)))?
                         }
                     },
+
                     None => match parser.try_get_const_name(word) {
-                        Some(cnst) => {
-                            self.push(IRToken::new(cnst.typ, cnst.word.value, &tok.loc));
-                        }
+                        Some(cnst) => self.push(IRToken::new(cnst.typ, cnst.value(), &tok.loc)),
                         None => Err(Either::Left(tok))?,
                     },
                 }

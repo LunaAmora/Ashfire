@@ -7,11 +7,7 @@ use super::{evaluator::*, program::*, types::*};
 
 type DataStack = EvalStack<TypeFrame>;
 
-impl Expect<TypeFrame> for DataStack {
-    fn get_type(&self, t: &TypeFrame) -> TokenType {
-        t.typ
-    }
-
+impl Expect<TypeFrame, TokenType> for DataStack {
     fn program_arity(&self, program: &Program, contract: &[TokenType], loc: &Loc) -> Result<()> {
         program.expect_arity(self, contract, loc)
     }

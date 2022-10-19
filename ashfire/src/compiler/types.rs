@@ -323,6 +323,18 @@ impl PartialEq<ValueType> for TokenType {
     }
 }
 
+impl From<IRToken> for TokenType {
+    fn from(tok: IRToken) -> Self {
+        tok.typ
+    }
+}
+
+impl From<TypeFrame> for TokenType {
+    fn from(frame: TypeFrame) -> Self {
+        frame.typ
+    }
+}
+
 impl From<ValueType> for TokenType {
     fn from(value: ValueType) -> Self {
         TokenType::DataType(value)
