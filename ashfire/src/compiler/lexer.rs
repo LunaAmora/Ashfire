@@ -11,17 +11,6 @@ use firelib::{bail, choice, ensure, ShortCircuit};
 
 use super::{program::Program, types::*};
 
-struct Token {
-    name: String,
-    loc: Loc,
-}
-
-impl Token {
-    fn new(name: String, loc: Loc) -> Self {
-        Self { name, loc }
-    }
-}
-
 pub struct Lexer {
     buffer: Vec<char>,
     reader: BufReader<File>,
@@ -149,9 +138,9 @@ impl Lexer {
             Some(tok) => choice!(
                 OptionErr,
                 self.try_parse_string(&tok, program),
-                try_parse_char(&tok),
-                parse_keyword(&tok),
-                parse_number(&tok),
+                tok.parse_as_char(),
+                tok.parse_as_keyword(),
+                tok.parse_as_number(),
                 OptionErr::new(program.define_word(tok))
             ),
             None => OptionErr::default(),
@@ -192,25 +181,63 @@ fn strip_trailing_newline(input: &str) -> &str {
         .unwrap_or(input)
 }
 
-fn parse_number(tok: &Token) -> Option<IRToken> {
-    tok.name
-        .parse::<i32>()
-        .ok()
-        .map(|operand| IRToken::new(INT, operand, &tok.loc))
+struct Token {
+    name: String,
+    loc: Loc,
 }
 
-fn try_parse_char(tok: &Token) -> OptionErr<IRToken> {
-    let loc = &tok.loc;
-    match tok.name.strip_prefix('\'') {
-        Some(word) => match word.strip_suffix('\'') {
-            Some(word) => parse_char(word, loc),
-            None => bail!("{loc}Missing closing `\'` in char literal"),
-        }
-        .value?
-        .map(|operand| (operand, loc.clone()).into()),
-        None => None,
+impl Token {
+    fn new(name: String, loc: Loc) -> Self {
+        Self { name, loc }
     }
-    .into()
+
+    fn parse_as_number(&self) -> Option<IRToken> {
+        self.name
+            .parse::<i32>()
+            .ok()
+            .map(|operand| IRToken::new(INT, operand, &self.loc))
+    }
+
+    fn parse_as_char(&self) -> OptionErr<IRToken> {
+        let loc = &self.loc;
+        match self.name.strip_prefix('\'') {
+            Some(word) => match word.strip_suffix('\'') {
+                Some(word) => parse_char(word, loc),
+                None => bail!("{loc}Missing closing `\'` in char literal"),
+            }
+            .value?
+            .map(|operand| (operand, loc.clone()).into()),
+            None => None,
+        }
+        .into()
+    }
+
+    fn parse_as_keyword(&self) -> Option<IRToken> {
+        let operand = match self.name.as_str() {
+            "dup" => KeywordType::Dup,
+            "swap" => KeywordType::Swap,
+            "drop" => KeywordType::Drop,
+            "over" => KeywordType::Over,
+            "rot" => KeywordType::Rot,
+            "if" => KeywordType::If,
+            "else" => KeywordType::Else,
+            "end" => KeywordType::End,
+            "proc" => KeywordType::Proc,
+            "->" => KeywordType::Arrow,
+            "mem" => KeywordType::Mem,
+            ":" => KeywordType::Colon,
+            "=" => KeywordType::Equal,
+            "let" => KeywordType::Let,
+            "do" => KeywordType::Do,
+            "@" => KeywordType::At,
+            "case" => KeywordType::Case,
+            "while" => KeywordType::While,
+            "struct" => KeywordType::Struct,
+            "include" => KeywordType::Include,
+            _ => return None,
+        } as i32;
+        Some(IRToken::new(TokenType::Keyword, operand, &self.loc))
+    }
 }
 
 fn parse_char(word: &str, loc: &Loc) -> OptionErr<i32> {
@@ -241,31 +268,4 @@ fn parse_scaped(escaped: &str, loc: &Loc) -> OptionErr<i32> {
 
 fn try_parse_hex(word: &str) -> Option<i32> {
     i64::from_str_radix(word, 16).ok().map(|h| h as i32)
-}
-
-fn parse_keyword(tok: &Token) -> Option<IRToken> {
-    let operand = match tok.name.as_str() {
-        "dup" => KeywordType::Dup,
-        "swap" => KeywordType::Swap,
-        "drop" => KeywordType::Drop,
-        "over" => KeywordType::Over,
-        "rot" => KeywordType::Rot,
-        "if" => KeywordType::If,
-        "else" => KeywordType::Else,
-        "end" => KeywordType::End,
-        "proc" => KeywordType::Proc,
-        "->" => KeywordType::Arrow,
-        "mem" => KeywordType::Mem,
-        ":" => KeywordType::Colon,
-        "=" => KeywordType::Equal,
-        "let" => KeywordType::Let,
-        "do" => KeywordType::Do,
-        "@" => KeywordType::At,
-        "case" => KeywordType::Case,
-        "while" => KeywordType::While,
-        "struct" => KeywordType::Struct,
-        "include" => KeywordType::Include,
-        _ => return None,
-    } as i32;
-    Some(IRToken::new(TokenType::Keyword, operand, &tok.loc))
 }
