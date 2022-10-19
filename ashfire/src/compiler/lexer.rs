@@ -150,9 +150,7 @@ impl Lexer {
 
 impl Program {
     fn define_string(&mut self, name: String, tok: &Token) -> IRToken {
-        let word = Word::new(&name, (name.len() - escaped_len(&name)) as i32);
-        let index = self.push_data(word) as i32;
-
+        let index = self.push_data(&name, name.len() - escaped_len(&name)) as i32;
         IRToken::new(TokenType::Str, index, &tok.loc)
     }
 
@@ -198,14 +196,13 @@ impl Token {
     }
 
     fn parse_as_char(&self) -> OptionErr<IRToken> {
-        let loc = &self.loc;
         match self.name.strip_prefix('\'') {
             Some(word) => match word.strip_suffix('\'') {
-                Some(word) => parse_char(word, loc),
-                None => bail!("{loc}Missing closing `\'` in char literal"),
+                Some(word) => parse_char(word, &self.loc),
+                None => bail!("{}Missing closing `\'` in char literal", self.loc),
             }
             .value?
-            .map(|operand| (operand, loc.clone()).into()),
+            .map(|operand| IRToken::new(INT, operand, &self.loc)),
             None => None,
         }
         .into()

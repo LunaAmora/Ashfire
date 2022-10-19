@@ -56,8 +56,8 @@ impl Program {
         self.mem_size += size;
     }
 
-    pub fn push_data(&mut self, data: Word) -> usize {
-        self.data.push(data.into());
+    pub fn push_data(&mut self, word: &str, size: usize) -> usize {
+        self.data.push(SizedWord::new(Word::new(word, size as i32)));
         self.data.len() - 1
     }
 
@@ -104,7 +104,12 @@ impl Program {
             ValueType::Ptr => "Pointer",
             ValueType::Any => "Any",
             ValueType::Type(n) => {
-                return self.structs_types.get(n as usize).unwrap().name.to_owned()
+                return self
+                    .structs_types
+                    .get(n as usize)
+                    .unwrap()
+                    .name()
+                    .to_owned()
             }
         }
         .to_owned()
@@ -175,7 +180,7 @@ impl Program {
     pub fn get_data_type(&self, word: &str) -> Option<usize> {
         self.structs_types
             .iter()
-            .position(|s| s.name == word)
+            .position(|s| s.name() == word)
             .map(|u| u + 1)
     }
 
@@ -186,7 +191,7 @@ impl Program {
     }
 
     pub fn get_type_name(&self, word: &str) -> Option<&StructType> {
-        self.structs_types.iter().find(|s| s.name == word)
+        self.structs_types.iter().find(|s| s.name() == word)
     }
 
     /// Searches for a `const` that matches the given `&str`.

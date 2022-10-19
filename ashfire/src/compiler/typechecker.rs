@@ -146,7 +146,7 @@ impl TypeChecker {
                     self.data_stack.expect_pop(loc)?;
 
                     let cast: TokenType = match n {
-                        1.. => ValueType::from((n - 1) as usize).into(),
+                        1.. => ValueType::from((n - 1) as usize).get_type(),
                         0 => unreachable!(),
                         n => TokenType::DataPtr(ValueType::from((-n - 1) as usize)),
                     };
@@ -296,7 +296,7 @@ impl TypeChecker {
                     let index = usize::from(n);
                     let stk = program.structs_types.get(index).unwrap();
 
-                    for typ in stk.members.iter().map(StructMember::get_type) {
+                    for typ in stk.members().iter().map(StructMember::get_type) {
                         self.push_frame(typ, loc);
                     }
 
@@ -341,18 +341,19 @@ impl TypeChecker {
                 let word = program.get_word(op.operand).strip_prefix(prefix).unwrap();
                 let stk = program.structs_types.get(usize::from(value)).unwrap();
 
-                let index = stk
-                    .members
+                let members = stk.members();
+                let index = members
                     .iter()
-                    .position(|mem| mem.name == word)
+                    .position(|mem| mem.name() == word)
                     .with_context(|| {
                         format!(
                             "{}The struct {} does not contain a member with name: `{word}`",
-                            op.loc, stk.name
+                            op.loc,
+                            stk.name()
                         )
                     })?;
 
-                let result = stk.members.get(index).unwrap().token_type;
+                let result = members.get(index).unwrap().get_type();
 
                 program.set_operand(ip, index * 4);
                 Ok(result)

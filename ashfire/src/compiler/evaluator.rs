@@ -178,7 +178,7 @@ impl Evaluator<IRToken> for CompEvalStack {
                             let a = self.expect_pop(&tok.loc)?;
 
                             let cast = match n {
-                                1.. => ValueType::from((n - 1) as usize).into(),
+                                1.. => ValueType::from((n - 1) as usize).get_type(),
                                 0 => unreachable!(),
                                 _ => todo!("casting to ptr type not implemented yet"),
                             };
@@ -192,7 +192,7 @@ impl Evaluator<IRToken> for CompEvalStack {
                     },
 
                     None => match prog.get_const_name(word) {
-                        Some(constant) => self.push(IRToken::from((constant, tok.loc))),
+                        Some(constant) => self.push((constant, tok.loc).into()),
                         None => Err(Either::Left(tok))?,
                     },
                 }

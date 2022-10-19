@@ -355,32 +355,33 @@ impl Parser {
             .flatten()
             .or_return(OptionErr::default)?;
 
-        let mut member = struct_type.members.first().unwrap();
+        let mut member = struct_type.members().first().unwrap();
 
         if pointer {
-            let pattern = &format!("{}.{}", word.name, member.name);
+            let pattern = &format!("{}.{}", word.name, member.name());
             let index = expect_index(vars, |name| name.eq(pattern));
 
-            let stk_id = prog.get_data_type(struct_type.name.as_str()).unwrap();
+            let stk_id = prog.get_data_type(struct_type.name()).unwrap();
             let ptr_typ = IntrinsicType::Cast(-(stk_id as i32));
 
             result.push(Op::new(push_type, index as i32, loc));
             result.push(Op::new(OpType::Intrinsic, ptr_typ.into(), loc));
         } else {
-            let mut members = struct_type.members.clone();
+            let mut members = struct_type.members().to_vec();
+
             if store {
                 members.reverse();
-                member = struct_type.members.last().unwrap();
+                member = members.first().unwrap();
             }
 
-            let pattern = &format!("{}.{}", word.name, member.name);
+            let pattern = &format!("{}.{}", word.name, member.name());
             let index = expect_index(vars, |name| name.eq(pattern)) as i32;
 
             for (i, member) in (0_i32..).zip(members.into_iter()) {
                 let operand = index + fold_bool!(local == store, i, -i);
 
                 if store {
-                    result.push(Op::new(OpType::ExpectType, member.token_type.into(), loc))
+                    result.push(Op::new(OpType::ExpectType, member.get_type().into(), loc))
                 }
 
                 result.push(Op::new(push_type, operand, loc));
@@ -388,7 +389,7 @@ impl Parser {
                 if store {
                     result.push(Op::new(OpType::Intrinsic, IntrinsicType::Store32.into(), loc))
                 } else {
-                    let data_typ = IntrinsicType::Cast(member.token_type.into());
+                    let data_typ = IntrinsicType::Cast(member.get_type().into());
                     result.push(Op::new(OpType::Intrinsic, IntrinsicType::Load32.into(), loc));
                     result.push(Op::new(OpType::Intrinsic, data_typ.into(), loc));
                 }
@@ -398,9 +399,9 @@ impl Parser {
         OptionErr::new(result)
     }
 
-    /// Searches for a `struct` that matches the given [`word`][LocWord],
+    /// Searches for a `struct` that matches the given `&str`,
     /// returning its type.
-    fn try_get_struct_type<'a>(&self, word: &LocWord, prog: &'a Program) -> Option<&'a StructType> {
+    fn try_get_struct_type<'a>(&self, word: &str, prog: &'a Program) -> Option<&'a StructType> {
         self.structs
             .iter()
             .find(|stk| word == stk.as_str())
@@ -498,10 +499,8 @@ impl Parser {
                         );
 
                         self.skip(eval);
-                        self.register_var(
-                            (word.to_string(), result.operand, result.token_type).into(),
-                            prog,
-                        );
+                        let struct_word = TypedWord::new(word.to_string(), result);
+                        self.register_var(struct_word, prog);
 
                         success!();
                     }
@@ -546,8 +545,7 @@ impl Parser {
         if let Ok((eval, skip)) = self.compile_eval(prog).value {
             if eval.token_type != ValueType::Any {
                 self.skip(skip);
-                prog.consts
-                    .push((word.to_string(), eval.operand, eval.token_type).into());
+                prog.consts.push(TypedWord::new(word.to_string(), eval));
                 success!();
             }
         }
@@ -598,7 +596,7 @@ impl Parser {
         while let Some(tok) = self.ir_tokens.get(i).cloned() {
             if &tok == KeywordType::End {
                 if result.is_empty() && i == 0 {
-                    result.push(IRToken::new(ValueType::Any.into(), 0, &tok.loc));
+                    result.push(IRToken::new(ValueType::Any.get_type(), 0, &tok.loc));
                 } else if result.len() != n {
                     let frames: Vec<TypeFrame> = result.iter().map(TypeFrame::from).collect();
                     let fmt_frames = prog.format_frames(&frames);
@@ -651,8 +649,8 @@ impl Parser {
                 }
             } else if let Some(found_word) = prog.get_word_from_token(&tok) {
                 if let Some(stk) = prog.get_type_name(found_word) {
-                    for member in stk.members.iter() {
-                        push_by_condition(arrow, member.token_type, &mut outs, &mut ins);
+                    for member in stk.members() {
+                        push_by_condition(arrow, member.get_type(), &mut outs, &mut ins);
                     }
                     continue;
                 } else if let Some(type_ptr) = prog.get_data_pointer(found_word) {
@@ -724,13 +722,15 @@ impl Parser {
                     let found_type = &prog.get_word(name_type.operand);
 
                     if let Some(stk_typ) = prog.get_type_name(found_type) {
-                        if stk_typ.members.len() == 1 {
-                            let typ = stk_typ.members.first().unwrap().token_type;
+                        let ref_members = stk_typ.members();
+
+                        if ref_members.len() == 1 {
+                            let typ = ref_members.first().unwrap().get_type();
                             members.push((found_word, typ).into());
                         } else {
-                            for member in &stk_typ.members {
-                                let member_name = format!("{found_word}.{}", member.name);
-                                members.push((member_name, member.token_type).into());
+                            for member in ref_members {
+                                let member_name = format!("{found_word}.{}", member.name());
+                                members.push((member_name, member.get_type()).into());
                             }
                         }
                         continue;
@@ -764,7 +764,7 @@ impl Parser {
             .get_keyword()
             .unwrap();
 
-        let (mut result, eval) = match self.compile_eval_n(stk.members.len(), prog).value {
+        let (mut result, eval) = match self.compile_eval_n(stk.members().len(), prog).value {
             Ok(value) => value,
             Err(either) => match either {
                 Either::Right(err) => return Err(err),
@@ -773,7 +773,7 @@ impl Parser {
         };
 
         let end_token = self.skip(eval).unwrap();
-        let mut members = stk.members;
+        let mut members = stk.members().to_vec();
 
         if result.len() == 1 {
             let eval = result.pop().unwrap();
@@ -782,13 +782,13 @@ impl Parser {
                 if self.inside_proc() {
                     members.reverse();
                 }
-                for member in members.into_iter() {
-                    let name = format!("{}.{}", word.name, member.name);
-                    let struct_word = (name, member.default_value, member.token_type).into();
+                for member in members {
+                    let name = format!("{}.{}", word.name, member.name());
+                    let struct_word = TypedWord::new(name, member);
                     self.register_typed_word(&assign, struct_word, prog);
                 }
             } else {
-                let member_type = members.pop().unwrap().token_type;
+                let member_type = members.last().unwrap().get_type();
                 anyhow::ensure!(
                     equals_any!(member_type, ValueType::Any, eval.token_type),
                     concat!(
@@ -800,7 +800,7 @@ impl Parser {
                     eval.token_type
                 );
 
-                let struct_word = (word.to_string(), eval.operand, member_type).into();
+                let struct_word = TypedWord::new(word.to_string(), eval);
                 self.register_typed_word(&assign, struct_word, prog);
             }
         } else {
@@ -816,8 +816,8 @@ impl Parser {
             }
 
             for (member, item) in members.into_iter().zip(result.into_iter()) {
-                let name = format!("{}.{}", word.name, member.name);
-                let struct_word = (name, item.operand, item.token_type).into();
+                let name = format!("{}.{}", word.name, member.name());
+                let struct_word = TypedWord::new(name, item);
                 self.register_typed_word(&assign, struct_word, prog);
             }
         }
