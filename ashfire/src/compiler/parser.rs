@@ -46,12 +46,17 @@ impl LocWord {
             .into()
         })
     }
+
+    /// Searches for a `global mem` that matches the given [`LocWord`] name.
+    fn get_global_mem(&self, prog: &Program) -> Option<Vec<Op>> {
+        prog.get_mem(self)
+            .map(|global| Op::new(OpType::PushGlobalMem, global.value, &self.loc).into())
+    }
 }
 
 #[derive(Default)]
 pub struct Parser {
     ir_tokens: VecDeque<IRToken>,
-    global_mems: Vec<Word>,
     op_blocks: Vec<Op>,
     structs: Vec<Word>,
     current_proc: Option<usize>,
@@ -133,7 +138,7 @@ impl Parser {
                     self.get_binding(word, prog),
                     prog.get_intrinsic(word),
                     self.get_local_mem(word, prog),
-                    self.get_global_mem(word),
+                    word.get_global_mem(prog),
                     prog.get_proc_name(word),
                     self.get_const_name(word, prog),
                     self.get_variable(word, prog),
@@ -269,14 +274,6 @@ impl Parser {
         self.current_proc(prog)
             .and_then(|proc| proc.local_mem_names.iter().find(|mem| word == mem.as_str()))
             .map(|local| Op::new(OpType::PushLocalMem, local.value, &word.loc).into())
-    }
-
-    /// Searches for a `global mem` that matches the given [`word`][LocWord].
-    fn get_global_mem(&self, word: &LocWord) -> Option<Vec<Op>> {
-        self.global_mems
-            .iter()
-            .find(|mem| word == mem.as_str())
-            .map(|global| Op::new(OpType::PushGlobalMem, global.value, &word.loc).into())
     }
 
     /// Searches for a `const` that matches the given[`word`][LocWord]
@@ -684,13 +681,8 @@ impl Parser {
         self.expect_keyword(prog, KeywordType::End, "`end` after memory size", loc)?;
 
         let size = ((value_token.operand + 3) / 4) * 4;
-        if let Some(proc) = self.current_proc_mut(prog) {
-            proc.mem_size += size;
-            proc.local_mem_names.push(Word::new(word, proc.mem_size));
-        } else {
-            self.global_mems.push(Word::new(word, prog.mem_size));
-            prog.mem_size += size;
-        }
+        prog.push_mem_by_context(self.get_index(), word, size);
+
         Ok(())
     }
 

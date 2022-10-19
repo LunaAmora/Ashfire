@@ -81,12 +81,12 @@ impl Module {
         self.types.len() - 1
     }
 
-    pub fn add_data(&mut self, data: &str) {
-        self.data.push(data.to_owned());
+    pub fn add_data(&mut self, data: String) {
+        self.data.push(data);
     }
 
     pub fn add_data_value(&mut self, data: i32) {
-        self.add_data(&inverse_hex_representation(data));
+        self.add_data(inverse_hex_representation(data));
     }
 
     fn func_label_by_id(&self, id: &Ident) -> String {

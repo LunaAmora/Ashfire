@@ -24,6 +24,11 @@ impl Proc {
             ..Default::default()
         }
     }
+
+    pub fn push_mem(&mut self, word: &str, size: i32) {
+        self.mem_size += size;
+        self.local_mem_names.push(Word::new(word, self.mem_size));
+    }
 }
 
 #[derive(Default)]

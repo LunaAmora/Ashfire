@@ -1,7 +1,6 @@
 use std::{collections::HashMap, fs::File, io::BufWriter, path::Path};
 
 use anyhow::{bail, Context, Result};
-use itertools::Itertools;
 use wasm_backend::{wasm_types::*, Module};
 use Ident::*;
 use Instruction::*;
@@ -55,8 +54,7 @@ impl Generator {
         wasm.add_fn("over", i2, i3, vec![Get(local, Id(0)), Get(local, Id(1)), Get(local, Id(0))]);
         wasm.add_fn("rot", i3, i3, vec![Get(local, Id(1)), Get(local, Id(2)), Get(local, Id(0))]);
 
-        let stack_start = program.mem_size + program.final_data_size() + program.total_vars_size();
-        let stk = wasm.add_global("LOCAL_STACK", WasmType::I32, stack_start, true);
+        let stk = wasm.add_global("LOCAL_STACK", WasmType::I32, program.stack_start(), true);
 
         let aloc_local = wasm.add_fn("aloc_local", i1, &[], vec![
             Get(global, Id(stk)),
@@ -100,21 +98,15 @@ impl Generator {
 
         wasm.add_export("_start", Bind::Func("start".into()));
 
-        for data in program
-            .data
-            .clone()
-            .iter()
-            .filter(|d| d.offset >= 0)
-            .sorted_by_key(|d| d.offset)
-        {
-            wasm.add_data(data)
+        for data in program.get_sorted_data() {
+            wasm.add_data(data.to_string())
         }
 
         if !program.global_vars.is_empty() {
-            let padding = 4 - (program.data_size % 4) as usize;
+            let padding = 4 - (program.data_size() % 4) as usize;
             if padding < 4 {
                 let pad_string = (0..padding).map(|_| "\\00").collect::<String>();
-                wasm.add_data(&pad_string);
+                wasm.add_data(pad_string);
             }
         }
 
@@ -194,7 +186,7 @@ impl Program {
             OpType::PushData(_) => vec![Const(op.operand)],
 
             OpType::PushStr => {
-                let data = self.data.get(op.operand as usize).unwrap();
+                let data = self.get_string(op.operand);
                 vec![Const(data.size()), Const(data.offset)]
             }
 
@@ -204,7 +196,7 @@ impl Program {
             }
 
             OpType::PushGlobalMem => {
-                vec![Const(self.final_data_size() + self.mem_size + op.operand)]
+                vec![Const(self.global_vars_start() + op.operand)]
             }
 
             OpType::PushLocal => {
@@ -212,7 +204,7 @@ impl Program {
                 vec![Const(ptr), Call("push_local".into())]
             }
 
-            OpType::PushGlobal => vec![Const(self.final_data_size() + op.operand * 4)],
+            OpType::PushGlobal => vec![Const(self.mem_start() + op.operand * 4)],
 
             OpType::OffsetLoad => todo!(),
 

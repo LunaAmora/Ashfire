@@ -151,10 +151,9 @@ impl Lexer {
 impl Program {
     fn define_string(&mut self, name: String, tok: &Token) -> IRToken {
         let word = Word::new(&name, (name.len() - escaped_len(&name)) as i32);
-        let operand = self.data.len() as i32;
+        let index = self.push_data(word) as i32;
 
-        self.data.push(word.into());
-        IRToken::new(TokenType::Str, operand, &tok.loc)
+        IRToken::new(TokenType::Str, index, &tok.loc)
     }
 
     fn define_word(&mut self, tok: Token) -> IRToken {

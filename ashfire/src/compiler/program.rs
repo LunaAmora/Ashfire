@@ -2,21 +2,23 @@ use std::collections::HashMap;
 
 use ashlib::from_i32;
 use firelib::fold_bool;
+use itertools::Itertools;
 
 use super::types::*;
 
 #[derive(Default)]
 pub struct Program {
     pub ops: Vec<Op>,
+    pub procs: Vec<Proc>,
     pub words: Vec<String>,
-    pub data: Vec<SizedWord>,
     pub consts: Vec<TypedWord>,
-    pub mem_size: i32,
-    pub data_size: i32,
     pub global_vars: Vec<TypedWord>,
     pub structs_types: Vec<StructType>,
-    pub procs: Vec<Proc>,
     pub block_contracts: HashMap<usize, (usize, usize)>,
+    mem_size: i32,
+    memory: Vec<Word>,
+    data_size: i32,
+    data: Vec<SizedWord>,
 }
 
 impl Program {
@@ -42,12 +44,41 @@ impl Program {
         operand
     }
 
-    pub fn final_data_size(&self) -> i32 {
+    pub fn push_mem_by_context(&mut self, proc_index: Option<usize>, word: &str, size: i32) {
+        match proc_index.and_then(|i| self.procs.get_mut(i)) {
+            Some(proc) => proc.push_mem(word, size),
+            None => self.push_mem(word, size),
+        }
+    }
+
+    pub fn push_mem(&mut self, word: &str, size: i32) {
+        self.memory.push(Word::new(word, self.mem_size));
+        self.mem_size += size;
+    }
+
+    pub fn push_data(&mut self, data: Word) -> usize {
+        self.data.push(data.into());
+        self.data.len() - 1
+    }
+
+    pub fn data_size(&self) -> i32 {
+        self.data_size
+    }
+
+    pub fn mem_start(&self) -> i32 {
         ((self.data_size + 3) / 4) * 4
     }
 
-    pub fn total_vars_size(&self) -> i32 {
+    pub fn global_vars_start(&self) -> i32 {
+        self.mem_start() + self.mem_size
+    }
+
+    pub fn global_vars_size(&self) -> i32 {
         self.global_vars.len() as i32 * 4
+    }
+
+    pub fn stack_start(&self) -> i32 {
+        self.global_vars_start() + self.global_vars_size()
     }
 
     pub fn get_word(&self, index: i32) -> &String {
@@ -56,6 +87,14 @@ impl Program {
 
     pub fn get_string(&self, index: i32) -> &SizedWord {
         self.data.get(index as usize).unwrap()
+    }
+
+    pub fn get_sorted_data(&self) -> Vec<&SizedWord> {
+        self.data
+            .iter()
+            .filter(|d| d.offset >= 0)
+            .sorted_by_key(|d| d.offset)
+            .collect()
     }
 
     pub fn data_name(&self, value: ValueType) -> String {
@@ -126,12 +165,11 @@ impl Program {
     }
 
     pub fn get_cast_type(&self, word: &str) -> Option<i32> {
-        let (word, is_ptr) = match word.strip_prefix('*') {
-            Some(word) => (word, true),
-            None => (word, false),
+        let (word, type_or_pointer) = match word.strip_prefix('*') {
+            None => (word, 1),
+            Some(word) => (word, -1),
         };
-        self.get_data_type(word)
-            .map(|u| fold_bool!(is_ptr, -1, 1) * u as i32)
+        self.get_data_type(word).map(|u| type_or_pointer * u as i32)
     }
 
     pub fn get_data_type(&self, word: &str) -> Option<usize> {
@@ -154,6 +192,11 @@ impl Program {
     /// Searches for a `const` that matches the given `&str`.
     pub fn get_const_name(&self, word: &str) -> Option<&TypedWord> {
         self.consts.iter().find(|cnst| word == cnst.as_str())
+    }
+
+    /// Searches for a `global mem` that matches the given `&str`.
+    pub fn get_mem(&self, word: &str) -> Option<&Word> {
+        self.memory.iter().find(|mem| word == mem.as_str())
     }
 }
 
