@@ -7,6 +7,7 @@ use firelib::*;
 
 use super::{
     lexer::Lexer,
+    program::*,
     typechecker::{ArityType, Expect},
     types::*,
 };

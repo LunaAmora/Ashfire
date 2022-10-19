@@ -12,7 +12,7 @@ use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use firelib::cmd_wait;
 
-use crate::compiler::types::Program;
+use crate::compiler::program::Program;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

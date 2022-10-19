@@ -3,7 +3,7 @@ use ashlib::{EvalStack, Stack};
 use firelib::equals_any;
 use itertools::Itertools;
 
-use super::types::*;
+use super::{program::*, types::*};
 
 type DataStack = EvalStack<TypeFrame>;
 

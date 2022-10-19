@@ -7,7 +7,10 @@ use Ident::*;
 use Instruction::*;
 use Scope::*;
 
-use super::types::{Contract, IntrinsicType, Op, OpType, Proc, Program, ProgramVisitor};
+use super::{
+    program::*,
+    types::{Contract, IntrinsicType, Op, OpType, Proc},
+};
 
 pub struct Generator {
     current_proc: Option<usize>,

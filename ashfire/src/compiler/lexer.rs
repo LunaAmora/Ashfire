@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use ashlib::OptionErr;
 use firelib::{bail, choice, ensure, ShortCircuit};
 
-use super::types::*;
+use super::{program::Program, types::*};
 
 struct Token {
     name: String,

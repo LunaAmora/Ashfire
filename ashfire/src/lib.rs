@@ -7,6 +7,7 @@ use std::{
 use anyhow::{bail, Error, Result};
 use either::Either;
 use firelib::{alternative, FlowControl, Success, SuccessFrom};
+use num::FromPrimitive;
 
 #[derive(FlowControl)]
 #[alternative(value, Ok(None))]
@@ -226,4 +227,8 @@ impl<T: Clone> Stack<T> for EvalStack<T> {
     fn get(&self, n: usize) -> Option<&T> {
         self.frames.get(self.len() - 1 - n)
     }
+}
+
+pub fn from_i32<T: FromPrimitive>(value: i32) -> T {
+    FromPrimitive::from_i32(value).unwrap()
 }
