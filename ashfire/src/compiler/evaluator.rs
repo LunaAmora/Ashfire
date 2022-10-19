@@ -123,7 +123,7 @@ pub trait Evaluator<T> {
 
 impl Evaluator<IRToken> for CompEvalStack {
     fn evaluate(&mut self, tok: IRToken, prog: &mut Program) -> DoubleResult<(), IRToken> {
-        match tok.typ {
+        match tok.token_type {
             TokenType::Keyword => match from_i32(tok.operand) {
                 KeywordType::Drop => {
                     self.expect_pop(&tok.loc)?;
@@ -165,13 +165,13 @@ impl Evaluator<IRToken> for CompEvalStack {
                         IntrinsicType::Plus => {
                             let [a, b] = self.expect_arity_pop(ArityType::Same, prog, &tok.loc)?;
                             let value = a.operand + b.operand;
-                            self.push(IRToken::new(a.typ, value, &tok.loc))
+                            self.push(IRToken::new(a.token_type, value, &tok.loc))
                         }
 
                         IntrinsicType::Minus => {
                             let [a, b] = self.expect_arity_pop(ArityType::Same, prog, &tok.loc)?;
                             let value = a.operand - b.operand;
-                            self.push(IRToken::new(a.typ, value, &tok.loc))
+                            self.push(IRToken::new(a.token_type, value, &tok.loc))
                         }
 
                         IntrinsicType::Cast(n) => {
@@ -192,7 +192,7 @@ impl Evaluator<IRToken> for CompEvalStack {
                     },
 
                     None => match prog.get_const_name(word) {
-                        Some(cnst) => self.push(IRToken::new(cnst.typ, cnst.value(), &tok.loc)),
+                        Some(constant) => self.push(IRToken::from((constant, tok.loc))),
                         None => Err(Either::Left(tok))?,
                     },
                 }

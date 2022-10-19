@@ -85,7 +85,7 @@ impl Generator {
         ]);
 
         for op in program.ops.iter() {
-            match op.typ {
+            match op.op_type {
                 OpType::PrepProc => self.prep_proc(program, op)?,
                 OpType::EndProc => self.end_proc(program, &mut wasm)?,
                 _ => {
@@ -126,20 +126,17 @@ impl Generator {
         self.current_func = Some(FuncGen::new(&proc.name, &proc.contract));
         let func = self.current_fn()?;
 
-        let vars_count = proc.local_vars.len() as i32;
+        let proc_size = proc.total_size();
 
-        if proc.mem_size + vars_count > 0 {
-            func.extend(vec![
-                Const(proc.mem_size + (vars_count * 4)),
-                Call("aloc_local".into()),
-            ]);
+        if proc_size > 0 {
+            func.extend(vec![Const(proc_size), Call("aloc_local".into())]);
         }
 
         for (var, index) in proc.local_vars.iter().zip(0..) {
-            let var_value = var.word.value;
-            if var_value != 0 {
+            let var_value = var.value();
+            if var_value > 0 {
                 func.extend(vec![
-                    Const(proc.mem_size + (index + 1) * 4),
+                    Const(proc.var_mem_offset(index)),
                     Call("push_local".into()),
                     Const(var_value),
                     I32(NumMethod::store),
@@ -147,7 +144,7 @@ impl Generator {
             }
         }
 
-        for i in 0..proc.contract.ins.len() {
+        for i in 0..proc.contract.ins().len() {
             func.push(Get(local, Id(i)));
         }
 
@@ -161,7 +158,7 @@ impl Generator {
             .with_context(|| "No Wasm function block is open")?;
 
         let proc = self.current_proc(program).unwrap();
-        let mem_to_free = proc.mem_size + (proc.local_vars.len() as i32 * 4);
+        let mem_to_free = proc.total_size();
 
         if mem_to_free > 0 {
             func.extend(vec![Const(mem_to_free), Call("free_local".into())]);
@@ -182,7 +179,7 @@ impl Program {
     fn generate_op(
         &self, op: &Op, proc: &Proc, func: &FuncGen, module: &mut Module,
     ) -> Result<Vec<Instruction>> {
-        Ok(match op.typ {
+        Ok(match op.op_type {
             OpType::PushData(_) => vec![Const(op.operand)],
 
             OpType::PushStr => {
@@ -200,7 +197,7 @@ impl Program {
             }
 
             OpType::PushLocal => {
-                let ptr = (func.bind_count + 1 + op.operand) * 4 + proc.mem_size;
+                let ptr = proc.var_mem_offset(func.bind_count + op.operand);
                 vec![Const(ptr), Call("push_local".into())]
             }
 
@@ -242,8 +239,8 @@ impl Program {
             OpType::Rot => vec![Call("rot".into())],
 
             OpType::Call => {
-                let id = self.procs.get(op.operand as usize).unwrap().name.to_owned();
-                vec![Call(Label(id))]
+                let label = self.procs.get(op.operand as usize).unwrap().get_label();
+                vec![Call(label.into())]
             }
 
             OpType::Equal => vec![I32(NumMethod::eq)],
@@ -351,8 +348,7 @@ impl FuncGen {
 
 impl From<&Contract> for (Vec<WasmType>, Vec<WasmType>) {
     fn from(contract: &Contract) -> Self {
-        let ins = vec![WasmType::I32; contract.ins.len()];
-        let outs = vec![WasmType::I32; contract.outs.len()];
-        (ins, outs)
+        let (ins, outs) = contract.size();
+        (vec![WasmType::I32; ins], vec![WasmType::I32; outs])
     }
 }

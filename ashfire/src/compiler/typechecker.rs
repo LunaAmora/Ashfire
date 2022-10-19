@@ -74,7 +74,7 @@ impl TypeChecker {
     fn type_check_op(&mut self, ip: usize, program: &mut Program) -> Result<()> {
         let op = program.ops.get(ip).unwrap();
         let loc = &op.loc;
-        match op.typ {
+        match op.op_type {
             OpType::PushData(value) => match value {
                 ValueType::Int | ValueType::Bool | ValueType::Ptr => self.push_value(value, loc),
                 ValueType::Any | ValueType::Type(_) => unreachable!(),
@@ -111,7 +111,7 @@ impl TypeChecker {
                     let [top, _] =
                         self.data_stack
                             .expect_arity_pop(ArityType::Same, program, loc)?;
-                    self.push_frame(top.typ, loc);
+                    self.push_frame(top.get_type(), loc);
                 }
 
                 IntrinsicType::Times => todo!(),
@@ -162,7 +162,7 @@ impl TypeChecker {
                 let typ = self
                     .data_stack
                     .expect_peek(ArityType::Any, program, loc)?
-                    .typ;
+                    .get_type();
                 self.push_frame(typ, loc);
             }
 
@@ -182,12 +182,12 @@ impl TypeChecker {
             }
 
             OpType::Call => {
-                let Proc { contract: Contract { ins, outs }, .. } =
-                    program.procs.get(op.operand as usize).unwrap();
+                let Proc { contract, .. } = program.procs.get(op.operand as usize).unwrap();
                 {
-                    self.data_stack.expect_contract_pop(ins, program, loc)?;
-                    for typ in outs {
-                        self.push_frame(*typ, loc);
+                    self.data_stack
+                        .expect_contract_pop(contract.ins(), program, loc)?;
+                    for &typ in contract.outs() {
+                        self.push_frame(typ, loc);
                     }
                 }
             }
@@ -199,8 +199,8 @@ impl TypeChecker {
             }
 
             OpType::PrepProc => {
-                for typ in &self.visit_proc(program, op.operand as usize).contract.ins {
-                    self.push_frame(*typ, loc);
+                for &typ in self.visit_proc(program, op.operand as usize).contract.ins() {
+                    self.push_frame(typ, loc);
                 }
             }
 
@@ -270,12 +270,13 @@ impl TypeChecker {
             }
 
             OpType::EndProc => {
-                let mut outs = self.current_proc(program).unwrap().contract.outs.clone();
-                outs.reverse();
+                let outs = self.current_proc(program).unwrap().contract.outs();
 
                 if outs.is_empty() {
                     self.data_stack.program_exact(program, &[], loc)?;
                 } else {
+                    let mut outs = outs.to_vec();
+                    outs.reverse();
                     self.data_stack.expect_exact_pop(&outs, program, loc)?;
                 }
 
@@ -290,12 +291,12 @@ impl TypeChecker {
             OpType::Do => todo!(),
             OpType::EndWhile => todo!(),
 
-            OpType::Unpack => match self.data_stack.expect_pop(loc)?.typ {
+            OpType::Unpack => match self.data_stack.expect_pop(loc)?.get_type() {
                 TokenType::DataPtr(n) => {
                     let index = usize::from(n);
                     let stk = program.structs_types.get(index).unwrap();
 
-                    for typ in stk.members.iter().map(|member| member.typ) {
+                    for typ in stk.members.iter().map(StructMember::get_type) {
                         self.push_frame(typ, loc);
                     }
 
@@ -335,7 +336,7 @@ impl TypeChecker {
     fn expect_struct_pointer(
         &mut self, program: &mut Program, ip: usize, op: &Op, prefix: &str,
     ) -> Result<TokenType> {
-        match self.data_stack.expect_pop(&op.loc)?.typ {
+        match self.data_stack.expect_pop(&op.loc)?.get_type() {
             TokenType::DataPtr(value) => {
                 let word = program.get_word(op.operand).strip_prefix(prefix).unwrap();
                 let stk = program.structs_types.get(usize::from(value)).unwrap();
@@ -351,7 +352,7 @@ impl TypeChecker {
                         )
                     })?;
 
-                let result = stk.members.get(index).unwrap().typ;
+                let result = stk.members.get(index).unwrap().token_type;
 
                 program.set_operand(ip, index * 4);
                 Ok(result)
@@ -363,7 +364,7 @@ impl TypeChecker {
     fn expect_stack_arity(
         &self, program: &Program, expected: &[TypeFrame], loc: &Loc, error_text: &str,
     ) -> Result<()> {
-        let expected: Vec<TokenType> = expected.iter().map(|a| a.typ).collect();
+        let expected: Vec<TokenType> = expected.iter().map(TypeFrame::get_type).collect();
         if let Err(err) = program.expect_exact(&self.data_stack, &expected, loc) {
             bail!("{}\n[ERROR] {}", error_text, err)
         } else {
@@ -386,15 +387,20 @@ impl Program {
     pub fn expect_arity(
         &self, stack: &[TypeFrame], contract: &[TokenType], loc: &Loc,
     ) -> Result<()> {
-        for (stk, contr) in stack.iter().rev().zip(contract.iter().rev()) {
-            self.expect_type(*contr, stk, loc)?;
+        for (stk, &contr) in stack.iter().rev().zip(contract.iter().rev()) {
+            self.expect_type(contr, stk, loc)?;
         }
         Ok(())
     }
 
     pub fn expect_type(&self, expected: TokenType, frame: &TypeFrame, loc: &Loc) -> Result<()> {
         ensure!(
-            equals_any!(expected, ValueType::Any, TokenType::DataPtr(ValueType::Any), frame.typ),
+            equals_any!(
+                expected,
+                ValueType::Any,
+                TokenType::DataPtr(ValueType::Any),
+                frame.get_type()
+            ),
             self.format_type_diff(expected, frame, loc)
         );
         Ok(())
@@ -405,7 +411,7 @@ impl Program {
             "{}Expected type `{}`, but found `{}`\n{}",
             loc,
             self.type_name(expected),
-            self.type_name(frame.typ),
+            self.type_name(frame.get_type()),
             self.format_frame(frame)
         )
     }
@@ -420,9 +426,9 @@ impl Program {
                 "[INFO] {}Actual types:   {}"
             ),
             loc,
-            self.format_stack(contract, |tok| *tok),
+            self.format_stack(contract, |&tok| tok),
             loc,
-            self.format_stack(stack, |frame| frame.typ)
+            self.format_stack(stack, |frame| frame.get_type())
         );
 
         if verbose & !stack.is_empty() {
@@ -447,7 +453,7 @@ impl Program {
     }
 
     fn format_frame(&self, t: &TypeFrame) -> String {
-        format!("[INFO] {}Type `{}` was declared here", t.loc, self.type_name(t.typ))
+        format!("[INFO] {}Type `{}` was declared here", t.loc(), self.type_name(t.get_type()))
     }
 
     fn set_operand(&mut self, ip: usize, index: usize) {

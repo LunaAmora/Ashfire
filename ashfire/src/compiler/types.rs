@@ -1,8 +1,9 @@
 use std::{
-    fmt::{Display, Formatter, Result},
+    fmt::{self, Display, Formatter},
     ops::Deref,
 };
 
+use anyhow::Result;
 use firelib::fold_bool;
 use num::FromPrimitive;
 
@@ -13,7 +14,7 @@ pub struct Proc {
     pub bindings: Vec<String>,
     pub local_vars: Vec<TypedWord>,
     pub local_mem_names: Vec<Word>,
-    pub mem_size: i32,
+    mem_size: i32,
 }
 
 impl Proc {
@@ -29,12 +30,42 @@ impl Proc {
         self.mem_size += size;
         self.local_mem_names.push(Word::new(word, self.mem_size));
     }
+
+    pub fn get_label(&self) -> &str {
+        &self.name
+    }
+
+    pub fn total_size(&self) -> i32 {
+        self.mem_size + (self.local_vars.len() as i32 * 4)
+    }
+
+    pub fn var_mem_offset(&self, index: i32) -> i32 {
+        self.mem_size + (index + 1) * 4
+    }
 }
 
 #[derive(Default)]
 pub struct Contract {
-    pub ins: Vec<TokenType>,
-    pub outs: Vec<TokenType>,
+    ins: Vec<TokenType>,
+    outs: Vec<TokenType>,
+}
+
+impl Contract {
+    pub fn new(ins: Vec<TokenType>, outs: Vec<TokenType>) -> Self {
+        Self { ins, outs }
+    }
+
+    pub fn ins(&self) -> &[TokenType] {
+        &self.ins
+    }
+
+    pub fn outs(&self) -> &[TokenType] {
+        &self.outs
+    }
+
+    pub fn size(&self) -> (usize, usize) {
+        (self.ins.len(), self.outs.len())
+    }
 }
 
 impl From<&Contract> for (usize, usize) {
@@ -45,37 +76,37 @@ impl From<&Contract> for (usize, usize) {
 
 #[derive(Clone)]
 pub struct Op {
-    pub typ: OpType,
+    pub op_type: OpType,
     pub operand: i32,
     pub loc: Loc,
 }
 
 impl Op {
-    pub fn new(typ: OpType, operand: i32, loc: &Loc) -> Self {
-        Self { typ, operand, loc: loc.clone() }
+    pub fn new(op_type: OpType, operand: i32, loc: &Loc) -> Self {
+        Self { op_type, operand, loc: loc.clone() }
     }
 }
 
 impl Display for Op {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self.typ {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.op_type {
             OpType::Intrinsic => {
                 write!(f, "Intrinsic {:?}", IntrinsicType::from(self.operand))
             }
-            _ => write!(f, "{:?} [{}]", self.typ, self.operand),
+            _ => write!(f, "{:?} [{}]", self.op_type, self.operand),
         }
     }
 }
 
 impl From<(OpType, i32, Loc)> for Op {
     fn from(tuple: (OpType, i32, Loc)) -> Self {
-        Self { typ: tuple.0, operand: tuple.1, loc: tuple.2 }
+        Self { op_type: tuple.0, operand: tuple.1, loc: tuple.2 }
     }
 }
 
 impl From<(OpType, Loc)> for Op {
     fn from(tuple: (OpType, Loc)) -> Self {
-        Self { typ: tuple.0, operand: 0, loc: tuple.1 }
+        Self { op_type: tuple.0, operand: 0, loc: tuple.1 }
     }
 }
 
@@ -85,7 +116,7 @@ impl From<Op> for Vec<Op> {
     }
 }
 
-impl From<Op> for anyhow::Result<Option<Vec<Op>>> {
+impl From<Op> for Result<Option<Vec<Op>>> {
     fn from(op: Op) -> Self {
         Ok(Some(op.into()))
     }
@@ -105,7 +136,7 @@ impl Loc {
 }
 
 impl Display for Loc {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if self.file.is_empty() {
             Ok(())
         } else {
@@ -116,7 +147,7 @@ impl Display for Loc {
 
 #[derive(Clone)]
 pub struct IRToken {
-    pub typ: TokenType,
+    pub token_type: TokenType,
     pub operand: i32,
     pub loc: Loc,
 }
@@ -124,13 +155,19 @@ pub struct IRToken {
 impl From<(i32, Loc)> for IRToken {
     fn from(tuple: (i32, Loc)) -> Self {
         let (operand, loc) = tuple;
-        Self { typ: INT, operand, loc }
+        Self { token_type: INT, operand, loc }
+    }
+}
+
+impl From<(&TypedWord, Loc)> for IRToken {
+    fn from(tuple: (&TypedWord, Loc)) -> Self {
+        IRToken::new(tuple.0.token_type, tuple.0.value(), &tuple.1)
     }
 }
 
 impl IRToken {
-    pub fn new(typ: TokenType, operand: i32, loc: &Loc) -> Self {
-        Self { typ, operand, loc: loc.to_owned() }
+    pub fn new(token_type: TokenType, operand: i32, loc: &Loc) -> Self {
+        Self { token_type, operand, loc: loc.to_owned() }
     }
 
     pub fn get_keyword(&self) -> Option<KeywordType> {
@@ -144,20 +181,21 @@ impl IRToken {
 
 impl PartialEq<KeywordType> for &IRToken {
     fn eq(&self, other: &KeywordType) -> bool {
-        self.typ == TokenType::Keyword && other == &FromPrimitive::from_i32(self.operand).unwrap()
+        self.token_type == TokenType::Keyword &&
+            other == &FromPrimitive::from_i32(self.operand).unwrap()
     }
 }
 
 impl PartialEq<TokenType> for &IRToken {
     fn eq(&self, other: &TokenType) -> bool {
-        &self.typ == other
+        &self.token_type == other
     }
 }
 
 impl From<(&TypedWord, &Loc)> for IRToken {
     fn from(tuple: (&TypedWord, &Loc)) -> Self {
-        let (typ, operand, loc) = (tuple.0.typ, tuple.0.word.value, tuple.1);
-        Self { typ, operand, loc: loc.to_owned() }
+        let (typ, operand, loc) = (tuple.0.token_type, tuple.0.word.value, tuple.1);
+        Self { token_type: typ, operand, loc: loc.to_owned() }
     }
 }
 
@@ -185,31 +223,45 @@ impl From<(&str, ValueType)> for StructType {
 #[derive(Clone)]
 pub struct StructMember {
     pub name: String,
-    pub typ: TokenType,
+    pub token_type: TokenType,
     pub default_value: i32,
+}
+
+impl StructMember {
+    pub fn get_type(&self) -> TokenType {
+        self.token_type
+    }
 }
 
 impl From<(String, TokenType)> for StructMember {
     fn from(tuple: (String, TokenType)) -> Self {
-        Self { name: tuple.0, typ: tuple.1, default_value: 0 }
+        Self {
+            name: tuple.0,
+            token_type: tuple.1,
+            default_value: 0,
+        }
     }
 }
 
 impl From<ValueType> for StructMember {
-    fn from(typ: ValueType) -> Self {
-        (String::new(), TokenType::DataType(typ)).into()
+    fn from(value: ValueType) -> Self {
+        (String::new(), TokenType::DataType(value)).into()
     }
 }
 
 #[derive(Clone)]
 pub struct Word {
-    pub name: String,
-    pub value: i32,
+    name: String,
+    value: i32,
 }
 
 impl Word {
     pub fn new(name: &str, value: i32) -> Self {
         Self { name: name.to_string(), value }
+    }
+
+    pub fn value(&self) -> i32 {
+        self.value
     }
 }
 
@@ -223,7 +275,7 @@ impl Deref for Word {
 
 #[derive(Clone)]
 pub struct SizedWord {
-    pub word: Word,
+    word: Word,
     pub offset: i32,
 }
 
@@ -249,13 +301,17 @@ impl From<Word> for SizedWord {
 
 #[derive(Clone)]
 pub struct TypedWord {
-    pub word: Word,
-    pub typ: TokenType,
+    word: Word,
+    token_type: TokenType,
 }
 
 impl TypedWord {
     pub fn value(&self) -> i32 {
         self.word.value
+    }
+
+    pub fn get_type(&self) -> TokenType {
+        self.token_type
     }
 }
 
@@ -271,37 +327,54 @@ impl From<(String, i32, TokenType)> for TypedWord {
     fn from(tuple: (String, i32, TokenType)) -> Self {
         Self {
             word: Word { name: tuple.0, value: tuple.1 },
-            typ: tuple.2,
+            token_type: tuple.2,
         }
     }
 }
 
 #[derive(Clone)]
 pub struct TypeFrame {
-    pub typ: TokenType,
-    pub loc: Loc,
+    token_type: TokenType,
+    loc: Loc,
+}
+
+impl TypeFrame {
+    pub fn get_type(&self) -> TokenType {
+        self.token_type
+    }
+
+    pub fn loc(&self) -> &Loc {
+        &self.loc
+    }
 }
 
 impl From<&IRToken> for TypeFrame {
     fn from(tok: &IRToken) -> Self {
-        Self { typ: tok.typ, loc: tok.loc.to_owned() }
+        Self {
+            token_type: tok.token_type,
+            loc: tok.loc.to_owned(),
+        }
     }
 }
 
 impl From<(ValueType, &Loc)> for TypeFrame {
-    fn from(t: (ValueType, &Loc)) -> Self {
-        TypeFrame { typ: t.0.into(), loc: t.1.to_owned() }
+    fn from(tuple: (ValueType, &Loc)) -> Self {
+        TypeFrame {
+            token_type: tuple.0.into(),
+            loc: tuple.1.to_owned(),
+        }
     }
 }
 
 impl From<(TokenType, &Loc)> for TypeFrame {
-    fn from(t: (TokenType, &Loc)) -> Self {
-        TypeFrame { typ: t.0, loc: t.1.to_owned() }
+    fn from(tuple: (TokenType, &Loc)) -> Self {
+        TypeFrame { token_type: tuple.0, loc: tuple.1.to_owned() }
     }
 }
 
+#[allow(dead_code)]
 pub struct CaseOption {
-    pub typ: CaseType,
+    pub case_type: CaseType,
     pub values: Vec<i32>,
 }
 
@@ -330,13 +403,13 @@ impl PartialEq<ValueType> for TokenType {
 
 impl From<IRToken> for TokenType {
     fn from(tok: IRToken) -> Self {
-        tok.typ
+        tok.token_type
     }
 }
 
 impl From<TypeFrame> for TokenType {
     fn from(frame: TypeFrame) -> Self {
-        frame.typ
+        frame.token_type
     }
 }
 
@@ -529,6 +602,7 @@ pub enum KeywordType {
     Case,
 }
 
+#[allow(dead_code)]
 pub enum CaseType {
     None,
     Equal,
@@ -540,12 +614,6 @@ pub enum CaseType {
     GreaterE,
     BitAnd,
     Default,
-}
-
-#[derive(Clone, Copy)]
-pub enum VarWordType {
-    Store,
-    Pointer,
 }
 
 #[cfg(test)]
