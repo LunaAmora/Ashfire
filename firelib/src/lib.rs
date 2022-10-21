@@ -309,23 +309,19 @@ pub fn get_range_ref<T, const N: usize>(
     }
 }
 
-pub trait ShortCircuit<R, T>: crate::private::Sealed<Internal = R>
+pub trait ShortCircuit<T, R>: crate::private::Sealed<Internal = R>
 where
     T: FromResidual<ControlFlow<T, Infallible>>,
 {
-    fn or_return<F>(self, f: F) -> ControlFlow<T, R>
-    where
-        F: FnOnce() -> T;
+    fn or_return(self, f: impl FnOnce() -> T) -> ControlFlow<T, R>;
 }
 
-impl<A: private::Sealed<Internal = R>, R, T> ShortCircuit<R, T> for A
+impl<A, T, R> ShortCircuit<T, R> for A
 where
+    A: private::Sealed<Internal = R>,
     T: FromResidual<ControlFlow<T, Infallible>>,
 {
-    fn or_return<F>(self, f: F) -> ControlFlow<T, R>
-    where
-        F: FnOnce() -> T,
-    {
+    fn or_return(self, f: impl FnOnce() -> T) -> ControlFlow<T, R> {
         match self.value() {
             Some(v) => ControlFlow::Continue(v),
             None => ControlFlow::Break(f()),
