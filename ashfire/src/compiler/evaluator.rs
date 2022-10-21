@@ -203,7 +203,7 @@ impl Evaluator<IRToken> for CompEvalStack {
                 let data = prog.get_string(tok.operand);
 
                 self.push(IRToken::new(INT, data.size(), &tok.loc));
-                self.push(IRToken::new(PTR, data.offset, &tok.loc));
+                self.push(IRToken::new(PTR, data.offset(), &tok.loc));
             }
 
             TokenType::DataType(value) => match value {

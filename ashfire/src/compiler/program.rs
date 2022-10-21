@@ -36,8 +36,8 @@ impl Program {
 
     pub fn register_string(&mut self, operand: i32) -> i32 {
         if let Some(data) = self.data.get_mut(operand as usize) {
-            if data.offset == -1 {
-                data.offset = self.data_size;
+            if data.offset() < 0 {
+                data.set_offset(self.data_size);
                 self.data_size += data.size();
             }
         }
@@ -92,8 +92,8 @@ impl Program {
     pub fn get_sorted_data(&self) -> Vec<&SizedWord> {
         self.data
             .iter()
-            .filter(|d| d.offset >= 0)
-            .sorted_by_key(|d| d.offset)
+            .filter(|d| d.offset() >= 0)
+            .sorted_by_key(|d| d.offset())
             .collect()
     }
 
@@ -103,14 +103,7 @@ impl Program {
             ValueType::Bool => "Boolean",
             ValueType::Ptr => "Pointer",
             ValueType::Any => "Any",
-            ValueType::Type(n) => {
-                return self
-                    .structs_types
-                    .get(n as usize)
-                    .unwrap()
-                    .name()
-                    .to_owned()
-            }
+            ValueType::Type(n) => self.structs_types.get(n).unwrap().name(),
         }
         .to_owned()
     }

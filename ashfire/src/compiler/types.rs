@@ -325,7 +325,7 @@ impl Deref for Word {
 #[derive(Clone)]
 pub struct SizedWord {
     word: Word,
-    pub offset: i32,
+    offset: i32,
 }
 
 impl SizedWord {
@@ -335,6 +335,14 @@ impl SizedWord {
 
     pub fn size(&self) -> i32 {
         self.word.value
+    }
+
+    pub fn offset(&self) -> i32 {
+        self.offset
+    }
+
+    pub fn set_offset(&mut self, offset: i32) {
+        self.offset = offset
     }
 }
 

@@ -184,7 +184,7 @@ impl Program {
 
             OpType::PushStr => {
                 let data = self.get_string(op.operand);
-                vec![Const(data.size()), Const(data.offset)]
+                vec![Const(data.size()), Const(data.offset())]
             }
 
             OpType::PushLocalMem => {
