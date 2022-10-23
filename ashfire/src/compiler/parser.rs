@@ -725,17 +725,17 @@ impl Parser {
                         let ref_members = stk_typ.members();
 
                         if ref_members.len() == 1 {
-                            let typ = ref_members.first().unwrap().get_type();
+                            let typ = ref_members.first().unwrap();
                             members.push((found_word, typ).into());
                         } else {
                             for member in ref_members {
                                 let member_name = format!("{found_word}.{}", member.name());
-                                members.push((member_name, member.get_type()).into());
+                                members.push((member_name, member).into());
                             }
                         }
                         continue;
                     } else if let Some(typ_ptr) = prog.get_data_pointer(found_type) {
-                        members.push((found_word, typ_ptr).into());
+                        members.push((found_word, &typ_ptr).into());
                         continue;
                     }
                 }

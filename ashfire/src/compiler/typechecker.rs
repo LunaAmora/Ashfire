@@ -233,7 +233,6 @@ impl TypeChecker {
 
                 let ins = self.data_stack.min_count.abs();
                 let out = self.data_stack.stack_count + ins;
-                info!("{op} {ins} {out}");
 
                 program
                     .block_contracts

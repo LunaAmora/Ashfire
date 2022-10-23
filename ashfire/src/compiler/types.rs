@@ -227,10 +227,10 @@ impl PartialEq<TokenType> for &IRToken {
     }
 }
 
-impl From<(&TypedWord, &Loc)> for IRToken {
-    fn from(tuple: (&TypedWord, &Loc)) -> Self {
-        let (typ, operand, loc) = (tuple.0.token_type, tuple.0.word.value, tuple.1);
-        Self { token_type: typ, operand, loc: loc.to_owned() }
+impl<T: Typed + Operand> From<(&T, &Loc)> for IRToken {
+    fn from(tuple: (&T, &Loc)) -> Self {
+        let (token_type, operand) = (tuple.0.get_type(), tuple.0.as_operand());
+        Self { token_type, operand, loc: tuple.1.to_owned() }
     }
 }
 
@@ -258,7 +258,7 @@ impl From<(&str, ValueType)> for StructType {
     fn from(tuple: (&str, ValueType)) -> Self {
         Self {
             name: tuple.0.to_string(),
-            members: vec![(String::new(), tuple.1).into()],
+            members: vec![(String::new(), &tuple.1).into()],
         }
     }
 }
@@ -292,8 +292,8 @@ impl Operand for StructMember {
     }
 }
 
-impl<T: Typed> From<(String, T)> for StructMember {
-    fn from(tuple: (String, T)) -> Self {
+impl<T: Typed> From<(String, &T)> for StructMember {
+    fn from(tuple: (String, &T)) -> Self {
         Self::new(tuple.0, tuple.1.get_type(), 0)
     }
 }
