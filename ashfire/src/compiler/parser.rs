@@ -3,7 +3,7 @@ use std::{collections::VecDeque, ops::Deref, path::PathBuf};
 use anyhow::{Context, Result};
 use ashlib::*;
 use either::Either;
-use firelib::*;
+use firelib::{utils::*, *};
 
 use super::{
     evaluator::{CompEvalStack, Evaluator},
