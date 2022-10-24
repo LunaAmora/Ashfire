@@ -1,6 +1,6 @@
 use anyhow::{bail, ensure, Context, Result};
 use ashlib::{EvalStack, Stack};
-use firelib::equals_any;
+use firelib::{equals_any, lexer::Loc};
 use itertools::Itertools;
 
 use super::{evaluator::*, program::*, types::*};

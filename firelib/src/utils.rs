@@ -59,3 +59,10 @@ pub fn get_range_ref<T, const N: usize>(
         )
     }
 }
+
+pub fn strip_trailing_newline(input: &str) -> &str {
+    input
+        .strip_suffix("\r\n")
+        .or_else(|| input.strip_suffix('\n'))
+        .unwrap_or(input)
+}

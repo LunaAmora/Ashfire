@@ -1,7 +1,7 @@
 use anyhow::{ensure, Result};
 use ashlib::{from_i32, DoubleResult, EvalStack, Stack};
 use either::Either;
-use firelib::fold_bool;
+use firelib::{fold_bool, lexer::Loc};
 
 use super::{program::Program, types::*};
 

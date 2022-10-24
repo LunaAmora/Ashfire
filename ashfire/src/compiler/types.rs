@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::Result;
-use firelib::fold_bool;
+use firelib::{fold_bool, lexer::Loc};
 use num::FromPrimitive;
 
 pub trait Typed {
@@ -13,6 +13,12 @@ pub trait Typed {
 
 pub trait Location {
     fn loc(&self) -> &Loc;
+}
+
+impl Location for Loc {
+    fn loc(&self) -> &Loc {
+        self
+    }
 }
 
 pub trait Operand {
@@ -137,35 +143,6 @@ impl From<Op> for Vec<Op> {
 impl From<Op> for Result<Option<Vec<Op>>> {
     fn from(op: Op) -> Self {
         Ok(Some(op.into()))
-    }
-}
-
-#[derive(Clone, Default)]
-pub struct Loc {
-    pub file: String,
-    pub line: i32,
-    pub col: i32,
-}
-
-impl Loc {
-    pub fn new(file: String, line: i32, col: i32) -> Self {
-        Self { file, line, col }
-    }
-}
-
-impl Location for Loc {
-    fn loc(&self) -> &Loc {
-        self
-    }
-}
-
-impl Display for Loc {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if self.file.is_empty() {
-            Ok(())
-        } else {
-            write!(f, "{}:{}:{}: ", self.file, self.line, self.col)
-        }
     }
 }
 

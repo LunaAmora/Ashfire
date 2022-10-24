@@ -3,11 +3,10 @@ use std::{collections::VecDeque, ops::Deref, path::PathBuf};
 use anyhow::{Context, Result};
 use ashlib::*;
 use either::Either;
-use firelib::{utils::*, *};
+use firelib::{lexer::Loc, utils::*, *};
 
 use super::{
     evaluator::{CompEvalStack, Evaluator},
-    lexer::Lexer,
     program::*,
     types::*,
 };
@@ -844,20 +843,16 @@ impl Parser {
     }
 
     pub fn lex_file(&mut self, path: &PathBuf, prog: &mut Program) -> Result<&mut Self> {
-        let mut lex = Lexer::builder()
-            .with_path(path)
-            .with_separators(vec![':', '='])
-            .with_comments("//")
-            .build()?;
+        let lex = &mut Program::new_lexer(path)?;
 
-        while let Some(token) = lex.lex_next_token(prog).value? {
+        while let Some(token) = prog.lex_next_token(lex).value? {
             if &token != KeywordType::Include {
                 self.ir_tokens.push_back(token);
                 continue;
             }
 
             let tok = expect_token_by(
-                lex.lex_next_token(prog).value?,
+                prog.lex_next_token(lex).value?,
                 |token| token == TokenType::Str,
                 "include file name",
                 None,

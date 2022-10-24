@@ -8,6 +8,7 @@ use std::{
 pub use anyhow;
 pub use firelib_macro::{alternative, FlowControl};
 
+pub mod lexer;
 pub mod utils;
 
 /// A trait for giving a type [`choice`] macro support.
