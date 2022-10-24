@@ -1,19 +1,66 @@
 use std::{
     fs::File,
     io::{BufRead, BufReader},
-    ops::Not,
     path::PathBuf,
 };
 
 use anyhow::{Context, Result};
 use ashlib::OptionErr;
-use firelib::{bail, choice, ensure, ShortCircuit};
+use firelib::{bail, choice, ShortCircuit};
 
 use super::{program::Program, types::*};
+
+#[derive(Default)]
+pub struct LexerBuilder {
+    file: Option<PathBuf>,
+    separators: Vec<char>,
+    comments: Option<String>,
+}
+
+impl LexerBuilder {
+    pub fn new() -> Self {
+        Self { ..Default::default() }
+    }
+
+    pub fn with_path(mut self, file: &PathBuf) -> Self {
+        self.file = Some(file.to_owned());
+        self
+    }
+
+    pub fn with_separators(mut self, sep: Vec<char>) -> Self {
+        self.separators.extend(sep);
+        self
+    }
+
+    pub fn with_comments(mut self, comment: &str) -> Self {
+        self.comments = Some(comment.to_owned());
+        self
+    }
+
+    pub fn build(self) -> Result<Lexer> {
+        let filepath = self
+            .file
+            .with_context(|| "Missing file path to build the lexer")?;
+
+        let file = File::open(&filepath)
+            .with_context(|| format!("Could not read file `{:?}`", filepath))?;
+
+        let reader = BufReader::new(file);
+
+        Ok(Lexer::new(reader, filepath, self.separators, self.comments))
+    }
+}
+
+enum Predicate {
+    Whitespace,
+    Separators,
+}
 
 pub struct Lexer {
     buffer: Vec<char>,
     reader: BufReader<File>,
+    separators: Vec<char>,
+    comments: Option<String>,
     file: PathBuf,
     lex_pos: usize,
     col_num: usize,
@@ -21,15 +68,23 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    pub fn new(reader: BufReader<File>, file: &PathBuf) -> Self {
+    pub fn new(
+        reader: BufReader<File>, file: PathBuf, separators: Vec<char>, comments: Option<String>,
+    ) -> Self {
         Self {
-            buffer: Vec::new(),
             reader,
-            file: file.to_owned(),
+            file,
+            separators,
+            comments,
+            buffer: Vec::new(),
             lex_pos: 0,
             col_num: 0,
             line_num: 0,
         }
+    }
+
+    pub fn builder() -> LexerBuilder {
+        LexerBuilder::new()
     }
 
     fn read_line(&mut self) -> bool {
@@ -64,30 +119,48 @@ impl Lexer {
     }
 
     fn trim_left(&mut self) -> bool {
-        !self.buffer_done_or_empty() && self.advance_and_check_comments()
+        !self.buffer_done_or_empty() && self.check_for_comments()
     }
 
-    fn advance_and_check_comments(&mut self) -> bool {
-        self.advance_by_predicate(|c| c != ' ');
+    fn check_for_comments(&mut self) -> bool {
+        self.advance_by_predicate(Predicate::Whitespace);
         self.col_num = self.lex_pos;
-        self.read_from_pos().starts_with("//").not()
+        self.comments
+            .as_ref()
+            .map_or(false, |pattern| !self.read_from_pos().starts_with(pattern))
     }
 
     fn buffer_done_or_empty(&self) -> bool {
         self.lex_pos + 1 > self.buffer.len() || self.read_from_pos().trim().is_empty()
     }
 
-    fn advance_by_predicate(&mut self, func: impl Fn(char) -> bool) {
-        while self.buffer.len() > self.lex_pos && !func(self.buffer[self.lex_pos]) {
+    fn advance_by_predicate(&mut self, pred: Predicate) {
+        let &start = self.buffer.get(self.col_num).unwrap();
+
+        while let Some(&buf) = self.buffer.get(self.lex_pos) {
+            if match pred {
+                Predicate::Separators if self.col_num == self.lex_pos => false,
+                Predicate::Separators if matches!(start, '\'' | '\"') => {
+                    if matches!(buf, '\'' | '\"') {
+                        self.lex_pos += 1;
+                        true
+                    } else {
+                        false
+                    }
+                }
+                Predicate::Separators => buf == ' ' || self.separators.contains(&buf),
+                Predicate::Whitespace => buf != ' ',
+            } {
+                break;
+            }
+
             self.lex_pos += 1;
         }
     }
 
-    fn read_by_predicate(&mut self, func: impl Fn(char) -> bool) -> String {
-        self.advance_by_predicate(func);
-        if self.col_num == self.lex_pos {
-            self.lex_pos += 1
-        }
+    fn read_by_predicate(&mut self, pred: Predicate) -> String {
+        self.advance_by_predicate(pred);
+
         self.buffer
             .iter()
             .skip(self.col_num)
@@ -101,7 +174,7 @@ impl Lexer {
     }
 
     fn read_token(&mut self) -> String {
-        self.read_by_predicate(|c| matches!(c, ' ' | ':'))
+        self.read_by_predicate(Predicate::Separators)
     }
 
     fn current_loc(&self) -> Loc {
@@ -112,45 +185,37 @@ impl Lexer {
         )
     }
 
-    fn try_parse_string(&mut self, tok: &Token, program: &mut Program) -> OptionErr<IRToken> {
-        let word = tok.name.strip_prefix('\"').or_return(OptionErr::default)?;
-
-        let name = word
-            .strip_suffix('\"')
-            .map_or_else(|| self.read_string_literal(&tok.loc), |word| Ok(word.to_string()))?;
-
-        OptionErr::new(program.define_string(name, tok))
-    }
-
-    fn read_string_literal(&mut self, loc: &Loc) -> Result<String> {
-        self.advance_by_predicate(|c| c == '\"');
-        Ok(self
-            .read_by_predicate(|c| c == ' ')
+    fn parse_as_string<F>(&mut self, tok: &Token, mut define_string: F) -> OptionErr<IRToken>
+    where
+        F: FnMut(&str, &Token) -> IRToken,
+    {
+        let name = tok
+            .name
             .strip_prefix('\"')
-            .unwrap()
+            .or_return(OptionErr::default)?
             .strip_suffix('\"')
-            .with_context(|| format!("{loc}Missing closing `\"` in string literal"))?
-            .to_string())
+            .with_context(|| format!("{}Missing closing `\"` in string literal", tok.loc))?;
+
+        OptionErr::new(define_string(name, tok))
     }
 
     pub fn lex_next_token(&mut self, program: &mut Program) -> OptionErr<IRToken> {
-        match self.next_token() {
-            Some(tok) => choice!(
-                OptionErr,
-                self.try_parse_string(&tok, program),
-                tok.parse_as_char(),
-                tok.parse_as_keyword(),
-                tok.parse_as_number(),
-                OptionErr::new(program.define_word(tok))
-            ),
-            None => OptionErr::default(),
-        }
+        let tok = self.next_token().or_return(OptionErr::default)?;
+
+        choice!(
+            OptionErr,
+            self.parse_as_string(&tok, |name, tok| program.define_string(name, tok)),
+            tok.parse_as_char(),
+            tok.parse_as_keyword(),
+            tok.parse_as_number(),
+            tok.define_as_word(|tok| program.define_word(tok)),
+        )
     }
 }
 
 impl Program {
-    fn define_string(&mut self, name: String, tok: &Token) -> IRToken {
-        let index = self.push_data(&name, name.len() - escaped_len(&name)) as i32;
+    fn define_string(&mut self, name: &str, tok: &Token) -> IRToken {
+        let index = self.push_data(name, name.len() - escaped_len(&name)) as i32;
         IRToken::new(TokenType::Str, index, &tok.loc)
     }
 
@@ -166,7 +231,7 @@ impl Program {
 
 fn escaped_len(name: &str) -> usize {
     name.chars()
-        .filter(|c| c.eq(&'\\'))
+        .filter(|&c| c == '\\')
         .collect::<String>()
         .len()
 }
@@ -196,16 +261,14 @@ impl Token {
     }
 
     fn parse_as_char(&self) -> OptionErr<IRToken> {
-        match self.name.strip_prefix('\'') {
-            Some(word) => match word.strip_suffix('\'') {
-                Some(word) => parse_char(word, &self.loc),
-                None => bail!("{}Missing closing `\'` in char literal", self.loc),
-            }
-            .value?
-            .map(|operand| IRToken::new(INT, operand, &self.loc)),
-            None => None,
-        }
-        .into()
+        self.name
+            .strip_prefix('\'')
+            .or_return(OptionErr::default)?
+            .strip_suffix('\'')
+            .with_context(|| format!("{}Missing closing `\'` in char literal", self.loc))
+            .and_then(|word| parse_char(word, &self.loc).value)?
+            .map(|operand| IRToken::new(INT, operand, &self.loc))
+            .into()
     }
 
     fn parse_as_keyword(&self) -> Option<IRToken> {
@@ -234,31 +297,38 @@ impl Token {
         } as i32;
         Some(IRToken::new(TokenType::Keyword, operand, &self.loc))
     }
+
+    fn define_as_word<F>(self, mut define_word: F) -> OptionErr<IRToken>
+    where
+        F: FnMut(Token) -> IRToken,
+    {
+        OptionErr::new(define_word(self))
+    }
 }
 
 fn parse_char(word: &str, loc: &Loc) -> OptionErr<i32> {
     match word.strip_prefix('\\') {
         Some(escaped) => parse_scaped(escaped, loc),
-        None => {
-            ensure!(
-                word.len() == 1,
-                "{loc}Char literals cannot contain more than one char: `{word}"
-            );
-            OptionErr::new(word.chars().next().unwrap() as i32)
-        }
+        None => match word.len() {
+            0 => bail!("{loc}Char literals have to contain at leat on char"),
+            2.. => bail!("{loc}Char literals cannot contain more than one char: `{word}`"),
+            _ => OptionErr::new(word.chars().next().unwrap() as i32),
+        },
     }
 }
 
 fn parse_scaped(escaped: &str, loc: &Loc) -> OptionErr<i32> {
-    match escaped {
-        "t" => Some('\t' as i32),
-        "n" => Some('\n' as i32),
-        "r" => Some('\r' as i32),
-        "\'" => Some('\'' as i32),
-        "\\" => Some('\\' as i32),
-        _ if escaped.len() == 2 => try_parse_hex(escaped),
+    Some(match escaped {
+        "t" => '\t' as i32,
+        "n" => '\n' as i32,
+        "r" => '\r' as i32,
+        "\'" => '\'' as i32,
+        "\\" => '\\' as i32,
+        _ if escaped.len() == 2 => try_parse_hex(escaped).with_context(|| {
+            format!("{loc}Invalid characters found on char literal: `\\{escaped}`")
+        })?,
         _ => bail!("{loc}Invalid escaped character sequence found on char literal: `{escaped}`"),
-    }
+    })
     .into()
 }
 

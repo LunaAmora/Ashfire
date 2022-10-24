@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fs::File, io::BufReader, ops::Deref, path::PathBuf};
+use std::{collections::VecDeque, ops::Deref, path::PathBuf};
 
 use anyhow::{Context, Result};
 use ashlib::*;
@@ -115,7 +115,7 @@ impl Parser {
     fn define_op(&mut self, tok: IRToken, prog: &mut Program) -> OptionErr<Vec<Op>> {
         ensure!(
             matches!(tok.token_type, TokenType::Keyword | TokenType::Word) || self.inside_proc(),
-            "{}Token type cannot be used outside of a procedure: `{:?}",
+            "{}Token type cannot be used outside of a procedure: `{:?}`",
             tok.loc,
             tok.token_type
         );
@@ -844,10 +844,11 @@ impl Parser {
     }
 
     pub fn lex_file(&mut self, path: &PathBuf, prog: &mut Program) -> Result<&mut Self> {
-        let reader = BufReader::new(
-            File::open(path).with_context(|| format!("could not read file `{:?}`", &path))?,
-        );
-        let mut lex = Lexer::new(reader, path);
+        let mut lex = Lexer::builder()
+            .with_path(path)
+            .with_separators(vec![':', '='])
+            .with_comments("//")
+            .build()?;
 
         while let Some(token) = lex.lex_next_token(prog).value? {
             if &token != KeywordType::Include {

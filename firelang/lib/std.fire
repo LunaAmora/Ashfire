@@ -27,7 +27,7 @@ println : str :
 end
 
 trim-left : *str :
-  dup 
+  dup
   .*len  dec32
   .*data inc32
 end
