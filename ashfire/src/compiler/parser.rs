@@ -53,19 +53,33 @@ impl LocWord {
     }
 
     /// Searches for struct fields that starts with the given [`word`][LocWord]
-    /// on the `consts` [Vec]. Parsing each one as an [`IRToken`] to an [`Op`].
-    fn get_const_struct(&self, prog: &mut Program) -> Option<Vec<Op>> {
+    /// on the `consts` [Vec]. Parsing each one to an [`Op`].
+    fn get_const_struct(&self, prog: &Program) -> Option<Vec<Op>> {
         prog.consts
             .iter()
             .filter(|cnst| cnst.starts_with(&format!("{}.", self.name)))
-            .map(|tword| match tword.get_type() {
-                TokenType::DataType(typ) => {
-                    Op::new(OpType::PushData(typ), tword.as_operand(), &self.loc)
-                }
-                _ => unreachable!(),
-            })
+            .map(|tword| Op::from((tword, &self.loc)))
             .collect::<Vec<Op>>()
             .empty_or_some()
+    }
+
+    /// Searches for a `const` that matches the given[`word`][LocWord]
+    /// and parses it to an [`Op`].
+    fn get_const_name(&self, prog: &Program) -> Option<Vec<Op>> {
+        prog.get_const_name(self)
+            .map(|tword| vec![Op::from((tword, &self.loc))])
+    }
+
+    fn get_intrinsic(&self, prog: &Program) -> Option<Vec<Op>> {
+        prog.get_intrinsic_type(self)
+            .map(|i| vec![Op::new(OpType::Intrinsic, i.into(), &self.loc)])
+    }
+
+    fn get_proc_name(&self, prog: &Program) -> Option<Vec<Op>> {
+        prog.procs
+            .iter()
+            .position(|proc| self == proc.name.as_str())
+            .map(|index| vec![Op::new(OpType::Call, index as i32, &self.loc)])
     }
 }
 
@@ -154,15 +168,15 @@ impl Parser {
 
                 choice!(
                     OptionErr,
+                    word.get_intrinsic(prog),
+                    word.get_proc_name(prog),
+                    word.get_const_name(prog),
+                    word.get_global_mem(prog),
                     word.get_const_struct(prog),
                     word.get_offset(tok.operand),
                     self.get_binding(word, prog),
-                    prog.get_intrinsic(word),
-                    self.get_local_mem(word, prog),
-                    word.get_global_mem(prog),
-                    prog.get_proc_name(word),
-                    self.get_const_name(word, prog),
                     self.get_variable(word, prog),
+                    self.get_local_mem(word, prog),
                     self.define_context(word, prog);
                     bail!("{}Word was not declared on the program: `{}`", word.loc, word.name)
                 )
@@ -281,17 +295,9 @@ impl Parser {
             .map(|local| Op::new(OpType::PushLocalMem, local.value(), &word.loc).into())
     }
 
-    /// Searches for a `const` that matches the given[`word`][LocWord]
-    /// and parses it as an [`IRToken`] to an [`Op`].
-    fn get_const_name(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        prog.get_const_name(word)
-            .map(|tword| (tword, &word.loc).into())
-            .map_or_else(OptionErr::default, |tok| self.define_op(tok, prog))
-    }
-
     /// Searches for a `variable` that matches the given [`word`][LocWord]
     /// and parses `store` and `pointer` information.
-    fn get_variable(&mut self, loc_word: &LocWord, prog: &Program) -> OptionErr<Vec<Op>> {
+    fn get_variable(&self, loc_word: &LocWord, prog: &Program) -> OptionErr<Vec<Op>> {
         let (word, var_typ) = match loc_word.split_at(1) {
             ("!", rest) => (rest, Some(VarWordType::Store)),
             ("*", rest) => (rest, Some(VarWordType::Pointer)),
@@ -873,18 +879,6 @@ impl Parser {
 }
 
 impl Program {
-    fn get_intrinsic(&self, word: &LocWord) -> Option<Vec<Op>> {
-        self.get_intrinsic_type(word)
-            .map(|i| vec![Op::new(OpType::Intrinsic, i.into(), &word.loc)])
-    }
-
-    fn get_proc_name(&self, word: &LocWord) -> Option<Vec<Op>> {
-        self.procs
-            .iter()
-            .position(|proc| word == proc.name.as_str())
-            .map(|index| vec![Op::new(OpType::Call, index as i32, &word.loc)])
-    }
-
     fn get_struct_type(&self, tok: &IRToken) -> Option<&StructType> {
         fold_bool!(tok == TokenType::Word, self.get_type_name(self.get_word(tok.operand)))
     }

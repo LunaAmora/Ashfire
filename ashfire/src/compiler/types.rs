@@ -134,6 +134,16 @@ impl From<(OpType, Loc)> for Op {
     }
 }
 
+impl<T: Typed + Operand> From<(&T, &Loc)> for Op {
+    fn from(tuple: (&T, &Loc)) -> Self {
+        let TokenType::DataType(typ) = tuple.0.get_type() else {
+            unreachable!("Conversion supported only for DataTypes")
+        };
+
+        Op::new(OpType::PushData(typ), tuple.0.as_operand(), tuple.1)
+    }
+}
+
 impl From<Op> for Vec<Op> {
     fn from(op: Op) -> Self {
         vec![op]
