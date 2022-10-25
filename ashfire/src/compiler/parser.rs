@@ -51,10 +51,26 @@ impl LocWord {
         prog.get_mem(self)
             .map(|global| Op::new(OpType::PushGlobalMem, global.value(), &self.loc).into())
     }
+
+    /// Searches for struct fields that starts with the given [`word`][LocWord]
+    /// on the `consts` [Vec]. Parsing each one as an [`IRToken`] to an [`Op`].
+    fn get_const_struct(&self, prog: &mut Program) -> Option<Vec<Op>> {
+        prog.consts
+            .iter()
+            .filter(|cnst| cnst.starts_with(&format!("{}.", self.name)))
+            .map(|tword| match tword.get_type() {
+                TokenType::DataType(typ) => {
+                    Op::new(OpType::PushData(typ), tword.as_operand(), &self.loc)
+                }
+                _ => unreachable!(),
+            })
+            .collect::<Vec<Op>>()
+            .empty_or_some()
+    }
 }
 
 #[derive(Clone, Copy)]
-pub enum VarWordType {
+enum VarWordType {
     Store,
     Pointer,
 }
@@ -138,7 +154,7 @@ impl Parser {
 
                 choice!(
                     OptionErr,
-                    self.get_const_struct(word, prog),
+                    word.get_const_struct(prog),
                     word.get_offset(tok.operand),
                     self.get_binding(word, prog),
                     prog.get_intrinsic(word),
@@ -242,22 +258,6 @@ impl Parser {
         self.op_blocks.pop().with_context(|| {
             format!("{}There are no open blocks to close with `{:?}`", loc, closing_type)
         })
-    }
-
-    /// Searches for struct fields that starts with the given [`word`][LocWord]
-    /// on the `consts` [Vec]. Parsing each one as an [`IRToken`] to an [`Op`].
-    fn get_const_struct(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        let ops = flatten(
-            prog.consts
-                .iter()
-                .filter(|cnst| cnst.starts_with(&format!("{}.", word.name)))
-                .map(|tword| (tword, &word.loc).into())
-                .collect::<Vec<IRToken>>()
-                .into_iter()
-                .filter_map(|tok| self.define_op(tok, prog).value.transpose())
-                .collect::<Result<Vec<Vec<Op>>>>()?,
-        );
-        empty_or_some(ops).into()
     }
 
     /// Searches for a `binding` that matches the given [`word`][LocWord]

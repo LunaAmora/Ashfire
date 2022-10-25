@@ -8,18 +8,19 @@ pub fn get_dir(current: &Path) -> Option<&Path> {
     current.ancestors().nth(1)
 }
 
-/// Maps an empty vector to [`None`], and a non empty to [`Some<Vec<T>>`].
-pub fn empty_or_some<T>(vec: Vec<T>) -> Option<Vec<T>> {
-    if vec.is_empty() {
-        None
-    } else {
-        Some(vec)
-    }
+pub trait EmptySome: Sized {
+    fn empty_or_some(self) -> Option<Self>;
 }
 
-/// Consumes and flatten a nested [`Vec`].
-pub fn flatten<T>(vec: Vec<Vec<T>>) -> Vec<T> {
-    vec.into_iter().flatten().collect()
+impl<T> EmptySome for Vec<T> {
+    /// Maps an empty vector to [`None`], and a non empty to [`Some<Vec<T>>`].
+    fn empty_or_some(self) -> Option<Self> {
+        if self.is_empty() {
+            None
+        } else {
+            Some(self)
+        }
+    }
 }
 
 /// Push a value `T` to different [`Vec<T>`] based on the given condition.
