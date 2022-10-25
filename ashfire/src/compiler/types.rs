@@ -171,12 +171,6 @@ impl Location for IRToken {
     }
 }
 
-impl<T: Typed + Operand> From<(&T, Loc)> for IRToken {
-    fn from(tuple: (&T, Loc)) -> Self {
-        IRToken::new(tuple.0.get_type(), tuple.0.as_operand(), &tuple.1)
-    }
-}
-
 impl IRToken {
     pub fn new(token_type: TokenType, operand: i32, loc: &Loc) -> Self {
         Self { token_type, operand, loc: loc.to_owned() }
@@ -206,8 +200,7 @@ impl PartialEq<TokenType> for &IRToken {
 
 impl<T: Typed + Operand> From<(&T, &Loc)> for IRToken {
     fn from(tuple: (&T, &Loc)) -> Self {
-        let (token_type, operand) = (tuple.0.get_type(), tuple.0.as_operand());
-        Self { token_type, operand, loc: tuple.1.to_owned() }
+        IRToken::new(tuple.0.get_type(), tuple.0.as_operand(), &tuple.1.to_owned())
     }
 }
 

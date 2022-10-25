@@ -192,7 +192,7 @@ impl Evaluator<IRToken> for CompEvalStack {
                     },
 
                     None => match prog.get_const_name(word) {
-                        Some(constant) => self.push((constant, tok.loc).into()),
+                        Some(constant) => self.push((constant, &tok.loc).into()),
                         None => Err(Either::Left(tok))?,
                     },
                 }
