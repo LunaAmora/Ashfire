@@ -19,7 +19,7 @@ impl Program {
     }
 
     pub fn lex_next_token(&mut self, lexer: &mut Lexer) -> OptionErr<IRToken> {
-        let tok = lexer.next_token().or_return(OptionErr::default)?;
+        let tok = lexer.next().or_return(OptionErr::default)?;
 
         choice!(
             OptionErr,

@@ -57,6 +57,14 @@ pub struct Lexer {
     line_num: i32,
 }
 
+impl Iterator for Lexer {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_token()
+    }
+}
+
 impl Lexer {
     pub fn new(
         reader: BufReader<File>, file: PathBuf, separators: Vec<char>, comments: Option<String>,
@@ -77,7 +85,7 @@ impl Lexer {
         LexerBuilder::new(file.to_owned())
     }
 
-    pub fn next_token(&mut self) -> Option<Token> {
+    fn next_token(&mut self) -> Option<Token> {
         self.seek_next_token()
             .then(|| Token::new(self.read_token(), self.current_loc()))
     }
