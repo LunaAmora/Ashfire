@@ -166,16 +166,17 @@ impl Program {
             "@32" => IntrinsicType::Load32,
             "!32" => IntrinsicType::Store32,
             "fd_write" => IntrinsicType::FdWrite,
-            _ => IntrinsicType::Cast(self.get_cast_type(word.strip_prefix('#')?)?),
+            _ => match word.as_bytes() {
+                [b'#', b'*', rest @ ..] => IntrinsicType::Cast(-self.get_cast_type(rest)?),
+                [b'#', rest @ ..] => IntrinsicType::Cast(self.get_cast_type(rest)?),
+                _ => return None,
+            },
         })
     }
 
-    pub fn get_cast_type(&self, word: &str) -> Option<i32> {
-        let (word, type_or_pointer) = match word.strip_prefix('*') {
-            None => (word, 1),
-            Some(word) => (word, -1),
-        };
-        self.get_data_type(word).map(|u| type_or_pointer * u as i32)
+    fn get_cast_type(&self, rest: &[u8]) -> Option<i32> {
+        self.get_data_type(std::str::from_utf8(rest).ok()?)
+            .map(|u| u as i32)
     }
 
     pub fn get_data_type(&self, word: &str) -> Option<usize> {
