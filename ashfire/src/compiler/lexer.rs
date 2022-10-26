@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use ashlib::OptionErr;
 use firelib::{
     bail, choice,
-    lexer::{Lexer, Loc, Token},
+    lexer::{Lexer, Loc, Match, Token},
     ShortCircuit,
 };
 
@@ -14,6 +14,7 @@ impl Program {
     pub fn new_lexer(file: &PathBuf) -> Result<Lexer> {
         Lexer::builder(file)
             .with_separators(vec![':', '='])
+            .with_matches(vec![Match::Same('\''), Match::Same('\"'), Match::Pair('(', ')')])
             .with_comments("//")
             .build()
     }

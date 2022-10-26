@@ -1,5 +1,6 @@
 use core::fmt;
 use std::{
+    collections::HashMap,
     fmt::{Display, Formatter},
     fs::File,
     io::{BufRead, BufReader},
@@ -13,6 +14,7 @@ use crate::utils::strip_trailing_newline;
 #[derive(Default)]
 pub struct LexerBuilder {
     file: PathBuf,
+    matches: Vec<Match>,
     separators: Vec<char>,
     comments: Option<String>,
 }
@@ -22,26 +24,49 @@ impl LexerBuilder {
         Self { file, ..Default::default() }
     }
 
+    /// Separators are not included in other tokens, unless inside a [`Match`].
     pub fn with_separators(mut self, sep: Vec<char>) -> Self {
         self.separators.extend(sep);
         self
     }
 
+    /// Captures everything betwen a pair of chars or until the end of the line.
+    pub fn with_matches(mut self, matches: Vec<Match>) -> Self {
+        self.matches.extend(matches);
+        self
+    }
+
+    /// Makes the rest of the line be ignored by the lexer.
     pub fn with_comments(mut self, comment: &str) -> Self {
         self.comments = Some(comment.to_owned());
         self
     }
 
+    /// Tries to build an `Lexer` with the given file and parameters.
     pub fn build(self) -> Result<Lexer> {
         let file = File::open(&self.file)
             .with_context(|| format!("Could not read file `{:?}`", self.file))?;
 
+        let mut matches = HashMap::with_capacity(self.matches.len());
+        for value in &self.matches {
+            match value {
+                Match::Same(start) => matches.insert(*start, *start),
+                Match::Pair(start, end) => matches.insert(*start, *end),
+            };
+        }
+
         let reader = BufReader::new(file);
-        Ok(Lexer::new(reader, self.file, self.separators, self.comments))
+        Ok(Lexer::new(reader, self.file, self.separators, self.comments, matches))
     }
 }
 
+pub enum Match {
+    Same(char),
+    Pair(char, char),
+}
+
 enum Predicate {
+    Char(char),
     Whitespace,
     Separators,
 }
@@ -51,6 +76,7 @@ pub struct Lexer {
     reader: BufReader<File>,
     separators: Vec<char>,
     comments: Option<String>,
+    matches: HashMap<char, char>,
     file: PathBuf,
     lex_pos: usize,
     col_num: usize,
@@ -68,12 +94,14 @@ impl Iterator for Lexer {
 impl Lexer {
     pub fn new(
         reader: BufReader<File>, file: PathBuf, separators: Vec<char>, comments: Option<String>,
+        matches: HashMap<char, char>,
     ) -> Self {
         Self {
             reader,
             file,
             separators,
             comments,
+            matches,
             buffer: Vec::new(),
             lex_pos: 0,
             col_num: 0,
@@ -81,6 +109,7 @@ impl Lexer {
         }
     }
 
+    /// Returns an builder object for working with the `Lexer`.
     pub fn builder(file: &PathBuf) -> LexerBuilder {
         LexerBuilder::new(file.to_owned())
     }
@@ -160,27 +189,55 @@ impl Lexer {
     }
 
     fn advance_by_predicate(&mut self, pred: Predicate) {
-        let &start = self.buffer.get(self.col_num).unwrap();
-
         while let Some(&buf) = self.buffer.get(self.lex_pos) {
-            if match pred {
-                Predicate::Separators if self.col_num == self.lex_pos => false,
-                Predicate::Separators if matches!(start, '\'' | '\"') => {
-                    if matches!(buf, '\'' | '\"') {
-                        self.lex_pos += 1;
-                        true
+            match pred {
+                Predicate::Char(char) if buf == char => return,
+                Predicate::Whitespace if buf != ' ' => return,
+                Predicate::Separators if buf == ' ' => return,
+
+                Predicate::Separators if self.is_comment(buf) => return,
+
+                Predicate::Separators if self.separators.contains(&buf) => {
+                    if self.lex_pos > self.col_num {
+                        return;
                     } else {
-                        false
+                        self.lex_pos += 1
                     }
                 }
-                Predicate::Separators => buf == ' ' || self.separators.contains(&buf),
-                Predicate::Whitespace => buf != ' ',
-            } {
-                break;
-            }
 
-            self.lex_pos += 1;
+                Predicate::Separators => match self.matches.get(&buf) {
+                    Some(end) => {
+                        self.lex_pos += 1;
+                        self.advance_by_predicate(Predicate::Char(*end));
+                        self.lex_pos += 1;
+                        return;
+                    }
+                    _ => self.lex_pos += 1,
+                },
+
+                _ => self.lex_pos += 1,
+            };
         }
+    }
+
+    fn is_comment(&self, buf: char) -> bool {
+        match &self.comments {
+            Some(comment) if comment.starts_with(buf) => self.check_match_next(comment),
+            _ => false,
+        }
+    }
+
+    fn check_match_next(&self, matcher: &str) -> bool {
+        for (index, c) in matcher.char_indices().skip(1) {
+            if !self
+                .buffer
+                .get(self.lex_pos + index)
+                .map_or(false, |&next| c == next)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 }
 
