@@ -95,7 +95,7 @@ macro_rules! choice {
 }
 
 /// Provides the [`success`][Success::success_value] method
-/// that returns a default-like success value.
+/// that returns a `default-like` success value.
 ///
 /// A trait for giving a type [`success`] macro and [`try_success`][TrySuccess::try_success] support.
 pub trait Success {
@@ -103,7 +103,7 @@ pub trait Success {
 }
 
 /// Provides the [`success_from`][SuccessFrom::success_from] method
-/// that pass a value to a `SuccessFrom` constructor.
+/// that pass a value to a `From-like` constructor.
 ///
 /// A trait for giving a type [`into_success`][TrySuccess::into_success] support.
 pub trait SuccessFrom {
@@ -256,6 +256,10 @@ pub trait ShortCircuit<T, R>: crate::private::Sealed<Internal = R>
 where
     T: FromResidual<ControlFlow<T, Infallible>>,
 {
+    /// Emulates [`ok_or`][Option::ok_or] for returning types that implements
+    /// [`FlowControl`] or [`FromResidual<ControlFlow<Self, !>`].
+    ///
+    /// Can be used on [`Result`], [`Option`] and [`bool`].
     fn or_return(self, f: impl FnOnce() -> T) -> ControlFlow<T, R>;
 }
 
@@ -298,7 +302,7 @@ pub(crate) mod private {
         type Internal = bool;
 
         fn value(self) -> Option<bool> {
-            self.then_some(self)
+            self.then_some(true)
         }
     }
 }
