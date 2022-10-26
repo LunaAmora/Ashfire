@@ -6,6 +6,7 @@ use std::{
 };
 
 pub use anyhow;
+#[cfg(feature = "derive")]
 pub use firelib_macro::{alternative, FlowControl};
 
 pub mod lexer;

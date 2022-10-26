@@ -9,4 +9,8 @@ license-file.workspace = true
 
 [dependencies]
 anyhow = "1.0"
-firelib_macro = {path = "../firelib_macro"}
+firelib_macro = {path = "../firelib_macro", optional = true}
+
+[features]
+default = ["derive"]
+derive = ["firelib_macro"]
