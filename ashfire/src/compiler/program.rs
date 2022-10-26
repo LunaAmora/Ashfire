@@ -11,24 +11,24 @@ pub struct Program {
     pub ops: Vec<Op>,
     pub procs: Vec<Proc>,
     pub words: Vec<String>,
-    pub consts: Vec<TypedWord>,
-    pub global_vars: Vec<TypedWord>,
-    pub structs_types: Vec<StructType>,
+    pub consts: Vec<ValueType>,
+    pub global_vars: Vec<ValueType>,
+    pub structs_types: Vec<StructDef>,
     pub block_contracts: HashMap<usize, (usize, usize)>,
     mem_size: i32,
-    memory: Vec<Word>,
+    memory: Vec<SizeWord>,
     data_size: i32,
-    data: Vec<SizedWord>,
+    data: Vec<OffsetWord>,
 }
 
 impl Program {
     pub fn new() -> Self {
         Self {
             structs_types: vec![
-                ("int", ValueType::Int).into(),
-                ("bool", ValueType::Bool).into(),
-                ("ptr", ValueType::Ptr).into(),
-                ("any", ValueType::Any).into(),
+                ("int", Value::Int).into(),
+                ("bool", Value::Bool).into(),
+                ("ptr", Value::Ptr).into(),
+                ("any", Value::Any).into(),
             ],
             ..Default::default()
         }
@@ -60,12 +60,12 @@ impl Program {
     }
 
     pub fn push_mem(&mut self, word: &str, size: i32) {
-        self.memory.push(Word::new(word, self.mem_size));
+        self.memory.push(SizeWord(word.to_string(), self.mem_size));
         self.mem_size += size;
     }
 
     pub fn push_data(&mut self, word: &str, size: usize) -> usize {
-        self.data.push(SizedWord::new(Word::new(word, size as i32)));
+        self.data.push(OffsetWord::new(word, size as i32));
         self.data.len() - 1
     }
 
@@ -93,11 +93,11 @@ impl Program {
         self.words.get(index as usize).unwrap()
     }
 
-    pub fn get_string(&self, index: i32) -> &SizedWord {
+    pub fn get_string(&self, index: i32) -> &OffsetWord {
         self.data.get(index as usize).unwrap()
     }
 
-    pub fn get_sorted_data(&self) -> Vec<&SizedWord> {
+    pub fn get_sorted_data(&self) -> Vec<&OffsetWord> {
         self.data
             .iter()
             .filter(|d| d.offset() >= 0)
@@ -105,13 +105,13 @@ impl Program {
             .collect()
     }
 
-    pub fn data_name(&self, value: ValueType) -> String {
+    pub fn data_name(&self, value: Value) -> String {
         match value {
-            ValueType::Int => "Integer",
-            ValueType::Bool => "Boolean",
-            ValueType::Ptr => "Pointer",
-            ValueType::Any => "Any",
-            ValueType::Type(n) => self.structs_types.get(n).unwrap().name(),
+            Value::Int => "Integer",
+            Value::Bool => "Boolean",
+            Value::Ptr => "Pointer",
+            Value::Any => "Any",
+            Value::Type(n) => self.structs_types.get(n).unwrap().name(),
         }
         .to_owned()
     }
@@ -127,11 +127,11 @@ impl Program {
         .to_owned()
     }
 
-    pub fn data_display(&self, value: ValueType, operand: i32) -> String {
+    pub fn data_display(&self, value: Value, operand: i32) -> String {
         match value {
-            ValueType::Bool => fold_bool!(operand != 0, "True", "False").to_owned(),
-            ValueType::Ptr => format!("*{}", operand),
-            ValueType::Any | ValueType::Int | ValueType::Type(_) => operand.to_string(),
+            Value::Bool => fold_bool!(operand != 0, "True", "False").to_owned(),
+            Value::Ptr => format!("*{}", operand),
+            Value::Any | Value::Int | Value::Type(_) => operand.to_string(),
         }
     }
 
@@ -187,11 +187,11 @@ impl Program {
     }
 
     /// Searches for a `const` that matches the given `&str`.
-    pub fn get_const_name(&self, word: &str) -> Option<&TypedWord> {
+    pub fn get_const_name(&self, word: &str) -> Option<&ValueType> {
         self.consts.iter().find(|cnst| word == cnst.as_str())
     }
 
-    pub fn get_memory(&self) -> &[Word] {
+    pub fn get_memory(&self) -> &[SizeWord] {
         &self.memory
     }
 }
