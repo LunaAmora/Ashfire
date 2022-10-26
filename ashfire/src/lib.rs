@@ -4,9 +4,12 @@ use std::{
     ops::{ControlFlow, Deref, FromResidual, Try},
 };
 
-use anyhow::{bail, Error, Result};
 use either::Either;
-use firelib::{alternative, FlowControl, Success, SuccessFrom};
+use firelib::{
+    alternative,
+    anyhow::{bail, Error, Result},
+    FlowControl, Success, SuccessFrom,
+};
 use num::FromPrimitive;
 
 #[derive(FlowControl)]

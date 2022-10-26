@@ -1,7 +1,6 @@
-use anyhow::{ensure, Result};
 use ashlib::{from_i32, DoubleResult, EvalStack, Stack};
 use either::Either;
-use firelib::{fold_bool, lexer::Loc};
+use firelib::{anyhow::Result, lexer::Loc};
 
 use super::{program::Program, types::*};
 
@@ -83,7 +82,7 @@ pub trait Expect<T: Clone, B: From<T> + Copy>: Stack<T> {
 
     fn expect_stack_size(&self, n: usize, loc: &Loc) -> Result<()> {
         let len = self.len();
-        ensure!(
+        any_ensure!(
             len >= n,
             concat!(
                 "Stack has less elements than expected\n",

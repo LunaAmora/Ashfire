@@ -3,8 +3,7 @@ use std::{
     ops::Deref,
 };
 
-use anyhow::Result;
-use firelib::{fold_bool, lexer::Loc};
+use firelib::{anyhow::Result, lexer::Loc};
 use num::FromPrimitive;
 
 pub trait Typed {

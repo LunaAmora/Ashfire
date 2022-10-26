@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use ashlib::from_i32;
-use firelib::fold_bool;
 use itertools::Itertools;
 
 use super::{parser::ParseContext, types::*};

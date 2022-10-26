@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, path::Path};
 
-use anyhow;
+use anyhow::{bail, Result};
 
 /// Gets the directory of the [`Path`],
 /// or [`None`] if is empty.
@@ -41,9 +41,7 @@ pub fn expect_index<T>(vec: &[T], pred: impl FnMut(&T) -> bool) -> usize {
         .expect("no item matched the given predicate")
 }
 
-pub fn get_range_ref<T, const N: usize>(
-    deque: &VecDeque<T>, index: usize,
-) -> anyhow::Result<[&T; N]> {
+pub fn get_range_ref<T, const N: usize>(deque: &VecDeque<T>, index: usize) -> Result<[&T; N]> {
     if deque.len() > (index + N + 1) {
         let range: Vec<&T> = deque.range(index..(index + N)).collect();
 
@@ -52,7 +50,7 @@ pub fn get_range_ref<T, const N: usize>(
             _ => unreachable!("Failed to collect into an correctly sized array"),
         }
     } else {
-        anyhow::bail!(
+        bail!(
             "Invalid range of elements to get from the deque: `{}`..`{}` of `{}`",
             index,
             index + N,

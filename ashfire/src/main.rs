@@ -1,16 +1,16 @@
 #![feature(const_trait_impl)]
 #[macro_use] extern crate num_derive;
 #[macro_use] extern crate log;
+#[macro_use] extern crate firelib;
 
 mod compiler;
 mod logger;
 
 use std::path::PathBuf;
 
-use anyhow::Result;
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
-use firelib::cmd_wait;
+use firelib::anyhow::Result;
 
 use crate::compiler::program::Program;
 

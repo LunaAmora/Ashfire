@@ -1,6 +1,8 @@
-use anyhow::{bail, ensure, Context, Result};
 use ashlib::{EvalStack, Stack};
-use firelib::{equals_any, lexer::Loc};
+use firelib::{
+    anyhow::{Context, Result},
+    lexer::Loc,
+};
 use itertools::Itertools;
 
 use super::{evaluator::*, program::*, types::*};
@@ -377,7 +379,7 @@ impl Program {
     pub fn expect_exact(
         &self, stack: &[TypeFrame], contract: &[TokenType], loc: &Loc,
     ) -> Result<()> {
-        ensure!(
+        any_ensure!(
             stack.len() == contract.len() && self.expect_arity(stack, contract, loc).is_ok(),
             self.format_stack_diff(stack, contract, true, loc)
         );
@@ -394,7 +396,7 @@ impl Program {
     }
 
     pub fn expect_type(&self, expected: TokenType, frame: &TypeFrame, loc: &Loc) -> Result<()> {
-        ensure!(
+        any_ensure!(
             equals_any!(expected, Value::Any, TokenType::DataPtr(Value::Any), frame.get_type()),
             self.format_type_diff(expected, frame, loc)
         );

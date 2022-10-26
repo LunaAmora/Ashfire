@@ -4,10 +4,14 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::{Context, Result};
-use ashlib::*;
+use ashlib::{from_i32, DoubleResult, OptionErr, Stack};
 use either::Either;
-use firelib::{lexer::Loc, utils::*, *};
+use firelib::{
+    anyhow::{Context, Result},
+    lexer::Loc,
+    utils::*,
+    ShortCircuit, TrySuccess,
+};
 
 use super::{
     evaluator::{CompEvalStack, Evaluator},
@@ -659,7 +663,7 @@ impl Parser {
     fn define_proc(
         &mut self, name: &LocWord, contract: Contract, prog: &mut Program,
     ) -> Result<Op> {
-        anyhow::ensure!(
+        any_ensure!(
             !self.inside_proc(),
             "{}Cannot define a procedure inside of another procedure",
             &name.loc
@@ -893,7 +897,7 @@ impl Parser {
                 }
             } else {
                 let member_type = members.last().unwrap().get_value().get_type();
-                anyhow::ensure!(
+                any_ensure!(
                     equals_any!(member_type, Value::Any, eval.token_type),
                     concat!(
                         "{}Expected type `{:?}` on the stack at the end of ",

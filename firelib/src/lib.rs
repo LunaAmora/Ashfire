@@ -5,7 +5,7 @@ use std::{
     ops::{ControlFlow, FromResidual, Try},
 };
 
-pub use anyhow;
+pub use anyhow::{self, bail as anybail, ensure as any_ensure};
 #[cfg(feature = "derive")]
 pub use firelib_macro::{alternative, FlowControl};
 

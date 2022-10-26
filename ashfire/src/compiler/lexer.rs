@@ -1,10 +1,9 @@
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
 use ashlib::OptionErr;
 use firelib::{
-    bail, choice,
-    lexer::{Lexer, Loc, Match, Token},
+    anyhow::{Context, Result},
+    lexer::*,
     ShortCircuit,
 };
 

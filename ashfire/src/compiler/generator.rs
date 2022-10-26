@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fs::File, io::BufWriter, path::Path};
 
-use anyhow::{bail, Context, Result};
+use firelib::anyhow::{Context, Result};
 use wasm_backend::{wasm_types::*, Module};
 use Ident::*;
 use Instruction::*;
@@ -119,7 +119,7 @@ impl Generator {
 
     fn prep_proc(&mut self, program: &Program, op: &Op) -> Result<()> {
         if self.current_func.is_some() {
-            bail!("Cannot start an Wasm function block without closing the current one");
+            anybail!("Cannot start an Wasm function block without closing the current one");
         }
 
         let proc = self.visit_proc(program, op.operand as usize);
