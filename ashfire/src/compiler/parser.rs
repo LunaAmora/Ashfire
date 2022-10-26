@@ -1,4 +1,8 @@
-use std::{collections::VecDeque, ops::Deref, path::PathBuf};
+use std::{
+    collections::{HashMap, VecDeque},
+    ops::Deref,
+    path::PathBuf,
+};
 
 use anyhow::{Context, Result};
 use ashlib::*;
@@ -31,24 +35,25 @@ impl Deref for LocWord {
 }
 
 impl LocWord {
-    pub fn new(name: &String, loc: Loc) -> Self {
+    pub fn new(name: &str, loc: Loc) -> Self {
         Self { name: name.to_owned(), loc }
     }
 
     /// Returns an `Vec<Op>` if the word started with a `.`
     fn get_offset(&self, operand: i32) -> Option<Vec<Op>> {
-        self.strip_prefix('.').map(|strip| {
-            Op::from(strip.strip_prefix('*').map_or_else(
-                || (OpType::OffsetLoad, operand, self.loc.clone()),
-                |_| (OpType::Offset, operand, self.loc.clone()),
-            ))
-            .into()
-        })
+        let op = Op::from(match self.as_bytes() {
+            [b'.', b'*', ..] => (OpType::Offset, operand, self.loc.clone()),
+            [b'.', ..] => (OpType::OffsetLoad, operand, self.loc.clone()),
+            _ => return None,
+        });
+        Some(vec![op])
     }
 
     /// Searches for a `global mem` that matches the given [`LocWord`] name.
     fn get_global_mem(&self, prog: &Program) -> Option<Vec<Op>> {
-        prog.get_mem(self)
+        prog.get_memory()
+            .iter()
+            .find(|mem| mem.as_str() == self.as_str())
             .map(|global| Op::new(OpType::PushGlobalMem, global.value(), &self.loc).into())
     }
 
@@ -89,10 +94,67 @@ enum VarWordType {
     Pointer,
 }
 
+#[allow(dead_code)]
+pub enum ParseContext {
+    ProcName,
+    ConstName,
+    GlobalMem,
+    ConstStruct,
+    Variable,
+    LocalMem,
+    Binding,
+}
+
+struct Scope {
+    op: Op,
+    names: HashMap<String, ParseContext>,
+}
+
+impl Scope {
+    fn new(op: Op) -> Self {
+        Self { op, names: HashMap::default() }
+    }
+}
+
+#[derive(Default)]
+struct NameScopes {
+    scopes: Vec<Scope>,
+    names: HashMap<String, ParseContext>,
+}
+
+impl NameScopes {
+    fn lookup(&self, name: &str) -> Option<&ParseContext> {
+        for scope in self.scopes.iter().rev() {
+            let ctx = scope.names.get(name);
+            if ctx.is_some() {
+                return ctx;
+            }
+        }
+
+        self.names.get(name)
+    }
+
+    fn register(&mut self, name: String, ctx: ParseContext) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.names.insert(name, ctx);
+        } else {
+            self.names.insert(name, ctx);
+        }
+    }
+
+    fn push(&mut self, op: Op) {
+        self.scopes.push(Scope::new(op))
+    }
+
+    fn pop(&mut self) -> Option<Op> {
+        self.scopes.pop().map(|s| s.op)
+    }
+}
+
 #[derive(Default)]
 pub struct Parser {
     ir_tokens: VecDeque<IRToken>,
-    op_blocks: Vec<Op>,
+    name_scopes: NameScopes,
     structs: Vec<Word>,
     current_proc: Option<usize>,
 }
@@ -169,14 +231,8 @@ impl Parser {
                 choice!(
                     OptionErr,
                     word.get_intrinsic(prog),
-                    word.get_proc_name(prog),
-                    word.get_const_name(prog),
-                    word.get_global_mem(prog),
-                    word.get_const_struct(prog),
                     word.get_offset(tok.operand),
-                    self.get_binding(word, prog),
-                    self.get_variable(word, prog),
-                    self.get_local_mem(word, prog),
+                    self.lookup_context(word, prog),
                     self.define_context(word, prog);
                     bail!("{}Word was not declared on the program: `{}`", word.loc, word.name)
                 )
@@ -184,6 +240,39 @@ impl Parser {
         });
 
         OptionErr::new(vec![op])
+    }
+
+    fn lookup_context(&self, word: &LocWord, prog: &Program) -> OptionErr<Vec<Op>> {
+        let ctx = match self.name_scopes.lookup(word.as_str()) {
+            Some(ctx) => ctx,
+            None => return self.lookup_modfied_var(word, prog),
+        };
+
+        match ctx {
+            ParseContext::ProcName => word.get_proc_name(prog),
+            ParseContext::ConstName => word.get_const_name(prog),
+            ParseContext::GlobalMem => word.get_global_mem(prog),
+            ParseContext::Binding => self.get_binding(word, prog),
+            ParseContext::ConstStruct => word.get_const_struct(prog),
+            ParseContext::LocalMem => self.get_local_mem(word, prog),
+            ParseContext::Variable => return self.get_variable(word, None, prog),
+        }
+        .into()
+    }
+
+    fn lookup_modfied_var(&self, word: &LocWord, prog: &Program) -> OptionErr<Vec<Op>> {
+        let (rest, var_typ) = match word.split_at(1) {
+            ("!", rest) => (rest, VarWordType::Store),
+            ("*", rest) => (rest, VarWordType::Pointer),
+            _ => return OptionErr::default(),
+        };
+
+        let Some(ParseContext::Variable) = self.name_scopes.lookup(rest) else {
+            return OptionErr::default();
+        };
+
+        let loc = LocWord::new(rest, word.loc.clone());
+        self.get_variable(&loc, Some(var_typ), prog)
     }
 
     fn define_keyword_op(&mut self, operand: i32, loc: Loc) -> OptionErr<Vec<Op>> {
@@ -259,7 +348,7 @@ impl Parser {
 
     /// Creates a logic block starting from the given [`Op`].
     fn push_block(&mut self, op: Op) -> Op {
-        self.op_blocks.push(op.clone());
+        self.name_scopes.push(op.clone());
         op
     }
 
@@ -269,7 +358,7 @@ impl Parser {
     ///
     /// This function will return an error if no block is open.
     fn pop_block(&mut self, loc: &Loc, closing_type: KeywordType) -> Result<Op> {
-        self.op_blocks.pop().with_context(|| {
+        self.name_scopes.pop().with_context(|| {
             format!("{}There are no open blocks to close with `{:?}`", loc, closing_type)
         })
     }
@@ -297,21 +386,16 @@ impl Parser {
 
     /// Searches for a `variable` that matches the given [`word`][LocWord]
     /// and parses `store` and `pointer` information.
-    fn get_variable(&self, loc_word: &LocWord, prog: &Program) -> OptionErr<Vec<Op>> {
-        let (word, var_typ) = match loc_word.split_at(1) {
-            ("!", rest) => (rest, Some(VarWordType::Store)),
-            ("*", rest) => (rest, Some(VarWordType::Pointer)),
-            _ => (loc_word.as_str(), None),
-        };
-
-        let word = LocWord { name: word.to_string(), loc: loc_word.loc.clone() };
+    fn get_variable(
+        &self, word: &LocWord, var_typ: Option<VarWordType>, prog: &Program,
+    ) -> OptionErr<Vec<Op>> {
         choice!(
             OptionErr,
             self.current_proc(prog)
                 .map(|proc| proc.local_vars.clone())
                 .map_or_else(OptionErr::default, |vars| self
-                    .try_get_var(&word, &vars, true, var_typ, prog)),
-            self.try_get_var(&word, &prog.global_vars, false, var_typ, prog),
+                    .try_get_var(word, &vars, true, var_typ, prog)),
+            self.try_get_var(word, &prog.global_vars, false, var_typ, prog),
         )
     }
 
@@ -455,10 +539,9 @@ impl Parser {
     fn parse_proc_ctx(
         &mut self, found_word: String, word: &LocWord, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
-        match (prog.get_type_name(&found_word), prog.get_data_pointer(&found_word)) {
-            (None, None) => OptionErr::default(),
-            _ => self.parse_procedure(word, prog),
-        }
+        prog.get_type_kind(found_word)
+            .or_return(OptionErr::default)?;
+        self.parse_procedure(word, prog)
     }
 
     fn parse_struct_ctx(
@@ -551,6 +634,8 @@ impl Parser {
             if eval.token_type != ValueType::Any {
                 self.skip(skip);
                 prog.consts.push(TypedWord::new(word.to_string(), eval));
+                self.name_scopes
+                    .register(word.to_string(), ParseContext::ConstName);
                 success!();
             }
         }
@@ -583,6 +668,8 @@ impl Parser {
         let operand = prog.procs.len();
         self.enter_proc(operand);
         prog.procs.push(proc);
+        self.name_scopes
+            .register(name.to_string(), ParseContext::ProcName);
 
         Ok(self.push_block(Op::new(OpType::PrepProc, operand as i32, &name.loc)))
     }
@@ -636,8 +723,7 @@ impl Parser {
         let loc = &word.loc;
 
         self.expect_keyword(prog, KeywordType::Colon, "`:` after keyword `proc`", loc)?;
-        let error_text =
-            format!("{loc}Expected proc contract or `:` after procedure definition, but found");
+        let tok_err = "proc contract or `:` after procedure definition";
 
         while let Some(tok) = self.next() {
             if let Some(key) = tok.get_keyword() {
@@ -645,28 +731,30 @@ impl Parser {
                     KeywordType::Arrow => {
                         ensure!(!arrow, "{loc}Duplicated `->` found on procedure definition");
                         arrow = true;
-                        continue;
                     }
                     KeywordType::Colon => {
                         (self.define_proc(word, Contract::new(ins, outs), prog)).into_success()?
                     }
-                    _ => {}
+                    _ => bail!(prog.invalid_option(Some(tok), tok_err, loc)),
                 }
-            } else if let Some(found_word) = prog.get_word_from_token(&tok) {
-                if let Some(stk) = prog.get_type_name(found_word) {
-                    for member in stk.members() {
-                        push_by_condition(arrow, member.get_type(), &mut outs, &mut ins);
+            } else {
+                let Some(kind) = prog.get_kind_from_token(&tok) else {
+                    bail!(prog.invalid_option(Some(tok), tok_err, loc));
+                };
+
+                match kind {
+                    Either::Left(stk) => {
+                        for member in stk.members() {
+                            push_by_condition(arrow, member.get_type(), &mut outs, &mut ins);
+                        }
                     }
-                    continue;
-                } else if let Some(type_ptr) = prog.get_data_pointer(found_word) {
-                    push_by_condition(arrow, type_ptr, &mut outs, &mut ins);
-                    continue;
+                    Either::Right(type_ptr) => {
+                        push_by_condition(arrow, type_ptr, &mut outs, &mut ins)
+                    }
                 }
             }
-
-            bail!("{error_text}: `{:?}`", prog.format_token(tok));
         }
-        bail!("{error_text} nothing")
+        bail!(prog.invalid_option(None, tok_err, loc))
     }
 
     fn expect_keyword(
@@ -695,7 +783,8 @@ impl Parser {
         self.expect_keyword(prog, KeywordType::End, "`end` after memory size", loc)?;
 
         let size = ((value_token.operand + 3) / 4) * 4;
-        prog.push_mem_by_context(self.get_index(), word, size);
+        let ctx = prog.push_mem_by_context(self.get_index(), word, size);
+        self.name_scopes.register(word.to_string(), ctx);
 
         Ok(())
     }
@@ -720,35 +809,39 @@ impl Parser {
                 loc,
             )?;
 
+            let name_type = self.expect_by(
+                prog,
+                |n| n.token_type == TokenType::Word,
+                "struct member type",
+                loc,
+            )?;
+
             let found_word = prog.get_word(next.operand).to_owned();
-
-            if let Some(name_type) = self.next() {
-                if name_type.token_type == TokenType::Word {
-                    let found_type = &prog.get_word(name_type.operand);
-
-                    if let Some(stk_typ) = prog.get_type_name(found_type) {
-                        let ref_members = stk_typ.members();
-
-                        if ref_members.len() == 1 {
-                            let typ = ref_members.first().unwrap();
-                            members.push((found_word, typ).into());
-                        } else {
-                            for member in ref_members {
-                                let member_name = format!("{found_word}.{}", member.name());
-                                members.push((member_name, member).into());
-                            }
-                        }
-                        continue;
-                    } else if let Some(typ_ptr) = prog.get_data_pointer(found_type) {
-                        members.push((found_word, &typ_ptr).into());
-                        continue;
-                    }
-                }
-                bail!(
+            let found_type = prog.get_word(name_type.operand).to_owned();
+            let type_kind = prog.get_type_kind(found_type).with_context(|| {
+                format!(
                     "{loc}Expected struct member type but found: {}",
                     prog.format_token(name_type)
-                );
+                )
+            })?;
+
+            match type_kind {
+                Either::Left(stk_typ) => {
+                    let ref_members = stk_typ.members();
+
+                    if ref_members.len() == 1 {
+                        let typ = ref_members.first().unwrap();
+                        members.push((found_word, typ).into());
+                    } else {
+                        for member in ref_members {
+                            let member_name = format!("{found_word}.{}", member.name());
+                            members.push((member_name, member).into());
+                        }
+                    }
+                }
+                Either::Right(typ_ptr) => members.push((found_word, &typ_ptr).into()),
             }
+            continue;
         }
         bail!("{loc}Expected struct members or `end` after struct declaration")
     }
@@ -827,6 +920,13 @@ impl Parser {
             }
         }
 
+        let ctx = match assign {
+            KeywordType::Colon => ParseContext::ConstStruct,
+            KeywordType::Equal => ParseContext::Variable,
+            _ => unreachable!(),
+        };
+
+        self.name_scopes.register(word.to_string(), ctx);
         self.structs.push(Word::new(word, operand));
         Ok(())
     }
@@ -879,12 +979,34 @@ impl Parser {
 }
 
 impl Program {
+    fn get_type_kind(&self, type_name: String) -> Option<Either<&StructType, TokenType>> {
+        match self.get_type_name(&type_name) {
+            Some(stk_typ) => Some(Either::Left(stk_typ)),
+            None => self
+                .get_data_pointer(&type_name)
+                .map(|typ_ptr| Either::Right(typ_ptr)),
+        }
+    }
+
+    pub fn get_type_name(&self, word: &str) -> Option<&StructType> {
+        self.structs_types.iter().find(|s| s.name() == word)
+    }
+
+    pub fn get_data_pointer(&self, word: &str) -> Option<TokenType> {
+        word.strip_prefix('*')
+            .and_then(|word| self.get_data_type(word))
+            .map(|i| TokenType::DataPtr(ValueType::from(i - 1)))
+    }
+
     fn get_struct_type(&self, tok: &IRToken) -> Option<&StructType> {
         fold_bool!(tok == TokenType::Word, self.get_type_name(self.get_word(tok.operand)))
     }
 
-    fn get_word_from_token(&self, tok: &IRToken) -> Option<&String> {
-        fold_bool!(tok == TokenType::Word, Some(self.get_word(tok.operand)))
+    fn get_kind_from_token(&self, tok: &IRToken) -> Option<Either<&StructType, TokenType>> {
+        fold_bool!(
+            tok == TokenType::Word,
+            self.get_type_kind(self.get_word(tok.operand).to_string())
+        )
     }
 
     fn format_token(&self, tok: IRToken) -> String {
@@ -897,6 +1019,18 @@ impl Program {
         let desc = self.type_name(tok.token_type);
         let name = self.type_display(tok.token_type, tok.operand);
         format!("{}Invalid `{desc}` found on {error_context}: `{name}`", tok.loc)
+    }
+
+    fn invalid_option(&self, tok: Option<IRToken>, desc: &str, loc: &Loc) -> String {
+        match tok {
+            Some(tok) => format!(
+                "{}Expected {}, but found: `{}`",
+                tok.loc.clone(),
+                desc,
+                self.format_token(tok)
+            ),
+            None => format!("{}Expected {}, but found nothing", loc, desc),
+        }
     }
 
     pub fn compile_file(&mut self, path: &PathBuf) -> Result<&mut Self> {

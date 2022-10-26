@@ -4,7 +4,7 @@ use ashlib::from_i32;
 use firelib::fold_bool;
 use itertools::Itertools;
 
-use super::types::*;
+use super::{parser::ParseContext, types::*};
 
 #[derive(Default)]
 pub struct Program {
@@ -44,10 +44,18 @@ impl Program {
         operand
     }
 
-    pub fn push_mem_by_context(&mut self, proc_index: Option<usize>, word: &str, size: i32) {
+    pub fn push_mem_by_context(
+        &mut self, proc_index: Option<usize>, word: &str, size: i32,
+    ) -> ParseContext {
         match proc_index.and_then(|i| self.procs.get_mut(i)) {
-            Some(proc) => proc.push_mem(word, size),
-            None => self.push_mem(word, size),
+            Some(proc) => {
+                proc.push_mem(word, size);
+                ParseContext::LocalMem
+            }
+            None => {
+                self.push_mem(word, size);
+                ParseContext::GlobalMem
+            }
         }
     }
 
@@ -177,24 +185,13 @@ impl Program {
             .map(|u| u + 1)
     }
 
-    pub fn get_data_pointer(&self, word: &str) -> Option<TokenType> {
-        word.strip_prefix('*')
-            .and_then(|word| self.get_data_type(word))
-            .map(|i| TokenType::DataPtr(ValueType::from(i - 1)))
-    }
-
-    pub fn get_type_name(&self, word: &str) -> Option<&StructType> {
-        self.structs_types.iter().find(|s| s.name() == word)
-    }
-
     /// Searches for a `const` that matches the given `&str`.
     pub fn get_const_name(&self, word: &str) -> Option<&TypedWord> {
         self.consts.iter().find(|cnst| word == cnst.as_str())
     }
 
-    /// Searches for a `global mem` that matches the given `&str`.
-    pub fn get_mem(&self, word: &str) -> Option<&Word> {
-        self.memory.iter().find(|mem| word == mem.as_str())
+    pub fn get_memory(&self) -> &[Word] {
+        &self.memory
     }
 }
 
