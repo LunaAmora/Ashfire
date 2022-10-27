@@ -258,7 +258,7 @@ where
     T: FromResidual<ControlFlow<T, Infallible>>,
 {
     /// Emulates [`ok_or`][Option::ok_or] for returning types that implements
-    /// [`FlowControl`] or [`FromResidual<ControlFlow<Self, !>`].
+    /// [`FlowControl`] or [`FromResidual<ControlFlow<Self, !>>`].
     ///
     /// Can be used on [`Result`], [`Option`] and [`bool`].
     fn or_return(self, f: impl FnOnce() -> T) -> ControlFlow<T, R>;
