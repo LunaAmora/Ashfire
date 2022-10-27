@@ -24,6 +24,12 @@ pub struct LocWord {
     pub loc: Loc,
 }
 
+impl Location for &LocWord {
+    fn loc(&self) -> Loc {
+        self.loc
+    }
+}
+
 impl PartialEq<str> for LocWord {
     fn eq(&self, other: &str) -> bool {
         self.name == other
@@ -46,8 +52,8 @@ impl LocWord {
     /// Returns an `Vec<Op>` if the word started with a `.`
     fn get_offset(&self, operand: i32) -> Option<Vec<Op>> {
         let op = Op::from(match self.as_bytes() {
-            [b'.', b'*', ..] => (OpType::Offset, operand, self.loc.clone()),
-            [b'.', ..] => (OpType::OffsetLoad, operand, self.loc.clone()),
+            [b'.', b'*', ..] => (OpType::Offset, operand, self.loc),
+            [b'.', ..] => (OpType::OffsetLoad, operand, self.loc),
             _ => return None,
         });
         Some(vec![op])
@@ -58,7 +64,7 @@ impl LocWord {
         prog.get_memory()
             .iter()
             .find(|mem| mem.as_str() == self.as_str())
-            .map(|global| Op::new(OpType::PushGlobalMem, global.value(), &self.loc).into())
+            .map(|global| Op::new(OpType::PushGlobalMem, global.value(), self.loc).into())
     }
 
     /// Searches for struct fields that starts with the given [`word`][LocWord]
@@ -67,7 +73,7 @@ impl LocWord {
         prog.consts
             .iter()
             .filter(|cnst| cnst.starts_with(&format!("{}.", self.name)))
-            .map(|tword| Op::from((tword, &self.loc)))
+            .map(|tword| Op::from((tword, self.loc)))
             .collect::<Vec<Op>>()
             .empty_or_some()
     }
@@ -76,19 +82,19 @@ impl LocWord {
     /// and parses it to an [`Op`].
     fn get_const_name(&self, prog: &Program) -> Option<Vec<Op>> {
         prog.get_const_name(self)
-            .map(|tword| vec![Op::from((tword, &self.loc))])
+            .map(|tword| vec![Op::from((tword, self.loc))])
     }
 
     fn get_intrinsic(&self, prog: &Program) -> Option<Vec<Op>> {
         prog.get_intrinsic_type(self)
-            .map(|i| vec![Op::new(OpType::Intrinsic, i.into(), &self.loc)])
+            .map(|i| vec![Op::new(OpType::Intrinsic, i.into(), self.loc)])
     }
 
     fn get_proc_name(&self, prog: &Program) -> Option<Vec<Op>> {
         prog.procs
             .iter()
             .position(|proc| self == proc.name.as_str())
-            .map(|index| vec![Op::new(OpType::Call, index as i32, &self.loc)])
+            .map(|index| vec![Op::new(OpType::Call, index as i32, self.loc)])
     }
 }
 
@@ -208,25 +214,27 @@ impl Parser {
     }
 
     fn define_op(&mut self, tok: IRToken, prog: &mut Program) -> OptionErr<Vec<Op>> {
+        let loc = prog.loc_fmt(&tok);
+
         ensure!(
             matches!(tok.token_type, TokenType::Keyword | TokenType::Word) || self.inside_proc(),
             "{}Token type cannot be used outside of a procedure: `{:?}`",
-            tok.loc,
+            loc,
             tok.token_type
         );
 
         let op = Op::from(match tok.token_type {
-            TokenType::Keyword => return self.define_keyword_op(tok.operand, tok.loc),
+            TokenType::Keyword => return self.define_keyword_op(tok.operand, tok.loc, prog),
 
             TokenType::Str => (OpType::PushStr, prog.register_string(tok.operand), tok.loc),
 
             TokenType::DataType(typ) => match typ {
-                Value::Type(_) => bail!("{}Value type not valid here: `{:?}`", tok.loc, typ),
+                Value::Type(_) => bail!("{}Value type not valid here: `{:?}`", loc, typ),
                 _ => (OpType::PushData(typ), tok.operand, tok.loc),
             },
 
             TokenType::DataPtr(typ) => {
-                bail!("{}Data pointer type not valid here: `{:?}`", tok.loc, typ)
+                bail!("{}Data pointer type not valid here: `{:?}`", loc, typ)
             }
 
             TokenType::Word => {
@@ -238,7 +246,8 @@ impl Parser {
                     word.get_offset(tok.operand),
                     self.lookup_context(word, prog),
                     self.define_context(word, prog);
-                    bail!("{}Word was not declared on the program: `{}`", word.loc, word.name)
+                    bail!("{}Word was not declared on the program: `{}`",
+                        prog.loc_fmt(word), word.name)
                 )
             }
         });
@@ -275,11 +284,11 @@ impl Parser {
             return OptionErr::default();
         };
 
-        let loc = LocWord::new(rest, word.loc.clone());
-        self.get_variable(&loc, Some(var_typ), prog)
+        let word = LocWord::new(rest, word.loc);
+        self.get_variable(&word, Some(var_typ), prog)
     }
 
-    fn define_keyword_op(&mut self, operand: i32, loc: Loc) -> OptionErr<Vec<Op>> {
+    fn define_keyword_op(&mut self, operand: i32, loc: Loc, prog: &Program) -> OptionErr<Vec<Op>> {
         let key = from_i32(operand);
 
         let op = match key {
@@ -293,36 +302,47 @@ impl Parser {
 
             KeywordType::While => self.push_block((OpType::While, loc).into()),
 
-            KeywordType::Do => match self.pop_block(&loc, key)? {
+            KeywordType::Do => match self.pop_block(key, prog, loc)? {
                 Op { op_type: OpType::While, .. } => (OpType::Do, loc).into(),
                 Op { op_type: OpType::CaseMatch, operand, .. } => {
                     (OpType::CaseOption, operand, loc).into()
                 }
                 block => {
-                    bail!(block.format_err("`do` can only come in a `while` or `case` block", &loc))
+                    bail!(prog.format_block(
+                        "`do` can only come in a `while` or `case` block",
+                        block,
+                        loc
+                    ))
                 }
             },
 
             KeywordType::Let => todo!(),
             KeywordType::Case => todo!(),
 
-            KeywordType::Colon => match self.pop_block(&loc, key)? {
+            KeywordType::Colon => match self.pop_block(key, prog, loc)? {
                 Op { op_type: OpType::CaseStart, .. } => todo!(),
-                block => bail!(block
-                    .format_err("`:` can only be used on word or `case` block definition", &loc)),
+                block => bail!(prog.format_block(
+                    "`:` can only be used on word or `case` block definition",
+                    block,
+                    loc
+                )),
             },
 
             KeywordType::If => self.push_block((OpType::IfStart, loc).into()),
 
-            KeywordType::Else => match self.pop_block(&loc, key)? {
+            KeywordType::Else => match self.pop_block(key, prog, loc)? {
                 Op { op_type: OpType::IfStart, .. } => self.push_block((OpType::Else, loc).into()),
                 Op { op_type: OpType::CaseOption, .. } => todo!(),
                 block => {
-                    bail!(block.format_err("`else` can only come in a `if` or `case` block", &loc,))
+                    bail!(prog.format_block(
+                        "`else` can only come in a `if` or `case` block",
+                        block,
+                        loc
+                    ))
                 }
             },
 
-            KeywordType::End => match self.pop_block(&loc, key)? {
+            KeywordType::End => match self.pop_block(key, prog, loc)? {
                 Op { op_type: OpType::IfStart, .. } => (OpType::EndIf, loc).into(),
                 Op { op_type: OpType::Else, .. } => (OpType::EndElse, loc).into(),
                 Op { op_type: OpType::Do, .. } => (OpType::EndWhile, loc).into(),
@@ -336,7 +356,7 @@ impl Parser {
                 }
 
                 block => {
-                    bail!(block.format_err("Expected `end` to close a valid block", &loc))
+                    bail!(prog.format_block("Expected `end` to close a valid block", block, loc))
                 }
             },
 
@@ -344,7 +364,9 @@ impl Parser {
             KeywordType::Arrow |
             KeywordType::Proc |
             KeywordType::Mem |
-            KeywordType::Struct => bail!("{}Keyword type is not valid here: `{:?}`", loc, key),
+            KeywordType::Struct => {
+                bail!("{}Keyword type is not valid here: `{:?}`", prog.loc_fmt(loc), key)
+            }
         };
 
         OptionErr::new(vec![op])
@@ -361,9 +383,13 @@ impl Parser {
     /// # Errors
     ///
     /// This function will return an error if no block is open.
-    fn pop_block(&mut self, loc: &Loc, closing_type: KeywordType) -> Result<Op> {
+    fn pop_block(&mut self, closing_type: KeywordType, prog: &Program, loc: Loc) -> Result<Op> {
         self.name_scopes.pop().with_context(|| {
-            format!("{}There are no open blocks to close with `{:?}`", loc, closing_type)
+            format!(
+                "{}There are no open blocks to close with `{:?}`",
+                prog.loc_fmt(loc),
+                closing_type
+            )
         })
     }
 
@@ -377,7 +403,7 @@ impl Parser {
                     .position(|bind| word == bind.as_str())
                     .map(|index| (proc.bindings.len() - 1 - index) as i32)
             })
-            .map(|index| Op::new(OpType::PushBind, index, &word.loc).into())
+            .map(|index| Op::new(OpType::PushBind, index, word.loc).into())
     }
 
     /// Searches for a `mem` that matches the given [`word`][LocWord]
@@ -385,7 +411,7 @@ impl Parser {
     fn get_local_mem(&self, word: &LocWord, prog: &Program) -> Option<Vec<Op>> {
         self.current_proc(prog)
             .and_then(|proc| proc.local_mem_names.iter().find(|mem| word == mem.as_str()))
-            .map(|local| Op::new(OpType::PushLocalMem, local.value(), &word.loc).into())
+            .map(|local| Op::new(OpType::PushLocalMem, local.value(), word.loc).into())
     }
 
     /// Searches for a `variable` that matches the given [`word`][LocWord]
@@ -408,8 +434,6 @@ impl Parser {
         prog: &Program,
     ) -> OptionErr<Vec<Op>> {
         let mut result = Vec::new();
-        let loc = &word.loc;
-
         let push_type = fold_bool!(local, OpType::PushLocal, OpType::PushGlobal);
 
         let (store, pointer) = match var_typ {
@@ -422,20 +446,20 @@ impl Parser {
             let typ = vars.get(index).unwrap().get_type().into();
 
             if store {
-                result.push(Op::new(OpType::ExpectType, typ, loc))
+                result.push(Op::new(OpType::ExpectType, typ, word.loc))
             }
 
-            result.push(Op::new(push_type, index as i32, loc));
+            result.push(Op::new(push_type, index as i32, word.loc));
 
             if store {
-                result.push(Op::new(OpType::Intrinsic, IntrinsicType::Store32.into(), loc))
+                result.push(Op::new(OpType::Intrinsic, IntrinsicType::Store32.into(), word.loc))
             } else if pointer {
                 let ptr_typ = IntrinsicType::Cast(-typ);
-                result.push(Op::new(OpType::Intrinsic, ptr_typ.into(), loc));
+                result.push(Op::new(OpType::Intrinsic, ptr_typ.into(), word.loc));
             } else {
                 let data_typ = IntrinsicType::Cast(typ);
-                result.push(Op::new(OpType::Intrinsic, IntrinsicType::Load32.into(), loc));
-                result.push(Op::new(OpType::Intrinsic, data_typ.into(), loc));
+                result.push(Op::new(OpType::Intrinsic, IntrinsicType::Load32.into(), word.loc));
+                result.push(Op::new(OpType::Intrinsic, data_typ.into(), word.loc));
             }
 
             return OptionErr::new(result);
@@ -457,8 +481,8 @@ impl Parser {
             let stk_id = prog.get_data_type(struct_type.name()).unwrap();
             let ptr_typ = IntrinsicType::Cast(-(stk_id as i32));
 
-            result.push(Op::new(push_type, index as i32, loc));
-            result.push(Op::new(OpType::Intrinsic, ptr_typ.into(), loc));
+            result.push(Op::new(push_type, index as i32, word.loc));
+            result.push(Op::new(OpType::Intrinsic, ptr_typ.into(), word.loc));
         } else {
             let mut members = struct_type.members().to_vec();
 
@@ -475,17 +499,17 @@ impl Parser {
                 let member = member.get_value();
 
                 if store {
-                    result.push(Op::new(OpType::ExpectType, member.get_type().into(), loc))
+                    result.push(Op::new(OpType::ExpectType, member.get_type().into(), word.loc))
                 }
 
-                result.push(Op::new(push_type, operand, loc));
+                result.push(Op::new(push_type, operand, word.loc));
 
                 if store {
-                    result.push(Op::new(OpType::Intrinsic, IntrinsicType::Store32.into(), loc))
+                    result.push(Op::new(OpType::Intrinsic, IntrinsicType::Store32.into(), word.loc))
                 } else {
                     let data_typ = IntrinsicType::Cast(member.get_type().into());
-                    result.push(Op::new(OpType::Intrinsic, IntrinsicType::Load32.into(), loc));
-                    result.push(Op::new(OpType::Intrinsic, data_typ.into(), loc));
+                    result.push(Op::new(OpType::Intrinsic, IntrinsicType::Load32.into(), word.loc));
+                    result.push(Op::new(OpType::Intrinsic, data_typ.into(), word.loc));
                 }
             }
         }
@@ -588,7 +612,7 @@ impl Parser {
                         ensure!(
                             result.token_type != Value::Any,
                             "{}Undefined variable value is not allowed",
-                            &word.loc
+                            prog.loc_fmt(word)
                         );
 
                         self.skip(eval);
@@ -611,7 +635,7 @@ impl Parser {
 
             (_, KeywordType::End) => bail!(
                 "{}Missing body or contract necessary to infer the type of the word: `{}`",
-                word.loc,
+                prog.loc_fmt(word),
                 word.name
             ),
 
@@ -666,7 +690,7 @@ impl Parser {
         any_ensure!(
             !self.inside_proc(),
             "{}Cannot define a procedure inside of another procedure",
-            &name.loc
+            prog.loc_fmt(name)
         );
 
         let proc = Proc::new(name, contract);
@@ -676,7 +700,7 @@ impl Parser {
         self.name_scopes
             .register(name.to_string(), ParseContext::ProcName);
 
-        Ok(self.push_block(Op::new(OpType::PrepProc, operand as i32, &name.loc)))
+        Ok(self.push_block(Op::new(OpType::PrepProc, operand as i32, name.loc)))
     }
 
     fn compile_eval(&self, prog: &mut Program) -> DoubleResult<(IRToken, usize), IRToken> {
@@ -693,7 +717,7 @@ impl Parser {
         while let Some(tok) = self.ir_tokens.get(i).cloned() {
             if &tok == KeywordType::End {
                 if result.is_empty() && i == 0 {
-                    result.push(IRToken::new(Value::Any.get_type(), 0, &tok.loc));
+                    result.push(IRToken::new(Value::Any.get_type(), 0, tok.loc));
                 } else if result.len() != n {
                     let frames: Vec<TypeFrame> = result.iter().map(TypeFrame::from).collect();
                     let fmt_frames = prog.format_frames(&frames);
@@ -725,26 +749,29 @@ impl Parser {
         let mut ins = Vec::new();
         let mut outs = Vec::new();
         let mut arrow = false;
-        let loc = &word.loc;
 
-        self.expect_keyword(prog, KeywordType::Colon, "`:` after keyword `proc`", loc)?;
+        self.expect_keyword(prog, KeywordType::Colon, "`:` after keyword `proc`", word.loc)?;
         let tok_err = "proc contract or `:` after procedure definition";
 
         while let Some(tok) = self.next() {
             if let Some(key) = tok.get_keyword() {
                 match key {
                     KeywordType::Arrow => {
-                        ensure!(!arrow, "{loc}Duplicated `->` found on procedure definition");
+                        ensure!(
+                            !arrow,
+                            "{}Duplicated `->` found on procedure definition",
+                            prog.loc_fmt(word.loc)
+                        );
                         arrow = true;
                     }
                     KeywordType::Colon => {
                         (self.define_proc(word, Contract::new(ins, outs), prog)).into_success()?
                     }
-                    _ => bail!(prog.invalid_option(Some(tok), tok_err, loc)),
+                    _ => bail!(prog.invalid_option(Some(tok), tok_err, word.loc)),
                 }
             } else {
                 let Some(kind) = prog.get_kind_from_token(&tok) else {
-                    bail!(prog.invalid_option(Some(tok), tok_err, loc));
+                    bail!(prog.invalid_option(Some(tok), tok_err, word.loc));
                 };
 
                 match kind {
@@ -764,29 +791,31 @@ impl Parser {
                 }
             }
         }
-        bail!(prog.invalid_option(None, tok_err, loc))
+        bail!(prog.invalid_option(None, tok_err, word.loc))
     }
 
     fn expect_keyword(
-        &mut self, prog: &Program, key: KeywordType, error_text: &str, loc: &Loc,
+        &mut self, prog: &Program, key: KeywordType, error_text: &str, loc: Loc,
     ) -> Result<IRToken> {
         self.expect_by(prog, |tok| tok == key, error_text, loc)
     }
 
     fn expect_by(
-        &mut self, prog: &Program, pred: impl FnOnce(&IRToken) -> bool, error_text: &str, loc: &Loc,
+        &mut self, prog: &Program, pred: impl FnOnce(&IRToken) -> bool, error_text: &str, loc: Loc,
     ) -> Result<IRToken> {
         let tok = self.next();
-        expect_token_by(tok, pred, error_text, Some(loc.to_owned()), |tok| prog.format_token(tok))
+        prog.expect_token_by(tok, pred, error_text, Some(loc))
     }
 
     fn parse_memory(&mut self, word: &LocWord, prog: &mut Program) -> Result<()> {
-        let loc = &word.loc;
-
-        self.expect_keyword(prog, KeywordType::Colon, "`:` after `mem`", loc)?;
-        let value_token =
-            self.expect_by(prog, |tok| tok.token_type == Value::Int, "memory size after `:`", loc)?;
-        self.expect_keyword(prog, KeywordType::End, "`end` after memory size", loc)?;
+        self.expect_keyword(prog, KeywordType::Colon, "`:` after `mem`", word.loc)?;
+        let value_token = self.expect_by(
+            prog,
+            |tok| tok.token_type == Value::Int,
+            "memory size after `:`",
+            word.loc,
+        )?;
+        self.expect_keyword(prog, KeywordType::End, "`end` after memory size", word.loc)?;
 
         let size = ((value_token.operand + 3) / 4) * 4;
         let ctx = prog.push_mem_by_context(self.get_index(), word, size);
@@ -797,12 +826,16 @@ impl Parser {
 
     fn parse_struct(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
         let mut members = Vec::new();
-        let loc = &word.loc;
-        self.expect_keyword(prog, KeywordType::Colon, "`:` after keyword `struct`", loc)?;
+        self.expect_keyword(prog, KeywordType::Colon, "`:` after keyword `struct`", word.loc)?;
 
         while let Some(tok) = self.ir_tokens.get(0) {
             if tok.token_type == TokenType::Keyword {
-                self.expect_keyword(prog, KeywordType::End, "`end` after struct declaration", loc)?;
+                self.expect_keyword(
+                    prog,
+                    KeywordType::End,
+                    "`end` after struct declaration",
+                    word.loc,
+                )?;
                 prog.structs_types
                     .push(StructDef::new(word.to_string(), members));
                 success!();
@@ -812,23 +845,21 @@ impl Parser {
                 prog,
                 |n| n.token_type == TokenType::Word,
                 "struct member name",
-                loc,
+                word.loc,
             )?;
 
             let name_type = self.expect_by(
                 prog,
                 |n| n.token_type == TokenType::Word,
                 "struct member type",
-                loc,
+                word.loc,
             )?;
 
             let found_word = prog.get_word(next.operand).to_owned();
             let found_type = prog.get_word(name_type.operand).to_owned();
             let type_kind = prog.get_type_kind(found_type).with_context(|| {
-                format!(
-                    "{loc}Expected struct member type but found: {}",
-                    prog.format_token(name_type)
-                )
+                let (loc, fmt) = prog.format_token(name_type);
+                format!("{}Expected struct member type, but found: {}", loc, fmt)
             })?;
 
             match type_kind {
@@ -847,26 +878,33 @@ impl Parser {
                     }
                 }
                 Either::Right(typ_ptr) => {
-                    members.push(StructType::Unit((found_word, &typ_ptr).into()))
+                    members.push(StructType::Unit((found_word, typ_ptr).into()))
                 }
             }
             continue;
         }
-        bail!("{loc}Expected struct members or `end` after struct declaration")
+        bail!(
+            "{}Expected struct members or `end` after struct declaration",
+            prog.loc_fmt(word.loc)
+        )
     }
 
     fn parse_const_or_var(
         &mut self, word: &LocWord, operand: i32, stk: StructDef, prog: &mut Program,
     ) -> Result<()> {
-        let loc = &word.loc;
-        self.expect_keyword(prog, KeywordType::Colon, "`:` after variable type definition", loc)?;
+        self.expect_keyword(
+            prog,
+            KeywordType::Colon,
+            "`:` after variable type definition",
+            word.loc,
+        )?;
 
         let assign = self
             .expect_by(
                 prog,
                 |tok| equals_any!(tok, KeywordType::Colon, KeywordType::Equal),
                 "`:` or `=` after keyword `:`",
-                loc,
+                word.loc,
             )?
             .get_keyword()
             .unwrap();
@@ -903,7 +941,7 @@ impl Parser {
                         "{}Expected type `{:?}` on the stack at the end of ",
                         "the compile-time evaluation, but found: `{:?}`"
                     ),
-                    end_token.loc,
+                    prog.loc_fmt(&end_token),
                     member_type,
                     eval.token_type
                 );
@@ -914,7 +952,7 @@ impl Parser {
         } else {
             let stack: Vec<TypeFrame> = result.iter().map(TypeFrame::from).collect();
             let contract: Vec<TokenType> = members.iter().map(Typed::get_type).collect();
-            prog.expect_exact(&stack, &contract, &end_token.loc)?;
+            prog.expect_exact(&stack, &contract, end_token.loc)?;
 
             if self.inside_proc() {
                 members.reverse();
@@ -961,7 +999,7 @@ impl Parser {
     }
 
     pub fn lex_file(&mut self, path: &PathBuf, prog: &mut Program) -> Result<&mut Self> {
-        let lex = &mut Program::new_lexer(path)?;
+        let lex = &mut prog.new_lexer(path)?;
 
         while let Some(token) = prog.lex_next_token(lex).value? {
             if &token != KeywordType::Include {
@@ -969,12 +1007,12 @@ impl Parser {
                 continue;
             }
 
-            let tok = expect_token_by(
-                prog.lex_next_token(lex).value?,
+            let tok = prog.lex_next_token(lex).value?;
+            let tok = prog.expect_token_by(
+                tok,
                 |token| token == TokenType::Str,
                 "include file name",
                 None,
-                |tok| prog.format_token(tok),
             )?;
 
             let include_path = prog.get_string(tok.operand).as_str();
@@ -1021,27 +1059,57 @@ impl Program {
         )
     }
 
-    fn format_token(&self, tok: IRToken) -> String {
+    fn format_token(&self, tok: IRToken) -> (String, String) {
         let desc = self.type_name(tok.token_type);
         let name = self.type_display(tok.token_type, tok.operand);
-        format!("{} `{}`", desc, name)
+        (self.loc_fmt(&tok), format!("{} `{}`", desc, name))
     }
 
     fn invalid_token(&self, tok: IRToken, error_context: &str) -> String {
         let desc = self.type_name(tok.token_type);
         let name = self.type_display(tok.token_type, tok.operand);
-        format!("{}Invalid `{desc}` found on {error_context}: `{name}`", tok.loc)
+        let loc = self.loc_fmt(&tok);
+        format!("{loc}Invalid `{desc}` found on {error_context}: `{name}`")
     }
 
-    fn invalid_option(&self, tok: Option<IRToken>, desc: &str, loc: &Loc) -> String {
+    fn invalid_option(&self, tok: Option<IRToken>, desc: &str, loc: Loc) -> String {
         match tok {
-            Some(tok) => format!(
-                "{}Expected {desc}, but found: `{}`",
-                tok.loc.clone(),
-                self.format_token(tok)
-            ),
-            None => format!("{loc}Expected {desc}, but found nothing"),
+            Some(tok) => {
+                let (lok, found) = self.format_token(tok);
+                format!("{}Expected {desc}, but found: `{}`", lok, found)
+            }
+            None => format!("{}Expected {desc}, but found nothing", self.loc_fmt(loc)),
         }
+    }
+
+    fn expect_token_by(
+        &self, value: Option<IRToken>, pred: impl FnOnce(&IRToken) -> bool, desc: &str,
+        loc: Option<Loc>,
+    ) -> Result<IRToken> {
+        match value {
+            Some(tok) if pred(&tok) => Ok(tok),
+            Some(tok) => {
+                let (loc, fmt) = self.format_token(tok);
+                bail!("{}Expected to find {desc}, but found: {}", loc, fmt)
+            }
+            None => bail!(
+                "{}Expected to find {desc}, but found nothing",
+                loc.map_or_else(String::new, |l| self.loc_fmt(l))
+            ),
+        }
+    }
+
+    fn format_block(&self, error: &str, op: Op, loc: Loc) -> String {
+        format!(
+            concat!(
+                "{}{}, but found a `{:?}` block instead\n",
+                "[INFO] {}The found block started here."
+            ),
+            self.loc_fmt(loc),
+            error,
+            op.op_type,
+            self.loc_fmt(op.loc)
+        )
     }
 
     pub fn compile_file(&mut self, path: &PathBuf) -> Result<&mut Self> {
@@ -1051,28 +1119,5 @@ impl Program {
 
         info!("Compilation done");
         Ok(self)
-    }
-}
-
-impl Op {
-    fn format_err(self, error: &str, loc: &Loc) -> String {
-        format!(
-            concat!(
-                "{}{}, but found a `{:?}` block instead\n",
-                "[INFO] {}The found block started here."
-            ),
-            loc, error, self.op_type, self.loc
-        )
-    }
-}
-
-fn expect_token_by(
-    value: Option<IRToken>, pred: impl FnOnce(&IRToken) -> bool, desc: &str, loc: Option<Loc>,
-    fmt: impl FnOnce(IRToken) -> String,
-) -> Result<IRToken> {
-    match value {
-        Some(tok) if pred(&tok) => Ok(tok),
-        Some(tok) => bail!("{}Expected to find {desc}, but found: {}", tok.loc.clone(), fmt(tok)),
-        None => bail!("{}Expected to find {desc}, but found nothing", loc.unwrap_or_default()),
     }
 }

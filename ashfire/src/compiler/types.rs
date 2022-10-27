@@ -3,7 +3,10 @@ use std::{
     ops::Deref,
 };
 
-use firelib::{anyhow::Result, lexer::Loc};
+use firelib::{
+    anyhow::Result,
+    lexer::{Loc, Token},
+};
 use num::FromPrimitive;
 
 pub trait Typed {
@@ -11,12 +14,18 @@ pub trait Typed {
 }
 
 pub trait Location {
-    fn loc(&self) -> &Loc;
+    fn loc(&self) -> Loc;
 }
 
 impl Location for Loc {
-    fn loc(&self) -> &Loc {
-        self
+    fn loc(&self) -> Loc {
+        self.to_owned()
+    }
+}
+
+impl Location for &Token {
+    fn loc(&self) -> Loc {
+        self.loc.to_owned()
     }
 }
 
@@ -106,8 +115,8 @@ pub struct Op {
 }
 
 impl Op {
-    pub fn new(op_type: OpType, operand: i32, loc: &Loc) -> Self {
-        Self { op_type, operand, loc: loc.clone() }
+    pub fn new(op_type: OpType, operand: i32, loc: Loc) -> Self {
+        Self { op_type, operand, loc }
     }
 }
 
@@ -134,13 +143,13 @@ impl From<(OpType, Loc)> for Op {
     }
 }
 
-impl<T: Typed + Operand> From<(&T, &Loc)> for Op {
-    fn from(tuple: (&T, &Loc)) -> Self {
-        let TokenType::DataType(typ) = tuple.0.get_type() else {
+impl From<(&ValueType, Loc)> for Op {
+    fn from(tuple: (&ValueType, Loc)) -> Self {
+        let TokenType::DataType(typ) = tuple.0.token_type else {
             unreachable!("Conversion supported only for DataTypes")
         };
 
-        Op::new(OpType::PushData(typ), tuple.0.as_operand(), tuple.1)
+        Op::new(OpType::PushData(typ), tuple.0.value, tuple.1)
     }
 }
 
@@ -163,27 +172,27 @@ pub struct IRToken {
     pub loc: Loc,
 }
 
-impl Typed for IRToken {
+impl Typed for &IRToken {
     fn get_type(&self) -> TokenType {
         self.token_type
     }
 }
 
-impl Operand for IRToken {
+impl Operand for &IRToken {
     fn as_operand(&self) -> i32 {
         self.operand
     }
 }
 
-impl Location for IRToken {
-    fn loc(&self) -> &Loc {
-        &self.loc
+impl Location for &IRToken {
+    fn loc(&self) -> Loc {
+        self.loc
     }
 }
 
 impl IRToken {
-    pub fn new(token_type: TokenType, operand: i32, loc: &Loc) -> Self {
-        Self { token_type, operand, loc: loc.to_owned() }
+    pub fn new(token_type: TokenType, operand: i32, loc: Loc) -> Self {
+        Self { token_type, operand, loc }
     }
 
     pub fn get_keyword(&self) -> Option<KeywordType> {
@@ -208,9 +217,9 @@ impl PartialEq<TokenType> for &IRToken {
     }
 }
 
-impl<T: Typed + Operand> From<(&T, &Loc)> for IRToken {
-    fn from(tuple: (&T, &Loc)) -> Self {
-        IRToken::new(tuple.0.get_type(), tuple.0.as_operand(), &tuple.1.to_owned())
+impl From<(&ValueType, Loc)> for IRToken {
+    fn from(tuple: (&ValueType, Loc)) -> Self {
+        IRToken::new(tuple.0.token_type, tuple.0.value, tuple.1)
     }
 }
 
@@ -240,7 +249,7 @@ impl StructType {
 impl Typed for StructType {
     fn get_type(&self) -> TokenType {
         match self {
-            StructType::Unit(val) => val.get_type(),
+            StructType::Unit(val) => val.token_type,
             _ => unimplemented!("Temporary hack"),
         }
     }
@@ -270,7 +279,7 @@ impl From<(&str, Value)> for StructDef {
     fn from(tuple: (&str, Value)) -> Self {
         Self {
             name: tuple.0.to_string(),
-            members: vec![StructType::Unit((String::new(), &tuple.1).into())],
+            members: vec![StructType::Unit((String::new(), tuple.1).into())],
         }
     }
 }
@@ -283,7 +292,7 @@ pub struct ValueType {
 }
 
 impl ValueType {
-    pub fn new<T: Typed + Operand>(name: String, typed: &T) -> Self {
+    pub fn new<T: Typed + Operand>(name: String, typed: T) -> Self {
         Self {
             name,
             value: typed.as_operand(),
@@ -300,20 +309,20 @@ impl ValueType {
     }
 }
 
-impl Typed for ValueType {
+impl Typed for &ValueType {
     fn get_type(&self) -> TokenType {
         self.token_type
     }
 }
 
-impl Operand for ValueType {
+impl Operand for &ValueType {
     fn as_operand(&self) -> i32 {
         self.value
     }
 }
 
-impl<T: Typed> From<(String, &T)> for ValueType {
-    fn from(tuple: (String, &T)) -> Self {
+impl<T: Typed> From<(String, T)> for ValueType {
+    fn from(tuple: (String, T)) -> Self {
         Self {
             name: tuple.0,
             value: 0,
@@ -402,20 +411,20 @@ impl Typed for TypeFrame {
     }
 }
 
-impl Location for TypeFrame {
-    fn loc(&self) -> &Loc {
-        &self.1
+impl Location for &TypeFrame {
+    fn loc(&self) -> Loc {
+        self.1
     }
 }
 
-impl<T: Typed + Location> From<&T> for TypeFrame {
-    fn from(tok: &T) -> Self {
+impl<T: Typed + Location> From<T> for TypeFrame {
+    fn from(tok: T) -> Self {
         Self(tok.get_type(), tok.loc().to_owned())
     }
 }
 
-impl<T: Typed, L: Location> From<(T, &L)> for TypeFrame {
-    fn from(tuple: (T, &L)) -> Self {
+impl<T: Typed, L: Location> From<(T, L)> for TypeFrame {
+    fn from(tuple: (T, L)) -> Self {
         Self(tuple.0.get_type(), tuple.1.loc().to_owned())
     }
 }

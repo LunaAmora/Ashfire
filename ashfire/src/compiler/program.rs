@@ -14,6 +14,7 @@ pub struct Program {
     pub global_vars: Vec<ValueType>,
     pub structs_types: Vec<StructDef>,
     pub block_contracts: HashMap<usize, (usize, usize)>,
+    pub included_files: Vec<String>,
     mem_size: i32,
     memory: Vec<SizeWord>,
     data_size: i32,
@@ -143,6 +144,13 @@ impl Program {
             }
             TokenType::Str => self.get_string(operand).to_string(),
         }
+    }
+
+    pub fn loc_fmt<L: Location>(&self, loc: L) -> String {
+        let loc = loc.loc();
+        self.included_files
+            .get(loc.file_index)
+            .map_or_else(String::new, |l| format!("{l}:{}:{} ", loc.line, loc.col))
     }
 
     pub fn get_intrinsic_type(&self, word: &str) -> Option<IntrinsicType> {

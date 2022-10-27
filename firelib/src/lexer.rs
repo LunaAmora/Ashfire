@@ -1,7 +1,5 @@
-use core::fmt;
 use std::{
     collections::HashMap,
-    fmt::{Display, Formatter},
     fs::File,
     io::{BufRead, BufReader},
     path::PathBuf,
@@ -43,7 +41,7 @@ impl LexerBuilder {
     }
 
     /// Tries to build an `Lexer` with the given file and parameters.
-    pub fn build(self) -> Result<Lexer> {
+    pub fn build(self, index: usize) -> Result<Lexer> {
         let file = File::open(&self.file)
             .with_context(|| format!("Could not read file `{:?}`", self.file))?;
 
@@ -56,7 +54,7 @@ impl LexerBuilder {
         }
 
         let reader = BufReader::new(file);
-        Ok(Lexer::new(reader, self.file, self.separators, self.comments, matches))
+        Ok(Lexer::new(reader, index, self.separators, self.comments, matches))
     }
 }
 
@@ -77,10 +75,10 @@ pub struct Lexer {
     separators: Vec<char>,
     comments: Option<String>,
     matches: HashMap<char, char>,
-    file: PathBuf,
+    file_index: usize,
     lex_pos: usize,
     col_num: usize,
-    line_num: i32,
+    line_num: usize,
 }
 
 impl Iterator for Lexer {
@@ -93,12 +91,12 @@ impl Iterator for Lexer {
 
 impl Lexer {
     pub fn new(
-        reader: BufReader<File>, file: PathBuf, separators: Vec<char>, comments: Option<String>,
-        matches: HashMap<char, char>,
+        reader: BufReader<File>, file_index: usize, separators: Vec<char>,
+        comments: Option<String>, matches: HashMap<char, char>,
     ) -> Self {
         Self {
             reader,
-            file,
+            file_index,
             separators,
             comments,
             matches,
@@ -124,11 +122,7 @@ impl Lexer {
     }
 
     fn current_loc(&self) -> Loc {
-        Loc::new(
-            self.file.as_path().display().to_string(),
-            self.line_num,
-            self.col_num as i32 + 1,
-        )
+        Loc::new(self.file_index, self.line_num, self.col_num + 1)
     }
 
     fn seek_next_token(&mut self) -> bool {
@@ -252,25 +246,15 @@ impl Token {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Copy, Default)]
 pub struct Loc {
-    pub file: String,
-    pub line: i32,
-    pub col: i32,
+    pub file_index: usize,
+    pub line: usize,
+    pub col: usize,
 }
 
 impl Loc {
-    pub fn new(file: String, line: i32, col: i32) -> Self {
-        Self { file, line, col }
-    }
-}
-
-impl Display for Loc {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if self.file.is_empty() {
-            Ok(())
-        } else {
-            write!(f, "{}:{}:{}: ", self.file, self.line, self.col)
-        }
+    pub fn new(file_index: usize, line: usize, col: usize) -> Self {
+        Self { file_index, line, col }
     }
 }
