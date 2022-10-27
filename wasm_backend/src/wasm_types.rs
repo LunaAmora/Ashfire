@@ -129,8 +129,8 @@ impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let text = match self {
             Instruction::Block(_, _) => unimplemented!("Not possible to format"),
-            Instruction::Get(scope, ident) => format!("{:?}.get {ident}", scope),
-            Instruction::Set(scope, ident) => format!("{:?}.set {ident}", scope),
+            Instruction::Get(scope, ident) => format!("{scope:?}.get {ident}"),
+            Instruction::Set(scope, ident) => format!("{scope:?}.set {ident}"),
             Instruction::I32(num_method) => format!("i32.{:?}", num_method),
             Instruction::Const(value) => format!("i32.const {value}"),
             Instruction::Call(ident) => format!("call {ident}"),

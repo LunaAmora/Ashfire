@@ -405,8 +405,7 @@ impl Program {
 
     fn format_type_diff(&self, expected: TokenType, frame: &TypeFrame, loc: &Loc) -> String {
         format!(
-            "{}Expected type `{}`, but found `{}`\n{}",
-            loc,
+            "{loc}Expected type `{}`, but found `{}`\n{}",
             self.type_name(expected),
             self.type_name(frame.get_type()),
             self.format_frame(frame)

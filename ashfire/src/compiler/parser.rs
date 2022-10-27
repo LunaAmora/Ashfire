@@ -841,7 +841,7 @@ impl Parser {
                     } else {
                         for member in ref_members {
                             let member = member.get_value();
-                            let member_name = format!("{found_word}.{}", member.name());
+                            let member_name = format!("{}.{}", found_word, member.name());
                             members.push(StructType::Unit((member_name, member).into()));
                         }
                     }
@@ -1036,12 +1036,11 @@ impl Program {
     fn invalid_option(&self, tok: Option<IRToken>, desc: &str, loc: &Loc) -> String {
         match tok {
             Some(tok) => format!(
-                "{}Expected {}, but found: `{}`",
+                "{}Expected {desc}, but found: `{}`",
                 tok.loc.clone(),
-                desc,
                 self.format_token(tok)
             ),
-            None => format!("{}Expected {}, but found nothing", loc, desc),
+            None => format!("{loc}Expected {desc}, but found nothing"),
         }
     }
 
@@ -1073,7 +1072,7 @@ fn expect_token_by(
 ) -> Result<IRToken> {
     match value {
         Some(tok) if pred(&tok) => Ok(tok),
-        Some(tok) => bail!("{}Expected to find {}, but found: {}", tok.loc.clone(), desc, fmt(tok)),
-        None => bail!("{}Expected to find {}, but found nothing", loc.unwrap_or_default(), desc),
+        Some(tok) => bail!("{}Expected to find {desc}, but found: {}", tok.loc.clone(), fmt(tok)),
+        None => bail!("{}Expected to find {desc}, but found nothing", loc.unwrap_or_default()),
     }
 }

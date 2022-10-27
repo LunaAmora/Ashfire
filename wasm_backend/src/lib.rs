@@ -190,7 +190,7 @@ impl Module {
                 }
                 None => todo!(),
             },
-            _ => format!("{}", instruction),
+            _ => format!("{instruction}"),
         }
     }
 
