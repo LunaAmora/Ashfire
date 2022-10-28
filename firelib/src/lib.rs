@@ -9,6 +9,7 @@ pub use anyhow::{self, bail as anybail, ensure as any_ensure};
 #[cfg(feature = "derive")]
 pub use firelib_macro::{alternative, FlowControl};
 
+pub mod lazy;
 pub mod lexer;
 pub mod utils;
 
@@ -167,7 +168,7 @@ pub trait TrySuccess: Sized {
 
     fn into_success<T, R>(self) -> ControlFlow<T, !>
     where
-        Self: crate::private::Sealed,
+        Self: lazy::private::Sealed,
         Self: Try<Residual = R, Output = Self::Internal>,
         T: SuccessFrom<From = Self::Internal>,
         T: FromResidual<R>,
@@ -253,7 +254,7 @@ macro_rules! cmd_wait {
     };
 }
 
-pub trait ShortCircuit<T, R>: crate::private::Sealed<Internal = R>
+pub trait ShortCircuit<T>: lazy::private::Sealed
 where
     T: FromResidual<ControlFlow<T, Infallible>>,
 {
@@ -261,49 +262,17 @@ where
     /// [`FlowControl`] or [`FromResidual<ControlFlow<Self, !>>`].
     ///
     /// Can be used on [`Result`], [`Option`] and [`bool`].
-    fn or_return(self, f: impl FnOnce() -> T) -> ControlFlow<T, R>;
+    fn or_return(self, f: impl FnOnce() -> T) -> ControlFlow<T, Self::Internal>;
 }
 
-impl<A, T, R> ShortCircuit<T, R> for A
+impl<A: lazy::private::Sealed, T> ShortCircuit<T> for A
 where
-    A: private::Sealed<Internal = R>,
     T: FromResidual<ControlFlow<T, Infallible>>,
 {
-    fn or_return(self, f: impl FnOnce() -> T) -> ControlFlow<T, R> {
+    fn or_return(self, f: impl FnOnce() -> T) -> ControlFlow<T, Self::Internal> {
         match self.value() {
             Some(v) => ControlFlow::Continue(v),
             None => ControlFlow::Break(f()),
-        }
-    }
-}
-
-pub(crate) mod private {
-    pub trait Sealed {
-        type Internal;
-        fn value(self) -> Option<Self::Internal>;
-    }
-
-    impl<T> Sealed for anyhow::Result<T> {
-        type Internal = T;
-
-        fn value(self) -> Option<T> {
-            self.ok()
-        }
-    }
-
-    impl<T> Sealed for Option<T> {
-        type Internal = T;
-
-        fn value(self) -> Option<T> {
-            self
-        }
-    }
-
-    impl Sealed for bool {
-        type Internal = bool;
-
-        fn value(self) -> Option<bool> {
-            self.then_some(true)
         }
     }
 }
