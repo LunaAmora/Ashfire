@@ -4,41 +4,41 @@ use std::{
 };
 
 pub type Formatter<T> = dyn Fn(T) -> String;
-pub type LazyResult<'a, R, T> = Result<R, LazyError<'a, T>>;
+pub type LazyResult<R, T> = Result<R, LazyError<T>>;
 
-pub struct LazyError<'a, T>(Box<dyn Fn(&'a Formatter<T>) -> Result<Infallible, anyhow::Error>>);
+pub struct LazyError<T>(Box<dyn Fn(&'_ Formatter<T>) -> Result<Infallible, anyhow::Error>>);
 
-impl<'a, T> LazyError<'a, T> {
+impl<T> LazyError<T> {
     pub fn new<E>(lazy_error: E) -> Self
     where
-        E: 'static + Fn(&'a Formatter<T>) -> Result<Infallible, anyhow::Error>,
+        E: 'static + Fn(&'_ Formatter<T>) -> Result<Infallible, anyhow::Error>,
     {
         Self(Box::new(lazy_error))
     }
 
-    pub fn apply(&self, formatter: &'a Formatter<T>) -> anyhow::Error {
+    pub fn apply(&self, formatter: &'_ Formatter<T>) -> anyhow::Error {
         self.0(formatter).unwrap_err()
     }
 }
 
-pub trait LazyCtx<'a, T: 'a>: private::Sealed {
+pub trait LazyCtx<T>: private::Sealed {
     fn with_ctx<X>(
         self, lazy_error: Result<Infallible, LazyError<T>>,
     ) -> Result<Self::Internal, LazyError<T>>
     where
-        X: FromResidual<Result<Infallible, LazyError<'a, T>>>;
+        X: FromResidual<Result<Infallible, LazyError<T>>>;
 
-    fn try_or_apply(self, formatter: &'a Formatter<T>) -> anyhow::Result<Self::Internal>
+    fn try_or_apply(self, formatter: &'_ Formatter<T>) -> anyhow::Result<Self::Internal>
     where
-        Self: Try<Residual = Result<Infallible, LazyError<'a, T>>, Output = Self::Internal>;
+        Self: Try<Residual = Result<Infallible, LazyError<T>>, Output = Self::Internal>;
 }
 
-impl<'a, A: private::Sealed, T: 'a> LazyCtx<'a, T> for A {
+impl<A: private::Sealed, T> LazyCtx<T> for A {
     fn with_ctx<X>(
         self, lazy_error: Result<Infallible, LazyError<T>>,
     ) -> Result<Self::Internal, LazyError<T>>
     where
-        X: FromResidual<Result<Infallible, LazyError<'a, T>>>,
+        X: FromResidual<Result<Infallible, LazyError<T>>>,
     {
         match self.value() {
             Some(val) => Ok(val),
@@ -46,9 +46,9 @@ impl<'a, A: private::Sealed, T: 'a> LazyCtx<'a, T> for A {
         }
     }
 
-    fn try_or_apply(self, formatter: &'a Formatter<T>) -> anyhow::Result<Self::Internal>
+    fn try_or_apply(self, formatter: &'_ Formatter<T>) -> anyhow::Result<Self::Internal>
     where
-        Self: Try<Residual = Result<Infallible, LazyError<'a, T>>, Output = Self::Internal>,
+        Self: Try<Residual = Result<Infallible, LazyError<T>>, Output = Self::Internal>,
     {
         match self.branch() {
             ControlFlow::Continue(output) => Ok(output),
@@ -84,7 +84,7 @@ pub(crate) mod private {
         }
     }
 
-    impl<R, T> Sealed for LazyResult<'_, R, T> {
+    impl<R, T> Sealed for LazyResult<R, T> {
         type Internal = R;
 
         fn value(self) -> Option<R> {
@@ -136,14 +136,14 @@ mod tests {
             .unwrap();
     }
 
-    fn with_ctx_error<'a>(option: Option<bool>, diagnostic: i32) -> LazyResult<'a, bool, i32> {
+    fn with_ctx_error(option: Option<bool>, diagnostic: i32) -> LazyResult<bool, i32> {
         let unwraped_option: bool =
             option.with_ctx::<LazyResult<bool, i32>>(lazybail!(|fmt| "{}", fmt(diagnostic)))?;
 
         Ok(unwraped_option)
     }
 
-    fn lazybail_error<'a>(i: i32) -> LazyResult<'a, bool, i32> {
+    fn lazybail_error(i: i32) -> LazyResult<bool, i32> {
         lazybail!(|fmt| "{}", fmt(i))?;
         Ok(true)
     }
