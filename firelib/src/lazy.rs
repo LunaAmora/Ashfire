@@ -5,34 +5,43 @@ use std::{
 
 use anyhow::{Error, Result};
 
-pub type Formatter<T> = dyn Fn(T) -> String;
 pub type LazyResult<R, T> = Result<R, LazyError<T>>;
 
-pub struct LazyError<T>(Box<dyn Fn(&'_ Formatter<T>) -> String>);
+pub trait Formatter<T> {
+    fn apply(&self, t: T) -> String;
+}
+
+impl<T, A: Fn(T) -> String> Formatter<T> for A {
+    fn apply(&self, t: T) -> String {
+        self(t)
+    }
+}
+
+pub struct LazyError<T>(Box<dyn for<'a> Formatter<&'a dyn Formatter<T>>>);
 
 impl<T> LazyError<T> {
-    pub fn new(lazy_error: impl Fn(&'_ Formatter<T>) -> String + 'static) -> Self {
-        Self(Box::new(lazy_error))
+    pub fn new(lazy_error: impl Fn(&dyn Formatter<T>) -> String + 'static) -> Self {
+        LazyError(Box::new(lazy_error))
     }
 
-    pub fn apply(&self, formatter: &'_ Formatter<T>) -> Error {
-        anyhow::anyhow!(self.0(formatter))
+    pub fn apply(&self, formatter: &dyn Formatter<T>) -> Error {
+        anyhow::anyhow!(self.0.apply(formatter))
     }
 }
 
 pub trait LazyCtx<T>: private::Sealed {
     fn with_ctx(
-        self, lazy_error: impl Fn(&'_ Formatter<T>) -> String + 'static,
+        self, lazy_error: impl Fn(&dyn Formatter<T>) -> String + 'static,
     ) -> Result<Self::Internal, LazyError<T>>;
 
-    fn try_or_apply(self, format: &'_ Formatter<T>) -> Result<Self::Internal>
+    fn try_or_apply(self, format: &dyn Formatter<T>) -> Result<Self::Internal>
     where
         Self: Try<Residual = Result<Infallible, LazyError<T>>, Output = Self::Internal>;
 }
 
 impl<A: private::Sealed, T> LazyCtx<T> for A {
     fn with_ctx(
-        self, lazy_error: impl Fn(&'_ Formatter<T>) -> String + 'static,
+        self, lazy_error: impl Fn(&dyn Formatter<T>) -> String + 'static,
     ) -> Result<Self::Internal, LazyError<T>> {
         match self.value() {
             Some(output) => Ok(output),
@@ -40,7 +49,7 @@ impl<A: private::Sealed, T> LazyCtx<T> for A {
         }
     }
 
-    fn try_or_apply(self, format: &'_ Formatter<T>) -> Result<Self::Internal>
+    fn try_or_apply(self, format: &dyn Formatter<T>) -> Result<Self::Internal>
     where
         Self: Try<Residual = Result<Infallible, LazyError<T>>, Output = Self::Internal>,
     {
@@ -105,7 +114,7 @@ pub(crate) mod private {
 
 #[cfg(test)]
 mod tests {
-    use super::{LazyCtx, LazyResult};
+    use super::{LazyCtx, LazyError, LazyResult};
 
     #[test]
     fn lazybail_test() {
@@ -131,17 +140,48 @@ mod tests {
     }
 
     fn with_ctx_error(option: Option<bool>, diagnostic: i32) -> LazyResult<bool, i32> {
-        let unwraped_option: bool = option.with_ctx(move |fmt| format!("{}", fmt(diagnostic)))?;
+        let unwraped_option: bool = option.with_ctx(move |f| format!("{}", f.apply(diagnostic)))?;
 
         Ok(unwraped_option)
     }
 
     fn lazybail_error(i: i32) -> LazyResult<bool, i32> {
-        lazybail!(|fmt| "{}", fmt(i));
+        lazybail!(|f| "{}", f.apply(i));
         Ok(true)
     }
 
     fn int_error_fmt(i: i32) -> String {
         format!("Error: `{}`", i)
+    }
+
+    #[test]
+    fn lifetimes_test() {
+        let a = format_mutate_format(&create_cls(34), &mut Program(25));
+        let b = format_mutate_format(&create_cls(40), &mut Program(19));
+        assert_eq!(a, b);
+    }
+
+    fn format_mutate_format(cls: &LazyError<i32>, program: &mut Program) -> String {
+        let first = cls.apply(&|i| program.format(i));
+        program.plus(10);
+        let second = cls.apply(&|i| program.format(i));
+
+        format!("{first}. {second}")
+    }
+
+    fn create_cls<T: Copy + 'static>(value: T) -> LazyError<T> {
+        LazyError::new(move |f| format!("Value: {}", f.apply(value)))
+    }
+
+    struct Program(i32);
+
+    impl Program {
+        fn format(&self, i: i32) -> String {
+            format!("`{}`", self.0 + i)
+        }
+
+        fn plus(&mut self, i: i32) {
+            self.0 += i;
+        }
     }
 }
