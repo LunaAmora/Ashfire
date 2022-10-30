@@ -146,8 +146,7 @@ mod tests {
     }
 
     fn lazybail_error(i: i32) -> LazyResult<bool, i32> {
-        lazybail!(|f| "{}", f.apply(i));
-        Ok(true)
+        lazybail!(|f| "{}", f.apply(i))
     }
 
     fn int_error_fmt(i: i32) -> String {

@@ -276,3 +276,117 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fmt::Display;
+
+    use anyhow::{Error, Result};
+
+    use crate as firelib;
+    use crate::{lazy::*, *};
+
+    pub enum ErrorType {
+        Err(String),
+        I32(i32),
+    }
+
+    #[derive(FlowControl)]
+    #[alternative(value, Ok(None))]
+    pub struct OptionErr<T> {
+        pub value: LazyResult<Option<T>, ErrorType>,
+    }
+
+    impl<T> Default for OptionErr<T> {
+        fn default() -> Self {
+            Self { value: Ok(None) }
+        }
+    }
+
+    impl<T> From<Error> for OptionErr<T> {
+        fn from(err: Error) -> Self {
+            Self {
+                value: Err(LazyError::new(move |f| {
+                    format!("{}", f.apply(ErrorType::Err(err.to_string())))
+                })),
+            }
+        }
+    }
+
+    impl<T> FromResidual<Result<Infallible, LazyError<ErrorType>>> for OptionErr<T> {
+        fn from_residual(residual: Result<Infallible, LazyError<ErrorType>>) -> Self {
+            match residual {
+                Err(err) => Self { value: Err(err) },
+                Ok(_) => unreachable!(),
+            }
+        }
+    }
+
+    impl<T> OptionErr<T> {
+        pub fn new(value: T) -> Self {
+            Self { value: Ok(Some(value)) }
+        }
+    }
+
+    impl<T: Display> Display for OptionErr<T> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match &self.value {
+                Ok(Some(value)) => write!(f, "Some: {}", value),
+                Ok(None) => write!(f, "None"),
+                Err(err) => write!(f, "Error: {}", err.apply(&|error| format_err(error))),
+            }
+        }
+    }
+
+    #[test]
+    fn test_error() {
+        assert_eq!(choice1().to_string(), "Error: -> `69`");
+    }
+
+    #[test]
+    fn test_some() {
+        assert_eq!(choice2().to_string(), "Some: 420");
+    }
+
+    #[test]
+    fn test_bail() {
+        assert_eq!(choice3().to_string(), "Error: No alternative found");
+    }
+
+    fn choice1() -> OptionErr<i32> {
+        choice!(OptionErr, value1(), value2(), value3(); bail!("No alternative found"));
+    }
+
+    fn choice2() -> OptionErr<i32> {
+        choice!(OptionErr, value1(), value3(); bail!("No alternative found"));
+    }
+
+    fn choice3() -> OptionErr<i32> {
+        choice!(OptionErr, value1(); bail!("No alternative found"));
+    }
+
+    fn value1() -> OptionErr<i32> {
+        OptionErr::default()
+    }
+
+    fn value2() -> OptionErr<i32> {
+        lazy_fail(69)?;
+
+        OptionErr::default()
+    }
+
+    fn value3() -> OptionErr<i32> {
+        OptionErr::new(420)
+    }
+
+    fn lazy_fail(i: i32) -> LazyResult<(), ErrorType> {
+        lazybail!(|f| "-> {}", f.apply(ErrorType::I32(i)))
+    }
+
+    fn format_err(err: ErrorType) -> String {
+        match err {
+            ErrorType::Err(err) => err,
+            ErrorType::I32(n) => format!("`{}`", n),
+        }
+    }
+}
