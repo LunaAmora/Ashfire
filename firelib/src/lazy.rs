@@ -18,6 +18,16 @@ impl<T, A: Fn(T) -> String> Formatter<T> for A {
     }
 }
 
+pub trait LazyFormatter<T> {
+    fn apply(&self, t: &dyn Formatter<T>) -> String;
+}
+
+impl<T, A: Fn(&dyn Formatter<T>) -> String> LazyFormatter<T> for A {
+    fn apply(&self, t: &dyn Formatter<T>) -> String {
+        self(t)
+    }
+}
+
 pub struct LazyError<T>(Box<dyn for<'a> Formatter<&'a dyn Formatter<T>>>);
 
 impl<T> LazyError<T> {
@@ -55,6 +65,10 @@ pub trait LazyCtx<T>: private::Sealed {
         self, lazy_error: impl Fn(&dyn Formatter<T>) -> String + 'static,
     ) -> Result<Self::Internal, LazyError<T>>;
 
+    fn with_err_ctx(
+        self, lazy_error: impl Fn() -> LazyError<T>,
+    ) -> Result<Self::Internal, LazyError<T>>;
+
     fn try_or_apply(self, format: &dyn Formatter<T>) -> Result<Self::Internal>
     where
         Self: Try<Residual = Result<Infallible, LazyError<T>>, Output = Self::Internal>;
@@ -67,6 +81,15 @@ impl<A: private::Sealed, T> LazyCtx<T> for A {
         match self.value() {
             Some(output) => Ok(output),
             None => Err(LazyError::new(lazy_error)),
+        }
+    }
+
+    fn with_err_ctx(
+        self, lazy_error: impl Fn() -> LazyError<T>,
+    ) -> Result<Self::Internal, LazyError<T>> {
+        match self.value() {
+            Some(output) => Ok(output),
+            None => Err(lazy_error()),
         }
     }
 
@@ -87,6 +110,13 @@ macro_rules! lazybail {
         Err($crate::lazy::LazyError::new(move |$i| {
             format!( $( $fmt ),* )
         }))?
+    };
+}
+
+#[macro_export]
+macro_rules! lazyformat {
+    (| $i:pat_param | $fmt:expr) => {
+        move |$i: &dyn $crate::lazy::Formatter<_>| $fmt
     };
 }
 

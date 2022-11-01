@@ -151,6 +151,12 @@ impl<T, E> FromResidual<Result<Infallible, <Self as Try>::Residual>> for DoubleR
     }
 }
 
+impl<T, E, U> FromResidual<Result<Infallible, LazyError<U>>> for DoubleResult<T, E> {
+    fn from_residual(_residual: Result<Infallible, LazyError<U>>) -> Self {
+        todo!()
+    }
+}
+
 pub trait Stack<T>: Deref<Target = [T]> {
     fn push(&mut self, item: T);
     fn push_n<const N: usize>(&mut self, items: [T; N]);
@@ -158,7 +164,7 @@ pub trait Stack<T>: Deref<Target = [T]> {
     fn pop_n(&mut self, n: usize) -> Result<Vec<T>>;
     fn pop_array<const N: usize>(&mut self) -> Result<[T; N]>;
     fn peek(&mut self) -> Option<&T>;
-    fn get(&self, n: usize) -> Option<&T>;
+    fn get_from(&self, n: usize) -> Option<&T>;
 }
 
 #[derive(Clone)]
@@ -260,8 +266,43 @@ impl<T: Clone> Stack<T> for EvalStack<T> {
         self.frames.last()
     }
 
-    fn get(&self, n: usize) -> Option<&T> {
+    fn get_from(&self, n: usize) -> Option<&T> {
         self.frames.get(self.len() - 1 - n)
+    }
+}
+
+impl<T> Stack<T> for Vec<T> {
+    fn push(&mut self, item: T) {
+        self.push(item)
+    }
+
+    fn push_n<const N: usize>(&mut self, items: [T; N]) {
+        self.extend(items)
+    }
+
+    fn pop(&mut self) -> Option<T> {
+        self.pop()
+    }
+
+    fn pop_n(&mut self, n: usize) -> Result<Vec<T>> {
+        let range = (self.len() - n)..;
+        Ok(self.drain(range).collect())
+    }
+
+    fn pop_array<const N: usize>(&mut self) -> Result<[T; N]> {
+        todo!()
+    }
+
+    fn peek(&mut self) -> Option<&T> {
+        self.last()
+    }
+
+    fn get_from(&self, n: usize) -> Option<&T> {
+        if n > self.len() {
+            return None;
+        }
+
+        Some(&self[self.len() - 1 - n])
     }
 }
 

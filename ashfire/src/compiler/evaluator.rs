@@ -75,12 +75,12 @@ pub trait Expect<T: Clone, B: From<T> + Copy>: Stack<T> {
 
         let (typ, start) = match arity {
             ArityType::Any => return Ok(()),
-            ArityType::Same => (B::from(self.get(0).cloned().unwrap()), 1),
+            ArityType::Same => (B::from(self.get_from(0).cloned().unwrap()), 1),
             ArityType::Type(typ) => (typ, 0),
         };
 
         for i in start..n {
-            self.program_type(program, self.get(i).unwrap(), typ, loc)?;
+            self.program_type(program, self.get_from(i).unwrap(), typ, loc)?;
         }
 
         Ok(())

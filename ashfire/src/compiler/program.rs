@@ -22,8 +22,8 @@ pub struct Program {
     data: Vec<OffsetWord>,
 }
 
-pub type OptionErr<T> = ashlib::OptionErr<T, Fmt>;
-pub type LazyResult<T> = lazy::LazyResult<T, Fmt>;
+pub type OptionErr<T, E = Fmt> = ashlib::OptionErr<T, E>;
+pub type LazyResult<T, E = Fmt> = lazy::LazyResult<T, E>;
 
 impl Program {
     pub fn new() -> Self {
