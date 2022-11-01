@@ -145,7 +145,7 @@ impl TypeChecker {
                 }
 
                 IntrinsicType::Cast(n) => {
-                    self.data_stack.expect_pop(program, loc)?;
+                    self.data_stack.expect_pop(loc)?;
 
                     let cast: TokenType = match n {
                         1.. => Value::from((n - 1) as usize).get_type(),
@@ -157,7 +157,7 @@ impl TypeChecker {
             },
 
             OpType::Drop => {
-                self.data_stack.expect_pop(program, loc)?;
+                self.data_stack.expect_pop(loc)?;
             }
 
             OpType::Dup => {
@@ -169,17 +169,17 @@ impl TypeChecker {
             }
 
             OpType::Swap => {
-                let [a, b] = self.data_stack.expect_pop_n(program, loc)?;
+                let [a, b] = self.data_stack.expect_pop_n(loc)?;
                 self.data_stack.push_n([b, a]);
             }
 
             OpType::Over => {
-                let [a, b] = self.data_stack.expect_pop_n(program, loc)?;
+                let [a, b] = self.data_stack.expect_pop_n(loc)?;
                 self.data_stack.push_n([a.clone(), b, a]);
             }
 
             OpType::Rot => {
-                let [a, b, c] = self.data_stack.expect_pop_n(program, loc)?;
+                let [a, b, c] = self.data_stack.expect_pop_n(loc)?;
                 self.data_stack.push_n([b, c, a]);
             }
 
@@ -292,7 +292,7 @@ impl TypeChecker {
             OpType::Do => todo!(),
             OpType::EndWhile => todo!(),
 
-            OpType::Unpack => match self.data_stack.expect_pop(program, op.loc)?.get_type() {
+            OpType::Unpack => match self.data_stack.expect_pop(op.loc)?.get_type() {
                 TokenType::DataPtr(n) => {
                     let index = usize::from(n);
                     let stk = program.structs_types.get(index).unwrap();
@@ -341,7 +341,7 @@ impl TypeChecker {
     fn expect_struct_pointer(
         &mut self, prog: &mut Program, ip: usize, op: &Op, prefix: &str,
     ) -> Result<TokenType> {
-        match self.data_stack.expect_pop(prog, op.loc)?.get_type() {
+        match self.data_stack.expect_pop(op.loc)?.get_type() {
             TokenType::DataPtr(value) => {
                 let word = prog.get_word(op.operand).strip_prefix(prefix).unwrap();
                 let stk = prog.structs_types.get(usize::from(value)).unwrap();

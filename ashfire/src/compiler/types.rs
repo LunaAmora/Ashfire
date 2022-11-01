@@ -165,7 +165,7 @@ impl From<Op> for Result<Option<Vec<Op>>> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct IRToken {
     pub token_type: TokenType,
     pub operand: i32,

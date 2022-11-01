@@ -42,32 +42,30 @@ pub fn alternative(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as AttributeArgs);
 
     let (imp, struct_name) = extract_generics(&ast);
-    let matcher = generate_matcher(args);
+    let (name, pattern) = generate_matcher(&args);
 
     TokenStream::from(quote! {
         #ast
 
-        #imp firelib::Alternative for #struct_name {}
-
         #imp std::ops::Try for #struct_name {
-            type Output = Self;
-            type Residual = Self;
+            type Output = <Self as firelib::choice::Alternative>::ChoiceOutput;
+            type Residual = <Self as firelib::choice::Alternative>::ChoiceResidual;
 
             fn from_output(output: Self::Output) -> Self {
-                output
+                Self::from(output)
             }
 
             fn branch(self) -> std::ops::ControlFlow<Self::Residual, Self::Output> {
                 match self {
-                    Self {#matcher, ..} => std::ops::ControlFlow::Continue(self),
-                    _ => std::ops::ControlFlow::Break(self),
+                    Self {#name: #pattern, ..} => std::ops::ControlFlow::Continue(Self::Output::default()),
+                    Self {#name, ..} => std::ops::ControlFlow::Break(#name),
                 }
             }
         }
 
         #imp std::ops::FromResidual for #struct_name {
             fn from_residual(residual: <Self as std::ops::Try>::Residual) -> Self {
-                residual
+                Self::from(residual)
             }
         }
     })
@@ -75,29 +73,11 @@ pub fn alternative(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 type QuoteStream = quote::__private::TokenStream;
 
-fn generate_matcher(args: Vec<NestedMeta>) -> QuoteStream {
-    let mut matcher = QuoteStream::new();
-    let mut i = 0;
-
-    loop {
-        let (name, pattern) = (
-            args.get(i).expect("Missing match attribute name"),
-            args.get(i + 1).expect("Missing match attribute pattern"),
-        );
-
-        matcher = if i == 0 {
-            quote!(#name: #pattern)
-        } else {
-            quote!(#matcher, #name: #pattern)
-        };
-
-        i += 2;
-        if args.len() - i == 0 {
-            break;
-        }
-    }
-
-    matcher
+fn generate_matcher(args: &Vec<NestedMeta>) -> (&NestedMeta, &NestedMeta) {
+    assert!(args.len() == 2, "Only two arguments are supported!");
+    
+    (args.get(0).expect("Missing match attribute name"),
+        args.get(1).expect("Missing match attribute pattern"))
 }
 
 fn extract_generics(ast: &DeriveInput) -> (QuoteStream, QuoteStream) {

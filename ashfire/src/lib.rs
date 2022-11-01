@@ -8,57 +8,90 @@ use either::Either;
 use firelib::{
     alternative,
     anyhow::{bail, Error, Result},
+    choice::Alternative,
+    lazy::{LazyError, LazyResult},
     FlowControl, Success, SuccessFrom,
 };
+use itertools::Itertools;
 use num::FromPrimitive;
 
 #[derive(FlowControl)]
 #[alternative(value, Ok(None))]
-pub struct OptionErr<T> {
-    pub value: Result<Option<T>>,
+pub struct OptionErr<T, E> {
+    pub value: LazyResult<Option<T>, E>,
 }
 
-impl<T> OptionErr<T> {
+impl<T, E> Alternative for OptionErr<T, E> {
+    type ChoiceOutput = Option<T>;
+    type ChoiceResidual = LazyResult<Option<T>, E>;
+}
+
+impl<T, E> OptionErr<T, E> {
     pub fn new(value: T) -> Self {
         Self { value: Ok(Some(value)) }
     }
 }
 
-impl<T> Default for OptionErr<T> {
+impl<T, E> Default for OptionErr<T, E> {
     fn default() -> Self {
-        Ok(None).into()
+        Self { value: Ok(None) }
     }
 }
 
-impl<T> From<Result<Option<T>>> for OptionErr<T> {
-    fn from(value: Result<Option<T>>) -> Self {
+impl<T, E> FromResidual<LazyResult<Infallible, E>> for OptionErr<T, E> {
+    fn from_residual(residual: LazyResult<Infallible, E>) -> Self {
+        match residual {
+            Err(lazy) => Self { value: Err(lazy) },
+            Ok(_) => unreachable!(),
+        }
+    }
+}
+
+impl<T, E> From<Error> for OptionErr<T, E> {
+    fn from(err: Error) -> Self {
+        let err = err
+            .chain()
+            .map(|err| format!("{}", err))
+            .join("    ---->\n[Error] ");
+
+        Self {
+            value: Err(LazyError::new(move |_| format!("{err}"))),
+        }
+    }
+}
+
+impl<T, E> From<LazyResult<Option<T>, E>> for OptionErr<T, E> {
+    fn from(value: LazyResult<Option<T>, E>) -> Self {
         Self { value }
     }
 }
 
-impl<T> From<Option<T>> for OptionErr<T> {
+impl<T, E> From<Result<Option<T>>> for OptionErr<T, E> {
+    fn from(value: Result<Option<T>>) -> Self {
+        match value {
+            Ok(ok) => Self::from(ok),
+            Err(err) => Self::from(err),
+        }
+    }
+}
+
+impl<T, E> From<Option<T>> for OptionErr<T, E> {
     fn from(value: Option<T>) -> Self {
         Self { value: Ok(value) }
     }
 }
 
-impl<T> From<Error> for OptionErr<T> {
-    fn from(err: Error) -> Self {
-        Self { value: Err(err) }
-    }
-}
-
-impl<T> Success for OptionErr<Vec<T>> {
+impl<T, E> Success for OptionErr<Vec<T>, E> {
     fn success_value() -> Self {
-        OptionErr::from(Ok(Some(vec![])))
+        OptionErr { value: Ok(Some(vec![])) }
     }
 }
 
-impl<T> SuccessFrom for OptionErr<Vec<T>> {
+impl<T, E> SuccessFrom for OptionErr<Vec<T>, E> {
     type From = T;
 
     fn success_from(from: Self::From) -> Self {
-        OptionErr::from(Ok(Some(vec![from])))
+        OptionErr { value: Ok(Some(vec![from])) }
     }
 }
 

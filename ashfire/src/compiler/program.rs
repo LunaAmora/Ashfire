@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use ashlib::from_i32;
+use firelib::{lazy, lexer::Loc};
 use itertools::Itertools;
 
 use super::{parser::ParseContext, types::*};
@@ -20,6 +21,9 @@ pub struct Program {
     data_size: i32,
     data: Vec<OffsetWord>,
 }
+
+pub type OptionErr<T> = ashlib::OptionErr<T, Fmt>;
+pub type LazyResult<T> = lazy::LazyResult<T, Fmt>;
 
 impl Program {
     pub fn new() -> Self {
@@ -135,14 +139,14 @@ impl Program {
         }
     }
 
-    pub fn type_display(&self, typ: TokenType, operand: i32) -> String {
-        match typ {
-            TokenType::Keyword => format!("{:?}", from_i32::<KeywordType>(operand)),
-            TokenType::Word => self.get_word(operand).to_owned(),
+    pub fn type_display(&self, tok: IRToken) -> String {
+        match tok.token_type {
+            TokenType::Keyword => format!("{:?}", from_i32::<KeywordType>(tok.operand)),
+            TokenType::Word => self.get_word(tok.operand).to_owned(),
             TokenType::DataType(value) | TokenType::DataPtr(value) => {
-                self.data_display(value, operand)
+                self.data_display(value, tok.operand)
             }
-            TokenType::Str => self.get_string(operand).to_string(),
+            TokenType::Str => self.get_string(tok.operand).to_string(),
         }
     }
 
@@ -151,6 +155,15 @@ impl Program {
         self.included_files
             .get(loc.file_index)
             .map_or_else(String::new, |l| format!("{l}:{}:{} ", loc.line, loc.col))
+    }
+
+    #[allow(dead_code)]
+    pub fn format(&self, fmt: Fmt) -> String {
+        match fmt {
+            Fmt::Loc(loc) => self.loc_fmt(loc),
+            Fmt::Tok(tok) => self.type_display(tok),
+            Fmt::Typ(typ) => self.type_name(typ),
+        }
     }
 
     pub fn get_intrinsic_type(&self, word: &str) -> Option<IntrinsicType> {
@@ -239,4 +252,11 @@ pub trait ProgramVisitor {
     fn exit_proc(&mut self) {
         self.set_index(None)
     }
+}
+
+#[allow(dead_code)]
+pub enum Fmt {
+    Loc(Loc),
+    Typ(TokenType),
+    Tok(IRToken),
 }

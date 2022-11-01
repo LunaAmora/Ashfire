@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use ashlib::{from_i32, DoubleResult, OptionErr, Stack};
+use ashlib::{from_i32, DoubleResult, Stack};
 use either::Either;
 use firelib::{
     anyhow::{Context, Result},
@@ -553,7 +553,7 @@ impl Parser {
                         OptionErr,
                         self.parse_keyword_ctx(&mut colons, word, tok, prog),
                         self.parse_end_ctx(colons, i, word, prog),
-                    );
+                    )?;
                 }
 
                 (0, _) => return self.parse_word_ctx(&tok, word, prog),
@@ -1061,14 +1061,14 @@ impl Program {
 
     fn format_token(&self, tok: IRToken) -> (String, String) {
         let desc = self.type_name(tok.token_type);
-        let name = self.type_display(tok.token_type, tok.operand);
-        (self.loc_fmt(&tok), format!("{} `{}`", desc, name))
+        let name = self.type_display(tok);
+        (self.loc_fmt(tok.loc), format!("{} `{}`", desc, name))
     }
 
     fn invalid_token(&self, tok: IRToken, error_context: &str) -> String {
         let desc = self.type_name(tok.token_type);
-        let name = self.type_display(tok.token_type, tok.operand);
-        let loc = self.loc_fmt(&tok);
+        let name = self.type_display(tok);
+        let loc = self.loc_fmt(tok.loc);
         format!("{loc}Invalid `{desc}` found on {error_context}: `{name}`")
     }
 

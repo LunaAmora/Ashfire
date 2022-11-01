@@ -1,8 +1,11 @@
 use ashlib::{from_i32, DoubleResult, EvalStack, Stack};
 use either::Either;
-use firelib::{anyhow::Result, lexer::Loc};
+use firelib::{anyhow::Result, lazy::LazyCtx, lexer::Loc};
 
-use super::{program::Program, types::*};
+use super::{
+    program::{Fmt, LazyResult, Program},
+    types::*,
+};
 
 pub enum ArityType<T: Copy> {
     Any,
@@ -16,13 +19,15 @@ pub trait Expect<T: Clone, B: From<T> + Copy>: Stack<T> {
     fn program_type(&self, program: &Program, frame: &T, expected: B, loc: Loc) -> Result<()>;
 
     fn expect_exact_pop(&mut self, contract: &[B], program: &Program, loc: Loc) -> Result<Vec<T>> {
-        self.expect_stack_size(contract.len(), program, loc)?;
+        self.expect_stack_size(contract.len(), loc)
+            .try_or_apply(&|_| todo!())?;
         self.program_exact(program, contract, loc)?;
         self.pop_n(contract.len())
     }
 
     fn expect_contract_pop(&mut self, contr: &[B], program: &Program, loc: Loc) -> Result<Vec<T>> {
-        self.expect_stack_size(contr.len(), program, loc)?;
+        self.expect_stack_size(contr.len(), loc)
+            .try_or_apply(&|_| todo!())?;
         self.program_arity(program, contr, loc)?;
         self.pop_n(contr.len())
     }
@@ -30,7 +35,8 @@ pub trait Expect<T: Clone, B: From<T> + Copy>: Stack<T> {
     fn expect_array_pop<const N: usize>(
         &mut self, contr: [B; N], program: &Program, loc: Loc,
     ) -> Result<[T; N]> {
-        self.expect_stack_size(contr.len(), program, loc)?;
+        self.expect_stack_size(contr.len(), loc)
+            .try_or_apply(&|_| todo!())?;
         self.program_arity(program, &contr, loc)?;
         self.pop_array()
     }
@@ -47,13 +53,13 @@ pub trait Expect<T: Clone, B: From<T> + Copy>: Stack<T> {
         Ok(self.peek().unwrap())
     }
 
-    fn expect_pop(&mut self, program: &Program, loc: Loc) -> Result<T> {
-        self.expect_stack_size(1, program, loc)?;
+    fn expect_pop(&mut self, loc: Loc) -> Result<T> {
+        self.expect_stack_size(1, loc).try_or_apply(&|_| todo!())?;
         Ok(self.pop().unwrap())
     }
 
-    fn expect_pop_n<const N: usize>(&mut self, program: &Program, loc: Loc) -> Result<[T; N]> {
-        self.expect_stack_size(N, program, loc)?;
+    fn expect_pop_n<const N: usize>(&mut self, loc: Loc) -> Result<[T; N]> {
+        self.expect_stack_size(N, loc).try_or_apply(&|_| todo!())?;
         self.pop_array()
     }
 
@@ -65,7 +71,7 @@ pub trait Expect<T: Clone, B: From<T> + Copy>: Stack<T> {
     fn expect_arity(
         &self, n: usize, arity: ArityType<B>, program: &Program, loc: Loc,
     ) -> Result<()> {
-        self.expect_stack_size(n, program, loc)?;
+        self.expect_stack_size(n, loc).try_or_apply(&|_| todo!())?;
 
         let (typ, start) = match arity {
             ArityType::Any => return Ok(()),
@@ -80,18 +86,19 @@ pub trait Expect<T: Clone, B: From<T> + Copy>: Stack<T> {
         Ok(())
     }
 
-    fn expect_stack_size(&self, n: usize, program: &Program, loc: Loc) -> Result<()> {
+    fn expect_stack_size(&self, n: usize, loc: Loc) -> LazyResult<()> {
         let len = self.len();
-        any_ensure!(
-            len >= n,
-            concat!(
-                "Stack has less elements than expected\n",
-                "[INFO] {}Expected `{}` elements, but found `{}`"
-            ),
-            program.loc_fmt(loc),
-            n,
-            len
-        );
+        (len >= n).with_ctx(move |fmt| {
+            format!(
+                concat!(
+                    "Stack has less elements than expected\n",
+                    "[INFO] {}Expected `{}` elements, but found `{}`"
+                ),
+                fmt.apply(Fmt::Loc(loc)),
+                n,
+                len
+            )
+        })?;
         Ok(())
     }
 }
@@ -125,7 +132,7 @@ impl Evaluator<IRToken> for CompEvalStack {
         match tok.token_type {
             TokenType::Keyword => match from_i32(tok.operand) {
                 KeywordType::Drop => {
-                    self.expect_pop(prog, tok.loc)?;
+                    self.expect_pop(tok.loc)?;
                 }
 
                 KeywordType::Dup => {
@@ -134,17 +141,17 @@ impl Evaluator<IRToken> for CompEvalStack {
                 }
 
                 KeywordType::Swap => {
-                    let [a, b] = self.expect_pop_n(prog, tok.loc)?;
+                    let [a, b] = self.expect_pop_n(tok.loc)?;
                     self.push_n([b, a]);
                 }
 
                 KeywordType::Over => {
-                    let [a, b] = self.expect_pop_n(prog, tok.loc)?;
+                    let [a, b] = self.expect_pop_n(tok.loc)?;
                     self.push_n([a.clone(), b, a]);
                 }
 
                 KeywordType::Rot => {
-                    let [a, b, c] = self.expect_pop_n(prog, tok.loc)?;
+                    let [a, b, c] = self.expect_pop_n(tok.loc)?;
                     self.push_n([b, c, a]);
                 }
 
@@ -174,7 +181,7 @@ impl Evaluator<IRToken> for CompEvalStack {
                         }
 
                         IntrinsicType::Cast(n) => {
-                            let a = self.expect_pop(prog, tok.loc)?;
+                            let a = self.expect_pop(tok.loc)?;
 
                             let cast = match n {
                                 1.. => Value::from((n - 1) as usize).get_type(),

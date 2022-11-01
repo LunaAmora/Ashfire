@@ -1,5 +1,6 @@
 use std::{
     convert::Infallible,
+    fmt::{Debug, Display},
     ops::{ControlFlow, Try},
 };
 
@@ -27,7 +28,27 @@ impl<T> LazyError<T> {
     pub fn apply(&self, formatter: &dyn Formatter<T>) -> Error {
         anyhow::anyhow!(self.0.apply(formatter))
     }
+
+    pub fn skip(&self) -> Error {
+        anyhow::anyhow!(self.0.apply(&|_| String::new()))
+    }
 }
+
+impl<T> Display for LazyError<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &self.skip())
+    }
+}
+
+impl<T> Debug for LazyError<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("LazyError").field(&self.skip()).finish()
+    }
+}
+
+impl<T> std::error::Error for LazyError<T> {}
+unsafe impl<T> Send for LazyError<T> {}
+unsafe impl<T> Sync for LazyError<T> {}
 
 pub trait LazyCtx<T>: private::Sealed {
     fn with_ctx(

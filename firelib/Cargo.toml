@@ -11,6 +11,9 @@ license-file.workspace = true
 anyhow = "1.0"
 firelib_macro = {path = "../firelib_macro", optional = true}
 
+[dev-dependencies]
+itertools = "0.10.5"
+
 [features]
 default = ["derive"]
 derive = ["firelib_macro"]
