@@ -24,6 +24,7 @@ pub struct Program {
 
 pub type OptionErr<T, E = Fmt> = ashlib::OptionErr<T, E>;
 pub type LazyResult<T, E = Fmt> = lazy::LazyResult<T, E>;
+pub type LazyError<E = Fmt> = lazy::LazyError<E>;
 
 impl Program {
     pub fn new() -> Self {

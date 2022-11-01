@@ -8,16 +8,19 @@ use ashlib::{from_i32, DoubleResult, Stack};
 use either::Either;
 use firelib::{
     anyhow::{Context, Result},
+    lazy::LazyFormatter,
     lexer::Loc,
     utils::*,
     ShortCircuit, TrySuccess,
 };
 
 use super::{
-    evaluator::{CompEvalStack, Evaluator},
+    evaluator::{format_frames, CompEvalStack, Evaluator, Expect},
     program::*,
     types::*,
 };
+
+impl Expect<IRToken> for Vec<IRToken> {}
 
 pub struct LocWord {
     pub name: String,
@@ -719,19 +722,20 @@ impl Parser {
                 if result.is_empty() && i == 0 {
                     result.push(IRToken::new(Value::Any.get_type(), 0, tok.loc));
                 } else if result.len() != n {
-                    let frames: Vec<TypeFrame> = result.iter().map(TypeFrame::from).collect();
-                    let fmt_frames = prog.format_frames(&frames);
+                    let frames: Vec<TypeFrame> = result.iter().map(TypeFrame::new).collect();
+                    let fmt_frames = format_frames(&frames);
+                    let len = result.len();
 
-                    bail!(
-                        concat!(
+                    lazybail!(
+                        |f| concat!(
                             "Expected {} value{} on the stack ",
                             "in the end of the compile-time evaluation, ",
                             "but found {}:\n{}"
                         ),
                         n,
                         fold_bool!(n > 1, "s", ""),
-                        result.len(),
-                        fmt_frames
+                        len,
+                        fmt_frames.apply(f)
                     );
                 }
                 break;
@@ -950,9 +954,8 @@ impl Parser {
                 self.register_typed_word(&assign, struct_word, prog);
             }
         } else {
-            let stack: Vec<TypeFrame> = result.iter().map(TypeFrame::from).collect();
             let contract: Vec<TokenType> = members.iter().map(Typed::get_type).collect();
-            prog.expect_exact(&stack, &contract, end_token.loc)?;
+            result.expect_exact(&contract, end_token.loc)?;
 
             if self.inside_proc() {
                 members.reverse();

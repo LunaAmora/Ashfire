@@ -13,8 +13,20 @@ pub trait Typed {
     fn get_type(&self) -> TokenType;
 }
 
+impl<T: Typed> Typed for &T {
+    fn get_type(&self) -> TokenType {
+        (*self).get_type()
+    }
+}
+
 pub trait Location {
     fn loc(&self) -> Loc;
+}
+
+impl<T: Location> Location for &T {
+    fn loc(&self) -> Loc {
+        (*self).loc()
+    }
 }
 
 impl Location for Loc {
@@ -31,6 +43,12 @@ impl Location for &Token {
 
 pub trait Operand {
     fn as_operand(&self) -> i32;
+}
+
+impl<T: Operand> Operand for &T {
+    fn as_operand(&self) -> i32 {
+        (*self).as_operand()
+    }
 }
 
 impl Operand for i32 {
@@ -172,19 +190,19 @@ pub struct IRToken {
     pub loc: Loc,
 }
 
-impl Typed for &IRToken {
+impl Typed for IRToken {
     fn get_type(&self) -> TokenType {
         self.token_type
     }
 }
 
-impl Operand for &IRToken {
+impl Operand for IRToken {
     fn as_operand(&self) -> i32 {
         self.operand
     }
 }
 
-impl Location for &IRToken {
+impl Location for IRToken {
     fn loc(&self) -> Loc {
         self.loc
     }
@@ -309,13 +327,13 @@ impl ValueType {
     }
 }
 
-impl Typed for &ValueType {
+impl Typed for ValueType {
     fn get_type(&self) -> TokenType {
         self.token_type
     }
 }
 
-impl Operand for &ValueType {
+impl Operand for ValueType {
     fn as_operand(&self) -> i32 {
         self.value
     }
@@ -402,8 +420,14 @@ impl Deref for IndexWord {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct TypeFrame(TokenType, Loc);
+
+impl TypeFrame {
+    pub fn new<T: Typed + Location>(tok: T) -> Self {
+        Self(tok.get_type(), tok.loc().to_owned())
+    }
+}
 
 impl Typed for TypeFrame {
     fn get_type(&self) -> TokenType {
@@ -411,15 +435,9 @@ impl Typed for TypeFrame {
     }
 }
 
-impl Location for &TypeFrame {
+impl Location for TypeFrame {
     fn loc(&self) -> Loc {
         self.1
-    }
-}
-
-impl<T: Typed + Location> From<T> for TypeFrame {
-    fn from(tok: T) -> Self {
-        Self(tok.get_type(), tok.loc().to_owned())
     }
 }
 
@@ -463,7 +481,7 @@ impl From<IRToken> for TokenType {
 
 impl From<TypeFrame> for TokenType {
     fn from(frame: TypeFrame) -> Self {
-        frame.get_type()
+        (&frame).get_type()
     }
 }
 
