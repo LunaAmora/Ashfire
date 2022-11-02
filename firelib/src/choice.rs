@@ -96,12 +96,11 @@ mod tests {
     use std::{convert::Infallible, fmt::Display, ops::FromResidual};
 
     use anyhow::{Context, Error, Result};
-    use itertools::Itertools;
 
     use crate::{
         self as firelib, alternative, choice,
         choice::Alternative,
-        lazy::{LazyCtx, LazyError, LazyResult},
+        lazy::{LazyCtx, LazyResult},
         FlowControl,
     };
 
@@ -112,7 +111,7 @@ mod tests {
 
     #[test]
     fn test2() {
-        assert_eq!("Error: Error: choice2", choice2().to_string());
+        assert_eq!("[Error] choice2", choice2().to_string());
     }
 
     #[test]
@@ -123,7 +122,7 @@ mod tests {
     #[test]
     fn test4() {
         assert_eq!(
-            "Error: Error: choice4 (anyhow)    ----> Caused by:\nError: Error: choice2",
+            "[Error] choice4 (anyhow)    ---->\n[Error] [Error] choice2",
             choice4().to_string()
         );
     }
@@ -133,7 +132,7 @@ mod tests {
     }
 
     fn choice2() -> OptionErr<i32, ()> {
-        choice!(OptionErr, None; bail!("choice2"))
+        choice!(OptionErr, None; bail!("[Error] choice2"))
     }
 
     fn choice3() -> OptionErr<i32, ()> {
@@ -143,8 +142,8 @@ mod tests {
     fn choice4() -> OptionErr<i32, ()> {
         let val = choice!(OptionErr, choice3(), choice2())
             .value
-            .with_context(|| format!("choice4 (anyhow)"))?
-            .with_ctx(move |_| format!("choice4 (lazy_ctx)"))?;
+            .with_context(|| format!("[Error] choice4 (anyhow)"))?
+            .with_ctx(move |_| format!("[Error] choice4 (lazy_ctx)"))?;
 
         OptionErr::new(val)
     }
@@ -177,10 +176,7 @@ mod tests {
 
     impl<T, E> From<Error> for OptionErr<T, E> {
         fn from(err: Error) -> Self {
-            let err = format_err(err);
-            Self {
-                value: Err(LazyError::new(move |_| format!("{err}"))),
-            }
+            Self { value: Err(err.into()) }
         }
     }
 
@@ -210,14 +206,8 @@ mod tests {
             match &self.value {
                 Ok(Some(value)) => write!(f, "Some: {}", value),
                 Ok(None) => write!(f, "None"),
-                Err(err) => write!(f, "{}", format_err(err.skip())),
+                Err(err) => write!(f, "{}", err),
             }
         }
-    }
-
-    fn format_err(err: Error) -> String {
-        err.chain()
-            .map(|err| format!("Error: {}", err))
-            .join("    ----> Caused by:\n")
     }
 }

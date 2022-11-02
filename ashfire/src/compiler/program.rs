@@ -110,7 +110,7 @@ impl Program {
             .collect()
     }
 
-    pub fn data_name(&self, value: Value) -> String {
+    fn data_name(&self, value: Value) -> String {
         match value {
             Value::Int => "Integer",
             Value::Bool => "Boolean",
@@ -121,7 +121,7 @@ impl Program {
         .to_owned()
     }
 
-    pub fn type_name(&self, typ: TokenType) -> String {
+    fn type_name(&self, typ: TokenType) -> String {
         match typ {
             TokenType::Keyword => "Keyword",
             TokenType::Word => "Word or Intrinsic",
@@ -132,7 +132,7 @@ impl Program {
         .to_owned()
     }
 
-    pub fn data_display(&self, value: Value, operand: i32) -> String {
+    fn data_display(&self, value: Value, operand: i32) -> String {
         match value {
             Value::Bool => fold_bool!(operand != 0, "True", "False").to_owned(),
             Value::Ptr => format!("*{}", operand),
@@ -140,7 +140,7 @@ impl Program {
         }
     }
 
-    pub fn type_display(&self, tok: IRToken) -> String {
+    fn type_display(&self, tok: IRToken) -> String {
         match tok.token_type {
             TokenType::Keyword => format!("{:?}", from_i32::<KeywordType>(tok.operand)),
             TokenType::Word => self.get_word(tok.operand).to_owned(),
@@ -158,7 +158,6 @@ impl Program {
             .map_or_else(String::new, |l| format!("{l}:{}:{} ", loc.line, loc.col))
     }
 
-    #[allow(dead_code)]
     pub fn format(&self, fmt: Fmt) -> String {
         match fmt {
             Fmt::Loc(loc) => self.loc_fmt(loc),
@@ -255,7 +254,6 @@ pub trait ProgramVisitor {
     }
 }
 
-#[allow(dead_code)]
 pub enum Fmt {
     Loc(Loc),
     Typ(TokenType),

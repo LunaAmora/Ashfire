@@ -7,12 +7,12 @@ use std::{
 use either::Either;
 use firelib::{
     alternative,
-    anyhow::{bail, Error, Result},
+    anyhow::{Error, Result},
+    bail,
     choice::Alternative,
     lazy::{LazyError, LazyResult},
     FlowControl, Success, SuccessFrom,
 };
-use itertools::Itertools;
 use num::FromPrimitive;
 
 #[derive(FlowControl)]
@@ -47,16 +47,15 @@ impl<T, E> FromResidual<LazyResult<Infallible, E>> for OptionErr<T, E> {
     }
 }
 
+impl<T, E> From<LazyError<E>> for OptionErr<T, E> {
+    fn from(value: LazyError<E>) -> Self {
+        Self { value: Err(value) }
+    }
+}
+
 impl<T, E> From<Error> for OptionErr<T, E> {
     fn from(err: Error) -> Self {
-        let err = err
-            .chain()
-            .map(|err| format!("{}", err))
-            .join("    ---->\n[Error] ");
-
-        Self {
-            value: Err(LazyError::new(move |_| format!("{err}"))),
-        }
+        Self { value: Err(LazyError::from(err)) }
     }
 }
 
@@ -161,8 +160,8 @@ pub trait Stack<T>: Deref<Target = [T]> {
     fn push(&mut self, item: T);
     fn push_n<const N: usize>(&mut self, items: [T; N]);
     fn pop(&mut self) -> Option<T>;
-    fn pop_n(&mut self, n: usize) -> Result<Vec<T>>;
-    fn pop_array<const N: usize>(&mut self) -> Result<[T; N]>;
+    fn pop_n<E>(&mut self, n: usize) -> LazyResult<Vec<T>, E>;
+    fn pop_array<E, const N: usize>(&mut self) -> LazyResult<[T; N], E>;
     fn peek(&mut self) -> Option<&T>;
     fn get_from(&self, n: usize) -> Option<&T>;
 }
@@ -229,7 +228,7 @@ impl<T: Clone> Stack<T> for EvalStack<T> {
         self.frames.pop()
     }
 
-    fn pop_n(&mut self, n: usize) -> Result<Vec<T>> {
+    fn pop_n<E>(&mut self, n: usize) -> LazyResult<Vec<T>, E> {
         if n == 0 || n > self.len() {
             bail!("Invalid quantity of elements to pop: `{n}`/`{}`", self.len())
         };
@@ -240,7 +239,7 @@ impl<T: Clone> Stack<T> for EvalStack<T> {
         Ok(self.frames.drain(range).collect())
     }
 
-    fn pop_array<const N: usize>(&mut self) -> Result<[T; N]> {
+    fn pop_array<E, const N: usize>(&mut self) -> LazyResult<[T; N], E> {
         if N == 0 || N > self.len() {
             bail!("Invalid quantity of elements to pop: `{N}`/`{}`", self.len())
         };
@@ -284,12 +283,12 @@ impl<T> Stack<T> for Vec<T> {
         self.pop()
     }
 
-    fn pop_n(&mut self, n: usize) -> Result<Vec<T>> {
+    fn pop_n<E>(&mut self, n: usize) -> LazyResult<Vec<T>, E> {
         let range = (self.len() - n)..;
         Ok(self.drain(range).collect())
     }
 
-    fn pop_array<const N: usize>(&mut self) -> Result<[T; N]> {
+    fn pop_array<E, const N: usize>(&mut self) -> LazyResult<[T; N], E> {
         todo!()
     }
 

@@ -1,7 +1,6 @@
 use ashlib::{from_i32, DoubleResult, EvalStack, Stack};
 use either::Either;
 use firelib::{
-    anyhow::Result,
     lazy::{LazyCtx, LazyFormatter},
     lexer::Loc,
 };
@@ -19,58 +18,55 @@ pub enum ArityType<T: Copy> {
 }
 
 pub trait Expect<T: Clone + Typed + Location + 'static>: Stack<T> {
-    fn expect_exact_pop(&mut self, contract: &[TokenType], loc: Loc) -> Result<Vec<T>> {
-        self.expect_stack_size(contract.len(), loc)
-            .try_or_apply(&|_| todo!())?;
+    fn expect_exact_pop(&mut self, contract: &[TokenType], loc: Loc) -> LazyResult<Vec<T>> {
+        self.expect_stack_size(contract.len(), loc)?;
         self.expect_exact(contract, loc)?;
         self.pop_n(contract.len())
     }
 
-    fn expect_contract_pop(&mut self, contr: &[TokenType], loc: Loc) -> Result<Vec<T>> {
-        self.expect_stack_size(contr.len(), loc)
-            .try_or_apply(&|_| todo!())?;
+    fn expect_contract_pop(&mut self, contr: &[TokenType], loc: Loc) -> LazyResult<Vec<T>> {
+        self.expect_stack_size(contr.len(), loc)?;
         self.expect_arity(contr, loc)?;
         self.pop_n(contr.len())
     }
 
     fn expect_array_pop<const N: usize>(
         &mut self, contr: [TokenType; N], loc: Loc,
-    ) -> Result<[T; N]> {
-        self.expect_stack_size(contr.len(), loc)
-            .try_or_apply(&|_| todo!())?;
+    ) -> LazyResult<[T; N]> {
+        self.expect_stack_size(contr.len(), loc)?;
         self.expect_arity(&contr, loc)?;
         self.pop_array()
     }
 
     fn expect_arity_pop<const N: usize>(
         &mut self, arity: ArityType<TokenType>, loc: Loc,
-    ) -> Result<[T; N]> {
+    ) -> LazyResult<[T; N]> {
         self.expect_arity_type(N, arity, loc)?;
         self.pop_array()
     }
 
-    fn expect_peek(&mut self, arity_t: ArityType<TokenType>, loc: Loc) -> Result<&T> {
+    fn expect_peek(&mut self, arity_t: ArityType<TokenType>, loc: Loc) -> LazyResult<&T> {
         self.expect_arity_type(1, arity_t, loc)?;
         Ok(self.peek().unwrap())
     }
 
-    fn expect_pop(&mut self, loc: Loc) -> Result<T> {
-        self.expect_stack_size(1, loc).try_or_apply(&|_| todo!())?;
+    fn expect_pop(&mut self, loc: Loc) -> LazyResult<T> {
+        self.expect_stack_size(1, loc)?;
         Ok(self.pop().unwrap())
     }
 
-    fn expect_pop_n<const N: usize>(&mut self, loc: Loc) -> Result<[T; N]> {
-        self.expect_stack_size(N, loc).try_or_apply(&|_| todo!())?;
+    fn expect_pop_n<const N: usize>(&mut self, loc: Loc) -> LazyResult<[T; N]> {
+        self.expect_stack_size(N, loc)?;
         self.pop_array()
     }
 
-    fn expect_pop_type(&mut self, arity_t: TokenType, loc: Loc) -> Result<T> {
+    fn expect_pop_type(&mut self, arity_t: TokenType, loc: Loc) -> LazyResult<T> {
         self.expect_arity_type(1, ArityType::Type(arity_t), loc)?;
         Ok(self.pop().unwrap())
     }
 
-    fn expect_arity_type(&self, n: usize, arity: ArityType<TokenType>, loc: Loc) -> Result<()> {
-        self.expect_stack_size(n, loc).try_or_apply(&|_| todo!())?;
+    fn expect_arity_type(&self, n: usize, arity: ArityType<TokenType>, loc: Loc) -> LazyResult<()> {
+        self.expect_stack_size(n, loc)?;
 
         let (typ, start) = match arity {
             ArityType::Any => return Ok(()),

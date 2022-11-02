@@ -1,8 +1,5 @@
 use ashlib::{EvalStack, Stack};
-use firelib::{
-    anyhow::{Context, Result},
-    lexer::Loc,
-};
+use firelib::{anyhow::Result, lazy::LazyCtx, lexer::Loc};
 
 use super::{evaluator::*, program::*, types::*};
 
@@ -51,14 +48,14 @@ impl TypeChecker {
         Self { ..Default::default() }
     }
 
-    pub fn type_check(&mut self, program: &mut Program) -> Result<()> {
+    pub fn type_check(&mut self, program: &mut Program) -> LazyResult<()> {
         for ip in 0..program.ops.len() {
             self.type_check_op(ip, program)?;
         }
         Ok(())
     }
 
-    fn type_check_op(&mut self, ip: usize, program: &mut Program) -> Result<()> {
+    fn type_check_op(&mut self, ip: usize, program: &mut Program) -> LazyResult<()> {
         let op = program.ops.get(ip).unwrap();
         let loc = op.loc;
         match op.op_type {
@@ -281,10 +278,10 @@ impl TypeChecker {
                     program.set_operand(ip, index);
                 }
                 top => {
-                    bail!(
-                        "{}Cannot unpack element of type: `{}`",
-                        program.loc_fmt(loc),
-                        program.type_name(top)
+                    lazybail!(
+                        |f| "{}Cannot unpack element of type: `{}`",
+                        f.apply(Fmt::Loc(loc)),
+                        f.apply(Fmt::Typ(top))
                     );
                 }
             },
@@ -316,30 +313,26 @@ impl TypeChecker {
 
     fn expect_struct_pointer(
         &mut self, prog: &mut Program, ip: usize, op: &Op, prefix: &str,
-    ) -> Result<TokenType> {
+    ) -> LazyResult<TokenType> {
         match self.data_stack.expect_pop(op.loc)?.get_type() {
             TokenType::DataPtr(value) => {
-                let word = prog.get_word(op.operand).strip_prefix(prefix).unwrap();
+                let word = prog
+                    .get_word(op.operand)
+                    .strip_prefix(prefix)
+                    .unwrap()
+                    .to_string();
+
                 let stk = prog.structs_types.get(usize::from(value)).unwrap();
 
-                let members = stk.members();
-                let index = members
-                    .iter()
-                    .position(|mem| mem.name() == word)
-                    .with_context(|| {
-                        format!(
-                            "{}The struct {} does not contain a member with name: `{word}`",
-                            prog.loc_fmt(op.loc),
-                            stk.name()
-                        )
-                    })?;
-
-                let result = members.get(index).unwrap().get_type();
+                let index = get_struct_member_index(stk, word, op.loc)?;
+                let result = stk.members().get(index).unwrap().get_type();
 
                 prog.set_operand(ip, index * 4);
                 Ok(result)
             }
-            typ => bail!("Cannot `.` access elements of type: `{}`", prog.type_name(typ)),
+            typ => {
+                lazybail!(|f| "Cannot `.` access elements of type: `{}`", f.apply(Fmt::Typ(typ)))
+            }
         }
     }
 
@@ -354,6 +347,19 @@ impl TypeChecker {
     }
 }
 
+fn get_struct_member_index(stk: &StructDef, word: String, loc: Loc) -> LazyResult<usize> {
+    let name = stk.name().to_owned();
+    stk.members()
+        .iter()
+        .position(|mem| mem.name() == word)
+        .with_ctx(move |f| {
+            format!(
+                "{}The struct {name} does not contain a member with name: `{word}`",
+                f.apply(Fmt::Loc(loc)),
+            )
+        })
+}
+
 impl Program {
     fn set_operand(&mut self, ip: usize, index: usize) {
         let op = self.ops.get_mut(ip).unwrap();
@@ -362,7 +368,11 @@ impl Program {
 
     pub fn type_check(&mut self) -> Result<&mut Self> {
         info!("Typechecking program");
-        TypeChecker::new().type_check(self)?;
+
+        TypeChecker::new()
+            .type_check(self)
+            .try_or_apply(&|fmt| self.format(fmt))?;
+
         info!("Typechecking done");
 
         Ok(self)

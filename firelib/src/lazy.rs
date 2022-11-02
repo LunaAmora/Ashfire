@@ -1,10 +1,12 @@
 use std::{
+    any::type_name,
     convert::Infallible,
     fmt::{Debug, Display},
     ops::{ControlFlow, Try},
 };
 
 use anyhow::{Error, Result};
+use itertools::Itertools;
 
 pub type LazyResult<R, T> = Result<R, LazyError<T>>;
 
@@ -40,7 +42,7 @@ impl<T> LazyError<T> {
     }
 
     pub fn skip(&self) -> Error {
-        anyhow::anyhow!(self.0.apply(&|_| String::new()))
+        anyhow::anyhow!(self.0.apply(&|_| format!("<{}>", type_name::<T>())))
     }
 }
 
@@ -53,6 +55,17 @@ impl<T> Display for LazyError<T> {
 impl<T> Debug for LazyError<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("LazyError").field(&self.skip()).finish()
+    }
+}
+
+impl<E> From<Error> for LazyError<E> {
+    fn from(value: Error) -> Self {
+        let err = value
+            .chain()
+            .map(|err| format!("{}", err))
+            .join("    ---->\n[Error] ");
+
+        LazyError::new(move |_| format!("{err}"))
     }
 }
 
