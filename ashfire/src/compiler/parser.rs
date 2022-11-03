@@ -217,39 +217,36 @@ impl Parser {
     }
 
     fn define_op(&mut self, tok: IRToken, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        let loc = tok.loc;
-        let typ = tok.token_type;
-
         if !(matches!(tok.token_type, TokenType::Keyword | TokenType::Word) || self.inside_proc()) {
             lazybail!(
                 |f| "{}Token type cannot be used outside of a procedure: `{}`",
-                f.format(Fmt::Loc(loc)),
-                f.format(Fmt::Typ(typ))
+                f.format(Fmt::Loc(tok.loc)),
+                f.format(Fmt::Typ(tok.token_type))
             )
         };
 
         let op = Op::from(match tok.token_type {
-            TokenType::Keyword => return self.define_keyword_op(tok.operand, loc),
+            TokenType::Keyword => return self.define_keyword_op(tok.operand, tok.loc),
 
-            TokenType::Str => (OpType::PushStr, prog.register_string(tok.operand), loc),
+            TokenType::Str => (OpType::PushStr, prog.register_string(tok.operand), tok.loc),
 
-            TokenType::DataType(typ) => match typ {
+            TokenType::DataType(val) => match val {
                 Value::Type(_) => lazybail!(
-                    |f| "{}Value type not valid here: `{:?}`",
-                    f.format(Fmt::Loc(loc)),
-                    typ
+                    |f| "{}Value type not valid here: `{}`",
+                    f.format(Fmt::Loc(tok.loc)),
+                    f.format(Fmt::Typ(val.get_type()))
                 ),
-                _ => (OpType::PushData(typ), tok.operand, loc),
+                _ => (OpType::PushData(val), tok.operand, tok.loc),
             },
 
-            TokenType::DataPtr(typ) => lazybail!(
-                |f| "{}Data pointer type not valid here: `{:?}`",
-                f.format(Fmt::Loc(loc)),
-                typ
+            TokenType::DataPtr(ptr) => lazybail!(
+                |f| "{}Data pointer type not valid here: `{}`",
+                f.format(Fmt::Loc(tok.loc)),
+                f.format(Fmt::Typ(ptr.get_type()))
             ),
 
             TokenType::Word => {
-                let word = &LocWord::new(prog.get_word(tok.operand), loc);
+                let word = &LocWord::new(prog.get_word(tok.operand), tok.loc);
 
                 choice!(
                     OptionErr,
@@ -259,12 +256,8 @@ impl Parser {
                     self.define_context(word, prog)
                 )?;
 
-                let name = word.name.to_owned();
-                lazybail!(
-                    |f| "{}Word was not declared on the program: `{}`",
-                    f.format(Fmt::Loc(loc)),
-                    name
-                )
+                let error = format!("Word was not declared on the program: `{}`", word.name);
+                return error_loc(&error, tok.loc).into();
             }
         });
 
@@ -373,11 +366,8 @@ impl Parser {
             KeywordType::Proc |
             KeywordType::Mem |
             KeywordType::Struct => {
-                lazybail!(
-                    |f| "{}Keyword type is not valid here: `{:?}`",
-                    f.format(Fmt::Loc(loc)),
-                    key
-                )
+                let error = format!("Keyword type is not valid here: `{:?}`", key);
+                return error_loc(&error, loc).into();
             }
         };
 
@@ -623,12 +613,8 @@ impl Parser {
                 self.skip(2);
                 match self.compile_eval(prog).value {
                     Ok((result, eval)) => {
-                        if result.token_type == Value::Any {
-                            let loc = word.loc;
-                            lazybail!(
-                                |f| "{}Undefined variable value is not allowed",
-                                f.format(Fmt::Loc(loc))
-                            )
+                        if &result == Value::Any {
+                            Err(error_loc("Undefined variable value is not allowed", word.loc))?;
                         }
 
                         self.skip(eval);
@@ -649,7 +635,13 @@ impl Parser {
                 OptionErr::default()
             }
 
-            (_, KeywordType::End) => Err(missing_body(word.name.to_owned(), word.loc))?,
+            (_, KeywordType::End) => {
+                let error = format!(
+                    "Missing body or contract necessary to infer the type of the word: `{}`",
+                    word.name
+                );
+                return error_loc(&error, word.loc).into();
+            }
 
             _ => OptionErr::default(),
         }
@@ -672,7 +664,7 @@ impl Parser {
 
         self.skip(2);
         if let Ok((eval, skip)) = self.compile_eval(prog).value {
-            if eval.token_type != Value::Any {
+            if &eval != Value::Any {
                 self.skip(skip);
                 prog.consts.push(ValueType::new(word.to_string(), &eval));
                 self.name_scopes
@@ -734,20 +726,20 @@ impl Parser {
                 if result.is_empty() && i == 0 {
                     result.push(IRToken::new(Value::Any.get_type(), 0, tok.loc));
                 } else if result.len() != n {
-                    let frames: Vec<TypeFrame> = result.iter().map(TypeFrame::new).collect();
-                    let fmt_frames = format_frames(&frames);
+                    let frames = format_frames(&result);
                     let len = result.len();
 
                     lazybail!(
                         |f| concat!(
-                            "Expected {} value{} on the stack ",
+                            "{}Expected {} value{} on the stack ",
                             "in the end of the compile-time evaluation, ",
                             "but found {}:\n{}"
                         ),
+                        f.format(Fmt::Loc(tok.loc)),
                         n,
                         fold_bool!(n > 1, "s", ""),
                         len,
-                        fmt_frames.apply(f)
+                        frames.apply(f)
                     );
                 }
                 break;
@@ -775,10 +767,8 @@ impl Parser {
                 match key {
                     KeywordType::Arrow => {
                         if arrow {
-                            lazybail!(
-                                |f| "{}Duplicated `->` found on procedure definition",
-                                f.format(Fmt::Loc(loc))
-                            )
+                            let error = "Duplicated `->` found on procedure definition";
+                            return error_loc(error, loc).into();
                         }
                         arrow = true;
                     }
@@ -821,17 +811,17 @@ impl Parser {
     fn expect_by(
         &mut self, pred: impl FnOnce(&IRToken) -> bool, error_text: &str, loc: Loc,
     ) -> LazyResult<IRToken> {
-        let tok = self.next();
-        expect_token_by(tok, pred, error_text, Some(loc))
+        expect_token_by(self.next(), pred, error_text, loc)
     }
 
     fn parse_memory(&mut self, word: &LocWord, prog: &mut Program) -> LazyResult<()> {
-        self.expect_keyword(KeywordType::Colon, "`:` after `mem`", word.loc)?;
-        let value_token =
-            self.expect_by(|tok| tok.token_type == Value::Int, "memory size after `:`", word.loc)?;
-        self.expect_keyword(KeywordType::End, "`end` after memory size", word.loc)?;
+        let loc = word.loc;
 
-        let size = ((value_token.operand + 3) / 4) * 4;
+        self.expect_keyword(KeywordType::Colon, "`:` after `mem`", loc)?;
+        let value = self.expect_by(|tok| tok == Value::Int, "memory size after `:`", loc)?;
+        self.expect_keyword(KeywordType::End, "`end` after memory size", loc)?;
+
+        let size = ((value.operand + 3) / 4) * 4;
         let ctx = prog.push_mem_by_context(self.get_index(), word, size);
         self.name_scopes.register(word.to_string(), ctx);
 
@@ -884,10 +874,7 @@ impl Parser {
             continue;
         }
 
-        lazybail!(
-            |f| "{}Expected struct members or `end` after struct declaration",
-            f.format(Fmt::Loc(loc))
-        )
+        error_loc("Expected struct members or `end` after struct declaration", loc).into()
     }
 
     fn parse_const_or_var(
@@ -908,10 +895,10 @@ impl Parser {
             Ok(value) => value,
             Err(either) => match either {
                 Either::Right(err) => Err(err)?,
-                Either::Left(tok) => lazybail!(
-                    |f| "{}Failed to parse an valid struct value at compile-time evaluation",
-                    f.format(Fmt::Loc(tok.loc))
-                ),
+                Either::Left(tok) => Err(error_loc(
+                    "Failed to parse an valid struct value at compile-time evaluation",
+                    tok.loc,
+                ))?,
             },
         };
 
@@ -921,7 +908,7 @@ impl Parser {
         if result.len() == 1 {
             let eval = result.pop().unwrap();
 
-            if eval.token_type == Value::Any {
+            if &eval == Value::Any {
                 if self.inside_proc() {
                     members.reverse();
                 }
@@ -936,12 +923,12 @@ impl Parser {
                 if !equals_any!(member_type, Value::Any, eval.token_type) {
                     lazybail!(
                         |f| concat!(
-                            "{}Expected type `{:?}` on the stack at the end of ",
-                            "the compile-time evaluation, but found: `{:?}`"
+                            "{}Expected type `{}` on the stack at the end of ",
+                            "the compile-time evaluation, but found: `{}`"
                         ),
                         f.format(Fmt::Loc(end_token.loc)),
-                        member_type,
-                        eval.token_type
+                        f.format(Fmt::Typ(member_type)),
+                        f.format(Fmt::Typ(eval.token_type))
                     )
                 }
 
@@ -954,7 +941,7 @@ impl Parser {
 
             if self.inside_proc() {
                 members.reverse();
-                if let KeywordType::Equal = assign {
+                if assign == KeywordType::Equal {
                     result.reverse()
                 }
             }
@@ -1008,9 +995,12 @@ impl Parser {
                 continue;
             }
 
-            let tok = prog.lex_next_token(lex).value?;
-            let tok =
-                expect_token_by(tok, |token| token == TokenType::Str, "include file name", None)?;
+            let tok = expect_token_by(
+                prog.lex_next_token(lex).value?,
+                |tok| tok == TokenType::Str,
+                "include file name",
+                token.loc,
+            )?;
 
             let include_path = prog.get_string(tok.operand).as_str();
 
@@ -1069,14 +1059,9 @@ impl Program {
     }
 }
 
-fn missing_body(word: String, loc: Loc) -> LazyError {
-    LazyError::new(move |f| {
-        format!(
-            "{}Missing body or contract necessary to infer the type of the word: `{}`",
-            f.format(Fmt::Loc(loc)),
-            word
-        )
-    })
+fn error_loc(error: &str, loc: Loc) -> LazyError {
+    let error = error.to_string();
+    LazyError::new(move |f| format!("{}{error}", f.format(Fmt::Loc(loc))))
 }
 
 fn invalid_option(tok: Option<IRToken>, desc: &str, loc: Loc) -> LazyError {
@@ -1125,20 +1110,10 @@ fn format_block(error: &str, op: Op, loc: Loc) -> LazyError {
 }
 
 fn expect_token_by(
-    value: Option<IRToken>, pred: impl FnOnce(&IRToken) -> bool, desc: &str, loc: Option<Loc>,
+    value: Option<IRToken>, pred: impl FnOnce(&IRToken) -> bool, desc: &str, loc: Loc,
 ) -> LazyResult<IRToken> {
-    let desc = desc.to_string();
     match value {
         Some(tok) if pred(&tok) => Ok(tok),
-        Some(tok) => lazybail!(
-            |f| "{}Expected to find {desc}, but found: {} `{}`",
-            f.format(Fmt::Loc(tok.loc)),
-            f.format(Fmt::Tok(tok)),
-            f.format(Fmt::Typ(tok.token_type))
-        ),
-        None => lazybail!(
-            |f| "{}Expected to find {desc}, but found nothing",
-            loc.map_or_else(String::new, |l| f.format(Fmt::Loc(l)))
-        ),
+        invalid => Err(invalid_option(invalid, desc, loc)),
     }
 }

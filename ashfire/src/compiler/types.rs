@@ -235,6 +235,12 @@ impl PartialEq<TokenType> for &IRToken {
     }
 }
 
+impl PartialEq<Value> for &IRToken {
+    fn eq(&self, other: &Value) -> bool {
+        &self.token_type == other
+    }
+}
+
 impl From<(&ValueType, Loc)> for IRToken {
     fn from(tuple: (&ValueType, Loc)) -> Self {
         IRToken::new(tuple.0.token_type, tuple.0.value, tuple.1)
