@@ -151,7 +151,7 @@ impl Program {
         }
     }
 
-    pub fn loc_fmt<L: Location>(&self, loc: L) -> String {
+    fn loc_fmt<L: Location>(&self, loc: L) -> String {
         let loc = loc.loc();
         self.included_files
             .get(loc.file_index)

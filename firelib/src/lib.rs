@@ -190,8 +190,8 @@ where
 {
     fn or_return(self, f: impl FnOnce() -> T) -> ControlFlow<T, Self::Internal> {
         match self.value() {
-            Some(v) => ControlFlow::Continue(v),
-            None => ControlFlow::Break(f()),
+            Ok(v) => ControlFlow::Continue(v),
+            Err(_) => ControlFlow::Break(f()),
         }
     }
 }

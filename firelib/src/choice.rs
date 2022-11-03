@@ -68,19 +68,6 @@ where
 /// ```
 #[macro_export]
 macro_rules! choice {
-    ($typ:ident, $x:expr; bail!($( $fmt:expr ),*)) => {{
-        $typ::from($x)?;
-        $crate::bail!( $( $fmt ),* );
-    }};
-    ($typ:ident, $x:expr, $( $xs:expr ),* ; bail!($( $fmt:expr ),*)) => {{
-        let mut alternative = $typ::from($x);
-        alternative = try {
-            alternative? $(;
-            $typ::from($xs)?)*
-        };
-        alternative?;
-        $crate::bail!( $( $fmt ),* );
-    }};
     ($typ:ident, $x:expr, $( $xs:expr ),* $(,)?) => {{
         let mut alternative = $typ::from($x);
         alternative = try {
@@ -121,10 +108,7 @@ mod tests {
 
     #[test]
     fn test4() {
-        assert_eq!(
-            "[Error] choice4 (anyhow)    ---->\n[Error] [Error] choice2",
-            choice4().to_string()
-        );
+        assert_eq!("[Error] choice4 (lazy_ctx)\n[Error] choice2", choice4().to_string());
     }
 
     fn choice1() -> OptionErr<i32, ()> {
@@ -132,7 +116,7 @@ mod tests {
     }
 
     fn choice2() -> OptionErr<i32, ()> {
-        choice!(OptionErr, None; bail!("[Error] choice2"))
+        choice!(OptionErr, None, anyhow::anyhow!("[Error] choice2"))
     }
 
     fn choice3() -> OptionErr<i32, ()> {
@@ -142,8 +126,8 @@ mod tests {
     fn choice4() -> OptionErr<i32, ()> {
         let val = choice!(OptionErr, choice3(), choice2())
             .value
-            .with_context(|| format!("[Error] choice4 (anyhow)"))?
-            .with_ctx(move |_| format!("[Error] choice4 (lazy_ctx)"))?;
+            .with_ctx(|_| format!("[Error] choice4 (lazy_ctx)"))?
+            .with_context(|| format!("[Error] choice4 (anyhow)"))?;
 
         OptionErr::new(val)
     }

@@ -1,9 +1,6 @@
 use ashlib::{from_i32, DoubleResult, EvalStack, Stack};
 use either::Either;
-use firelib::{
-    lazy::{LazyCtx, LazyFormatter},
-    lexer::Loc,
-};
+use firelib::{lazy::LazyFormatter, lexer::Loc};
 use itertools::Itertools;
 
 use super::{
@@ -83,17 +80,17 @@ pub trait Expect<T: Clone + Typed + Location + 'static>: Stack<T> {
 
     fn expect_stack_size(&self, n: usize, loc: Loc) -> LazyResult<()> {
         let len = self.len();
-        (len >= n).with_ctx(move |fmt| {
-            format!(
-                concat!(
+        if len < n {
+            lazybail!(
+                |f| concat!(
                     "Stack has less elements than expected\n",
                     "[INFO] {}Expected `{}` elements, but found `{}`"
                 ),
-                fmt.apply(Fmt::Loc(loc)),
+                f.format(Fmt::Loc(loc)),
                 n,
                 len
             )
-        })?;
+        };
         Ok(())
     }
 
@@ -124,9 +121,9 @@ pub trait Expect<T: Clone + Typed + Location + 'static>: Stack<T> {
                     "[INFO] {}Expected types: {}\n",
                     "[INFO] {}Actual types:   {}\n{}"
                 ),
-                f.apply(Fmt::Loc(loc)),
+                f.format(Fmt::Loc(loc)),
                 contr.apply(f),
-                f.apply(Fmt::Loc(loc)),
+                f.format(Fmt::Loc(loc)),
                 stack.apply(f),
                 frame.apply(f)
             )
@@ -155,9 +152,9 @@ fn format_type_diff<T: Clone + Typed + Location + 'static>(
     LazyError::new(move |f| {
         format!(
             "{}Expected type `{}`, but found `{}`\n{}",
-            f.apply(Fmt::Loc(loc)),
-            f.apply(Fmt::Typ(expected)),
-            f.apply(Fmt::Typ(frame.get_type())),
+            f.format(Fmt::Loc(loc)),
+            f.format(Fmt::Typ(expected)),
+            f.format(Fmt::Typ(frame.get_type())),
             format_frame(&frame).apply(f)
         )
     })
@@ -172,8 +169,8 @@ pub fn format_frame<T: Typed + Location>(t: T) -> impl LazyFormatter<Fmt> {
     lazyformat! { |f|
         format!(
             "[INFO] {}Type `{}` was declared here",
-            f.apply(Fmt::Loc(t.loc())),
-            f.apply(Fmt::Typ(t.get_type()))
+            f.format(Fmt::Loc(t.loc())),
+            f.format(Fmt::Typ(t.get_type()))
         )
     }
 }
@@ -185,7 +182,7 @@ pub fn format_stack<T: Typed>(stack: &[T]) -> impl LazyFormatter<Fmt> + 'static 
             "[{}] ->",
             types
                 .iter()
-                .map(|&t| format!("<{}>", f.apply(Fmt::Typ(t))))
+                .map(|&t| format!("<{}>", f.format(Fmt::Typ(t))))
                 .join(", ")
         )
     }

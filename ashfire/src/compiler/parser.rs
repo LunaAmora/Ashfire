@@ -217,40 +217,53 @@ impl Parser {
     }
 
     fn define_op(&mut self, tok: IRToken, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        let loc = prog.loc_fmt(&tok);
+        let loc = tok.loc;
+        let typ = tok.token_type;
 
-        ensure!(
-            matches!(tok.token_type, TokenType::Keyword | TokenType::Word) || self.inside_proc(),
-            "{}Token type cannot be used outside of a procedure: `{:?}`",
-            loc,
-            tok.token_type
-        );
+        if !(matches!(tok.token_type, TokenType::Keyword | TokenType::Word) || self.inside_proc()) {
+            lazybail!(
+                |f| "{}Token type cannot be used outside of a procedure: `{}`",
+                f.format(Fmt::Loc(loc)),
+                f.format(Fmt::Typ(typ))
+            )
+        };
 
         let op = Op::from(match tok.token_type {
-            TokenType::Keyword => return self.define_keyword_op(tok.operand, tok.loc),
+            TokenType::Keyword => return self.define_keyword_op(tok.operand, loc),
 
-            TokenType::Str => (OpType::PushStr, prog.register_string(tok.operand), tok.loc),
+            TokenType::Str => (OpType::PushStr, prog.register_string(tok.operand), loc),
 
             TokenType::DataType(typ) => match typ {
-                Value::Type(_) => bail!("{}Value type not valid here: `{:?}`", loc, typ),
-                _ => (OpType::PushData(typ), tok.operand, tok.loc),
+                Value::Type(_) => lazybail!(
+                    |f| "{}Value type not valid here: `{:?}`",
+                    f.format(Fmt::Loc(loc)),
+                    typ
+                ),
+                _ => (OpType::PushData(typ), tok.operand, loc),
             },
 
-            TokenType::DataPtr(typ) => {
-                bail!("{}Data pointer type not valid here: `{:?}`", loc, typ)
-            }
+            TokenType::DataPtr(typ) => lazybail!(
+                |f| "{}Data pointer type not valid here: `{:?}`",
+                f.format(Fmt::Loc(loc)),
+                typ
+            ),
 
             TokenType::Word => {
-                let word = &LocWord::new(prog.get_word(tok.operand), tok.loc);
+                let word = &LocWord::new(prog.get_word(tok.operand), loc);
 
                 choice!(
                     OptionErr,
                     word.get_intrinsic(prog),
                     word.get_offset(tok.operand),
                     self.lookup_context(word, prog),
-                    self.define_context(word, prog);
-                    bail!("{}Word was not declared on the program: `{}`",
-                        prog.loc_fmt(word), word.name)
+                    self.define_context(word, prog)
+                )?;
+
+                let name = word.name.to_owned();
+                lazybail!(
+                    |f| "{}Word was not declared on the program: `{}`",
+                    f.format(Fmt::Loc(loc)),
+                    name
                 )
             }
         });
@@ -362,7 +375,7 @@ impl Parser {
             KeywordType::Struct => {
                 lazybail!(
                     |f| "{}Keyword type is not valid here: `{:?}`",
-                    f.apply(Fmt::Loc(loc)),
+                    f.format(Fmt::Loc(loc)),
                     key
                 )
             }
@@ -386,7 +399,7 @@ impl Parser {
         self.name_scopes.pop().with_ctx(move |f| {
             format!(
                 "{}There are no open blocks to close with `{:?}`",
-                f.apply(Fmt::Loc(loc)),
+                f.format(Fmt::Loc(loc)),
                 closing_type
             )
         })
@@ -610,11 +623,13 @@ impl Parser {
                 self.skip(2);
                 match self.compile_eval(prog).value {
                     Ok((result, eval)) => {
-                        ensure!(
-                            result.token_type != Value::Any,
-                            "{}Undefined variable value is not allowed",
-                            prog.loc_fmt(word)
-                        );
+                        if result.token_type == Value::Any {
+                            let loc = word.loc;
+                            lazybail!(
+                                |f| "{}Undefined variable value is not allowed",
+                                f.format(Fmt::Loc(loc))
+                            )
+                        }
 
                         self.skip(eval);
                         let struct_word = ValueType::new(word.to_string(), &result);
@@ -624,7 +639,7 @@ impl Parser {
                     }
                     Err(either) => match either {
                         Either::Left(tok) => Err(invalid_token(tok, "context declaration"))?,
-                        Either::Right(err) => bail!(err),
+                        Either::Right(err) => Err(err)?,
                     },
                 }
             }
@@ -634,11 +649,7 @@ impl Parser {
                 OptionErr::default()
             }
 
-            (_, KeywordType::End) => bail!(
-                "{}Missing body or contract necessary to infer the type of the word: `{}`",
-                prog.loc_fmt(word),
-                word.name
-            ),
+            (_, KeywordType::End) => Err(missing_body(word.name.to_owned(), word.loc))?,
 
             _ => OptionErr::default(),
         }
@@ -687,12 +698,15 @@ impl Parser {
 
     fn define_proc(
         &mut self, name: &LocWord, contract: Contract, prog: &mut Program,
-    ) -> Result<Op> {
-        any_ensure!(
-            !self.inside_proc(),
-            "{}Cannot define a procedure inside of another procedure",
-            prog.loc_fmt(name)
-        );
+    ) -> LazyResult<Op> {
+        let loc = name.loc;
+
+        if self.inside_proc() {
+            lazybail!(
+                |f| "{}Cannot define a procedure inside of another procedure",
+                f.format(Fmt::Loc(loc))
+            )
+        };
 
         let proc = Proc::new(name, contract);
         let operand = prog.procs.len();
@@ -701,7 +715,7 @@ impl Parser {
         self.name_scopes
             .register(name.to_string(), ParseContext::ProcName);
 
-        Ok(self.push_block(Op::new(OpType::PrepProc, operand as i32, name.loc)))
+        Ok(self.push_block(Op::new(OpType::PrepProc, operand as i32, loc)))
     }
 
     fn compile_eval(&self, prog: &mut Program) -> DoubleResult<(IRToken, usize), IRToken> {
@@ -751,29 +765,31 @@ impl Parser {
         let mut ins = Vec::new();
         let mut outs = Vec::new();
         let mut arrow = false;
+        let loc = word.loc;
 
-        self.expect_keyword(KeywordType::Colon, "`:` after keyword `proc`", word.loc)?;
+        self.expect_keyword(KeywordType::Colon, "`:` after keyword `proc`", loc)?;
         let tok_err = "proc contract or `:` after procedure definition";
 
         while let Some(tok) = self.next() {
             if let Some(key) = tok.get_keyword() {
                 match key {
                     KeywordType::Arrow => {
-                        ensure!(
-                            !arrow,
-                            "{}Duplicated `->` found on procedure definition",
-                            prog.loc_fmt(word.loc)
-                        );
+                        if arrow {
+                            lazybail!(
+                                |f| "{}Duplicated `->` found on procedure definition",
+                                f.format(Fmt::Loc(loc))
+                            )
+                        }
                         arrow = true;
                     }
                     KeywordType::Colon => {
                         (self.define_proc(word, Contract::new(ins, outs), prog)).into_success()?
                     }
-                    _ => return invalid_option(Some(tok), tok_err, word.loc).into(),
+                    _ => return invalid_option(Some(tok), tok_err, loc).into(),
                 }
             } else {
                 let Some(kind) = prog.get_kind_from_token(&tok) else {
-                    return invalid_option(Some(tok), tok_err, word.loc).into();
+                    return invalid_option(Some(tok), tok_err, loc).into();
                 };
 
                 match kind {
@@ -823,39 +839,28 @@ impl Parser {
     }
 
     fn parse_struct(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
+        let loc = word.loc;
+
+        self.expect_keyword(KeywordType::Colon, "`:` after keyword `struct`", loc)?;
         let mut members = Vec::new();
-        self.expect_keyword(KeywordType::Colon, "`:` after keyword `struct`", word.loc)?;
 
         while let Some(tok) = self.ir_tokens.get(0) {
             if tok.token_type == TokenType::Keyword {
-                self.expect_keyword(KeywordType::End, "`end` after struct declaration", word.loc)?;
+                self.expect_keyword(KeywordType::End, "`end` after struct declaration", loc)?;
                 prog.structs_types
                     .push(StructDef::new(word.to_string(), members));
                 success!();
             }
 
-            let next = self.expect_by(
-                |n| n.token_type == TokenType::Word,
-                "struct member name",
-                word.loc,
-            )?;
+            let next = self.expect_by(|n| n == TokenType::Word, "struct member name", loc)?;
+            let name_type = self.expect_by(|n| n == TokenType::Word, "struct member type", loc)?;
 
-            let name_type = self.expect_by(
-                |n| n.token_type == TokenType::Word,
-                "struct member type",
-                word.loc,
-            )?;
+            let found_type = prog.get_word(name_type.operand).to_owned();
+            let Some(type_kind) = prog.get_type_kind(found_type) else {
+                return invalid_option(Some(name_type), "struct member type", loc).into()
+            };
 
             let found_word = prog.get_word(next.operand).to_owned();
-            let found_type = prog.get_word(name_type.operand).to_owned();
-            let type_kind = prog.get_type_kind(found_type).with_ctx(move |f| {
-                format!(
-                    "{}Expected struct member type, but found: {} `{}`",
-                    f.apply(Fmt::Loc(name_type.loc)),
-                    f.apply(Fmt::Typ(name_type.token_type)),
-                    f.apply(Fmt::Tok(name_type))
-                )
-            })?;
 
             match type_kind {
                 Either::Left(stk_typ) => {
@@ -878,9 +883,10 @@ impl Parser {
             }
             continue;
         }
-        bail!(
-            "{}Expected struct members or `end` after struct declaration",
-            prog.loc_fmt(word.loc)
+
+        lazybail!(
+            |f| "{}Expected struct members or `end` after struct declaration",
+            f.format(Fmt::Loc(loc))
         )
     }
 
@@ -902,7 +908,10 @@ impl Parser {
             Ok(value) => value,
             Err(either) => match either {
                 Either::Right(err) => Err(err)?,
-                _ => bail!("Failed to parse an valid struct value at compile-time evaluation"),
+                Either::Left(tok) => lazybail!(
+                    |f| "{}Failed to parse an valid struct value at compile-time evaluation",
+                    f.format(Fmt::Loc(tok.loc))
+                ),
             },
         };
 
@@ -930,7 +939,7 @@ impl Parser {
                             "{}Expected type `{:?}` on the stack at the end of ",
                             "the compile-time evaluation, but found: `{:?}`"
                         ),
-                        f.apply(Fmt::Loc(end_token.loc)),
+                        f.format(Fmt::Loc(end_token.loc)),
                         member_type,
                         eval.token_type
                     )
@@ -1060,19 +1069,29 @@ impl Program {
     }
 }
 
+fn missing_body(word: String, loc: Loc) -> LazyError {
+    LazyError::new(move |f| {
+        format!(
+            "{}Missing body or contract necessary to infer the type of the word: `{}`",
+            f.format(Fmt::Loc(loc)),
+            word
+        )
+    })
+}
+
 fn invalid_option(tok: Option<IRToken>, desc: &str, loc: Loc) -> LazyError {
     let desc = desc.to_string();
     match tok {
         Some(tok) => LazyError::new(move |f| {
             format!(
                 "{}Expected {desc}, but found: {} `{}`",
-                f.apply(Fmt::Loc(tok.loc)),
-                f.apply(Fmt::Typ(tok.token_type)),
-                f.apply(Fmt::Tok(tok))
+                f.format(Fmt::Loc(tok.loc)),
+                f.format(Fmt::Typ(tok.token_type)),
+                f.format(Fmt::Tok(tok))
             )
         }),
         None => LazyError::new(move |f| {
-            format!("{}Expected {desc}, but found nothing", f.apply(Fmt::Loc(loc)))
+            format!("{}Expected {desc}, but found nothing", f.format(Fmt::Loc(loc)))
         }),
     }
 }
@@ -1082,9 +1101,9 @@ fn invalid_token(tok: IRToken, error: &str) -> LazyError {
     LazyError::new(move |f| {
         format!(
             "{}Invalid `{}` found on {error}: `{}`",
-            f.apply(Fmt::Loc(tok.loc)),
-            f.apply(Fmt::Typ(tok.token_type)),
-            f.apply(Fmt::Tok(tok))
+            f.format(Fmt::Loc(tok.loc)),
+            f.format(Fmt::Typ(tok.token_type)),
+            f.format(Fmt::Tok(tok))
         )
     })
 }
@@ -1097,10 +1116,10 @@ fn format_block(error: &str, op: Op, loc: Loc) -> LazyError {
                 "{}{}, but found a `{:?}` block instead\n",
                 "[INFO] {}The found block started here."
             ),
-            f.apply(Fmt::Loc(loc)),
+            f.format(Fmt::Loc(loc)),
             error,
             op.op_type,
-            f.apply(Fmt::Loc(op.loc))
+            f.format(Fmt::Loc(op.loc))
         )
     })
 }
@@ -1112,14 +1131,14 @@ fn expect_token_by(
     match value {
         Some(tok) if pred(&tok) => Ok(tok),
         Some(tok) => lazybail!(
-            |fmt| "{}Expected to find {desc}, but found: {} `{}`",
-            fmt.apply(Fmt::Loc(tok.loc)),
-            fmt.apply(Fmt::Tok(tok)),
-            fmt.apply(Fmt::Typ(tok.token_type))
+            |f| "{}Expected to find {desc}, but found: {} `{}`",
+            f.format(Fmt::Loc(tok.loc)),
+            f.format(Fmt::Tok(tok)),
+            f.format(Fmt::Typ(tok.token_type))
         ),
         None => lazybail!(
-            |fmt| "{}Expected to find {desc}, but found nothing",
-            loc.map_or_else(String::new, |l| fmt.apply(Fmt::Loc(l)))
+            |f| "{}Expected to find {desc}, but found nothing",
+            loc.map_or_else(String::new, |l| f.format(Fmt::Loc(l)))
         ),
     }
 }

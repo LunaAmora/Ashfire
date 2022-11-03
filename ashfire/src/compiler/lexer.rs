@@ -1,11 +1,6 @@
 use std::path::PathBuf;
 
-use firelib::{
-    anyhow::{Context, Result},
-    lazy::LazyCtx,
-    lexer::*,
-    ShortCircuit,
-};
+use firelib::{anyhow::Result, lazy::LazyCtx, lexer::*, ShortCircuit};
 
 use super::{
     program::{Fmt, OptionErr, Program},
@@ -37,13 +32,16 @@ impl Program {
     }
 
     fn parse_as_string(&mut self, tok: &Token) -> OptionErr<IRToken> {
+        let loc = tok.loc;
         tok.name
             .strip_prefix('\"')
             .or_return(OptionErr::default)?
             .strip_suffix('\"')
-            .with_context(|| format!("{}Missing closing `\"` in string literal", self.loc_fmt(tok)))
+            .with_ctx(move |f| {
+                format!("{}Missing closing `\"` in string literal", f.format(Fmt::Loc(loc)))
+            })
             .map(|name| self.push_data(name, name.len() - escaped_len(&name)) as i32)
-            .map(|operand| IRToken::new(TokenType::Str, operand, tok.loc))
+            .map(|operand| IRToken::new(TokenType::Str, operand, loc))
             .map(OptionErr::new)?
     }
 
@@ -63,7 +61,7 @@ fn parse_as_char(tok: &Token) -> OptionErr<IRToken> {
         .or_return(OptionErr::default)?
         .strip_suffix('\'')
         .with_ctx(move |f| {
-            format!("{}Missing closing `\'` in char literal", f.apply(Fmt::Loc(loc)))
+            format!("{}Missing closing `\'` in char literal", f.format(Fmt::Loc(loc)))
         })?;
 
     parse_char(word.to_string(), tok.loc)
@@ -78,11 +76,11 @@ fn parse_char(word: String, loc: Loc) -> OptionErr<i32> {
         None => match word.len() {
             0 => lazybail!(
                 |f| "{}Char literals have to contain at leat on char",
-                f.apply(Fmt::Loc(loc))
+                f.format(Fmt::Loc(loc))
             ),
             2.. => lazybail!(
                 |f| "{}Char literals cannot contain more than one char: `{word}`",
-                f.apply(Fmt::Loc(loc))
+                f.format(Fmt::Loc(loc))
             ),
             _ => OptionErr::new(word.chars().next().unwrap() as i32),
         },
@@ -99,12 +97,12 @@ fn parse_scaped(escaped: String, loc: Loc) -> OptionErr<i32> {
         _ if escaped.len() == 2 => try_parse_hex(&escaped).with_ctx(move |f| {
             format!(
                 "{}Invalid characters found on char literal: `\\{escaped}`",
-                f.apply(Fmt::Loc(loc))
+                f.format(Fmt::Loc(loc))
             )
         })?,
         _ => lazybail!(
             |f| "{}Invalid escaped character sequence found on char literal: `{escaped}`",
-            f.apply(Fmt::Loc(loc))
+            f.format(Fmt::Loc(loc))
         ),
     })
     .into()

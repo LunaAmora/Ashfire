@@ -280,8 +280,8 @@ impl TypeChecker {
                 top => {
                     lazybail!(
                         |f| "{}Cannot unpack element of type: `{}`",
-                        f.apply(Fmt::Loc(loc)),
-                        f.apply(Fmt::Typ(top))
+                        f.format(Fmt::Loc(loc)),
+                        f.format(Fmt::Typ(top))
                     );
                 }
             },
@@ -331,7 +331,7 @@ impl TypeChecker {
                 Ok(result)
             }
             typ => {
-                lazybail!(|f| "Cannot `.` access elements of type: `{}`", f.apply(Fmt::Typ(typ)))
+                lazybail!(|f| "Cannot `.` access elements of type: `{}`", f.format(Fmt::Typ(typ)))
             }
         }
     }
@@ -355,7 +355,7 @@ fn get_struct_member_index(stk: &StructDef, word: String, loc: Loc) -> LazyResul
         .with_ctx(move |f| {
             format!(
                 "{}The struct {name} does not contain a member with name: `{word}`",
-                f.apply(Fmt::Loc(loc)),
+                f.format(Fmt::Loc(loc)),
             )
         })
 }
