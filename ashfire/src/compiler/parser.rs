@@ -265,9 +265,8 @@ impl Parser {
     }
 
     fn lookup_context(&self, word: &LocWord, prog: &Program) -> OptionErr<Vec<Op>> {
-        let ctx = match self.name_scopes.lookup(word.as_str()) {
-            Some(ctx) => ctx,
-            None => return self.lookup_modfied_var(word, prog),
+        let Some(ctx) = self.name_scopes.lookup(word.as_str()) else {
+            return self.lookup_modfied_var(word, prog);
         };
 
         match ctx {
