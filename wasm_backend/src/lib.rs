@@ -1,10 +1,6 @@
 pub mod wasm_types;
 
-use std::{
-    collections::HashMap,
-    fs::File,
-    io::{BufWriter, Write},
-};
+use std::{collections::HashMap, io::Write};
 
 use anyhow::{bail, Result};
 use hexstring::LowerHexString;
@@ -102,15 +98,15 @@ impl Module {
         }
     }
 
-    fn func_by_id(&self, _id: &Ident) -> &Func {
-        match _id {
+    fn func_by_id(&self, id: &Ident) -> &Func {
+        match id {
             Ident::Id(index) => self.funcs.get(*index),
             Ident::Label(label) => self.funcs.get(*self.func_map.get(label).unwrap()),
         }
         .unwrap()
     }
 
-    fn write_imports(&mut self, writer: &mut BufWriter<File>) -> Result<&mut Self> {
+    fn write_imports(&mut self, writer: &mut impl Write) -> Result<&mut Self> {
         for import in &self.imports {
             match &import.bind {
                 Bind::Global(_) => todo!(),
@@ -135,14 +131,14 @@ impl Module {
         Ok(self)
     }
 
-    fn write_memories(&self, writer: &mut BufWriter<File>) -> Result<&Self> {
+    fn write_memories(&self, writer: &mut impl Write) -> Result<&Self> {
         for mem in &self.mems {
             writer.write_all(format!("{mem}\n").as_bytes())?;
         }
         Ok(self)
     }
 
-    fn write_globals(&self, writer: &mut BufWriter<File>) -> Result<&Self> {
+    fn write_globals(&self, writer: &mut impl Write) -> Result<&Self> {
         for (label, index) in self.global_map.iter().sorted_by_key(|entry| entry.1) {
             let global = &self.globals.get(*index).unwrap().value;
 
@@ -159,7 +155,7 @@ impl Module {
         Ok(self)
     }
 
-    fn write_funcs(&self, writer: &mut BufWriter<File>) -> Result<&Self> {
+    fn write_funcs(&self, writer: &mut impl Write) -> Result<&Self> {
         for (label, index) in self.func_map.iter().sorted_by_key(|entry| entry.1) {
             let func = self.funcs.get(*index).unwrap();
             let contr = self.types.get(func.contract).unwrap();
@@ -194,7 +190,7 @@ impl Module {
         }
     }
 
-    fn write_data(&self, _writer: &mut BufWriter<File>) -> Result<&Self> {
+    fn write_data(&self, _writer: &mut impl Write) -> Result<&Self> {
         _writer.write_all(
             format!(
                 "(data (i32.const 0)\n{}\n)\n",
@@ -205,7 +201,7 @@ impl Module {
         Ok(self)
     }
 
-    fn write_exports(&self, writer: &mut BufWriter<File>) -> Result<()> {
+    fn write_exports(&self, writer: &mut impl Write) -> Result<()> {
         for export in &self.exports {
             match &export.bind {
                 Bind::Global(_) => todo!(),
@@ -230,7 +226,7 @@ impl Module {
         Ok(())
     }
 
-    pub fn write_text(mut self, mut writer: BufWriter<File>) -> Result<()> {
+    pub fn write_text(mut self, mut writer: impl Write) -> Result<()> {
         self.write_imports(&mut writer)?
             .write_memories(&mut writer)?
             .write_globals(&mut writer)?
