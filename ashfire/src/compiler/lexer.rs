@@ -1,6 +1,11 @@
-use std::path::PathBuf;
+use std::{fs::File, path::PathBuf};
 
-use firelib::{anyhow::Result, lazy::LazyCtx, lexer::*, ShortCircuit};
+use firelib::{
+    anyhow::{Context, Result},
+    lazy::LazyCtx,
+    lexer::*,
+    ShortCircuit,
+};
 
 use super::{
     program::{Fmt, OptionErr, Program},
@@ -8,14 +13,16 @@ use super::{
 };
 
 impl Program {
-    pub fn new_lexer(&mut self, file: &PathBuf) -> Result<Lexer> {
-        self.included_files.push(file.to_str().unwrap().to_owned());
+    pub fn new_lexer(&mut self, path: &PathBuf) -> Result<Lexer> {
+        let file = File::open(path).with_context(|| format!("Could not read file `{:?}`", path))?;
 
-        Lexer::builder(file)
+        self.included_files.push(path.to_str().unwrap().to_owned());
+
+        Ok(Lexer::builder(file)
             .with_separators(vec![':', '='])
             .with_matches(vec![Match::Same('\''), Match::Same('\"'), Match::Pair('(', ')')])
             .with_comments("//")
-            .build(self.included_files.len() - 1)
+            .build(self.included_files.len() - 1))
     }
 
     pub fn lex_next_token(&mut self, lexer: &mut Lexer) -> OptionErr<IRToken> {

@@ -1,25 +1,25 @@
 use std::{
     collections::HashMap,
-    fs::File,
-    io::{BufRead, BufReader},
-    path::PathBuf,
+    io::{BufRead, BufReader, Read},
 };
-
-use anyhow::{Context, Result};
 
 use crate::utils::strip_trailing_newline;
 
-#[derive(Default)]
 pub struct LexerBuilder {
-    file: PathBuf,
+    read: Box<dyn Read>,
     matches: Vec<Match>,
     separators: Vec<char>,
     comments: Option<String>,
 }
 
 impl LexerBuilder {
-    fn new(file: PathBuf) -> Self {
-        Self { file, ..Default::default() }
+    fn new(read: impl Read + 'static) -> Self {
+        Self {
+            read: Box::new(read),
+            matches: vec![],
+            separators: vec![],
+            comments: None,
+        }
     }
 
     /// Separators are not included in other tokens, unless inside a [`Match`].
@@ -41,11 +41,9 @@ impl LexerBuilder {
     }
 
     /// Tries to build an `Lexer` with the given file and parameters.
-    pub fn build(self, index: usize) -> Result<Lexer> {
-        let file = File::open(&self.file)
-            .with_context(|| format!("Could not read file `{:?}`", self.file))?;
-
+    pub fn build(self, index: usize) -> Lexer {
         let mut matches = HashMap::with_capacity(self.matches.len());
+
         for value in &self.matches {
             match value {
                 Match::Same(start) => matches.insert(*start, *start),
@@ -53,8 +51,8 @@ impl LexerBuilder {
             };
         }
 
-        let reader = BufReader::new(file);
-        Ok(Lexer::new(reader, index, self.separators, self.comments, matches))
+        let reader = BufReader::new(self.read);
+        Lexer::new(Box::new(reader), index, self.separators, self.comments, matches)
     }
 }
 
@@ -71,7 +69,7 @@ enum Predicate {
 
 pub struct Lexer {
     buffer: Vec<char>,
-    reader: BufReader<File>,
+    reader: Box<dyn BufRead>,
     separators: Vec<char>,
     comments: Option<String>,
     matches: HashMap<char, char>,
@@ -91,7 +89,7 @@ impl Iterator for Lexer {
 
 impl Lexer {
     pub fn new(
-        reader: BufReader<File>, file_index: usize, separators: Vec<char>,
+        reader: Box<dyn BufRead>, file_index: usize, separators: Vec<char>,
         comments: Option<String>, matches: HashMap<char, char>,
     ) -> Self {
         Self {
@@ -108,8 +106,8 @@ impl Lexer {
     }
 
     /// Returns an builder object for working with the `Lexer`.
-    pub fn builder(file: &PathBuf) -> LexerBuilder {
-        LexerBuilder::new(file.to_owned())
+    pub fn builder(file: impl Read + 'static) -> LexerBuilder {
+        LexerBuilder::new(file)
     }
 
     fn next_token(&mut self) -> Option<Token> {
@@ -231,7 +229,7 @@ impl Lexer {
                 return false;
             }
         }
-        return true;
+        true
     }
 }
 
