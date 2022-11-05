@@ -305,6 +305,7 @@ impl<T> Stack<T> for Vec<T> {
     }
 }
 
+#[track_caller]
 pub fn from_i32<T: FromPrimitive>(value: i32) -> T {
     FromPrimitive::from_i32(value).unwrap()
 }

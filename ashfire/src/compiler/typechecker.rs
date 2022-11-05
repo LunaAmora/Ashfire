@@ -56,7 +56,7 @@ impl TypeChecker {
     }
 
     fn type_check_op(&mut self, ip: usize, program: &mut Program) -> LazyResult<()> {
-        let op = program.ops.get(ip).unwrap();
+        let op = &program.ops[ip];
         let loc = op.loc;
         match op.op_type {
             OpType::PushData(value) => match value {
@@ -161,7 +161,7 @@ impl TypeChecker {
             }
 
             OpType::Call => {
-                let Proc { contract, .. } = program.procs.get(op.operand as usize).unwrap();
+                let Proc { contract, .. } = &program.procs[op.operand as usize];
                 {
                     self.data_stack.expect_contract_pop(contract.ins(), loc)?;
                     for &typ in contract.outs() {
@@ -269,7 +269,7 @@ impl TypeChecker {
             OpType::Unpack => match self.data_stack.expect_pop(op.loc)?.get_type() {
                 TokenType::DataPtr(n) => {
                     let index = usize::from(n);
-                    let stk = program.structs_types.get(index).unwrap();
+                    let stk = &program.structs_types[index];
 
                     for typ in stk.members().iter().map(Typed::get_type) {
                         self.push_frame(typ, loc);
@@ -322,10 +322,10 @@ impl TypeChecker {
                     .unwrap()
                     .to_string();
 
-                let stk = prog.structs_types.get(usize::from(value)).unwrap();
+                let stk = &prog.structs_types[usize::from(value)];
 
                 let index = get_struct_member_index(stk, word, op.loc)?;
-                let result = stk.members().get(index).unwrap().get_type();
+                let result = stk.members()[index].get_type();
 
                 prog.set_operand(ip, index * 4);
                 Ok(result)
@@ -362,7 +362,7 @@ fn get_struct_member_index(stk: &StructDef, word: String, loc: Loc) -> LazyResul
 
 impl Program {
     fn set_operand(&mut self, ip: usize, index: usize) {
-        let op = self.ops.get_mut(ip).unwrap();
+        let op = &mut self.ops[ip];
         op.operand = index as i32;
     }
 

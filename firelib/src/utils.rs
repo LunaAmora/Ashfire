@@ -35,6 +35,7 @@ pub fn push_by_condition<T>(cond: bool, value: T, if_true: &mut Vec<T>, if_false
 ///
 /// # Panics
 /// Panics if no matching element is found.
+#[track_caller]
 pub fn expect_index<T>(vec: &[T], pred: impl FnMut(&T) -> bool) -> usize {
     vec.iter()
         .position(pred)

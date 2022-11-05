@@ -100,10 +100,9 @@ impl Module {
 
     fn func_by_id(&self, id: &Ident) -> &Func {
         match id {
-            Ident::Id(index) => self.funcs.get(*index),
-            Ident::Label(label) => self.funcs.get(*self.func_map.get(label).unwrap()),
+            Ident::Id(index) => &self.funcs[*index],
+            Ident::Label(label) => &self.funcs[self.func_map[label]],
         }
-        .unwrap()
     }
 
     fn write_imports(&mut self, writer: &mut impl Write) -> Result<&mut Self> {
@@ -112,7 +111,7 @@ impl Module {
                 Bind::Global(_) => todo!(),
                 Bind::Func(id) => {
                     let func = self.func_by_id(id);
-                    let contr = self.types.get(func.contract).unwrap();
+                    let contr = &self.types[func.contract];
                     let label = self.func_label_by_id(id);
 
                     writer.write_all(
@@ -140,7 +139,7 @@ impl Module {
 
     fn write_globals(&self, writer: &mut impl Write) -> Result<&Self> {
         for (label, index) in self.global_map.iter().sorted_by_key(|entry| entry.1) {
-            let global = &self.globals.get(*index).unwrap().value;
+            let global = &self.globals[*index].value;
 
             let global_type =
                 format!("{}{}", if global.is_mut { "mut " } else { "" }, global.wasm_type);
@@ -157,8 +156,8 @@ impl Module {
 
     fn write_funcs(&self, writer: &mut impl Write) -> Result<&Self> {
         for (label, index) in self.func_map.iter().sorted_by_key(|entry| entry.1) {
-            let func = self.funcs.get(*index).unwrap();
-            let contr = self.types.get(func.contract).unwrap();
+            let func = &self.funcs[*index];
+            let contr = &self.types[func.contract];
 
             writer.write_all(
                 format!(
@@ -181,7 +180,7 @@ impl Module {
             Instruction::Block(block, ident) => match ident {
                 Some(id) => {
                     let Ident::Id(id) = id else {unreachable!()};
-                    let contr = self.types.get(*id).unwrap();
+                    let contr = &self.types[*id];
                     format!("{}{}", block, contr)
                 }
                 None => todo!(),
