@@ -385,12 +385,9 @@ impl Parser {
     ///
     /// This function will return an error if no block is open.
     fn pop_block(&mut self, closing_type: KeywordType, loc: Loc) -> LazyResult<Op> {
-        self.name_scopes.pop().with_ctx(move |f| {
-            format!(
-                "{}There are no open blocks to close with `{:?}`",
-                f.format(Fmt::Loc(loc)),
-                closing_type
-            )
+        self.name_scopes.pop().with_err_ctx(move || {
+            let error = format!("There are no open blocks to close with `{:?}`", closing_type);
+            error_loc(&error, loc)
         })
     }
 
@@ -693,10 +690,7 @@ impl Parser {
         let loc = name.loc;
 
         if self.inside_proc() {
-            lazybail!(
-                |f| "{}Cannot define a procedure inside of another procedure",
-                f.format(Fmt::Loc(loc))
-            )
+            Err(error_loc("Cannot define a procedure inside of another procedure", loc))?;
         };
 
         let proc = Proc::new(name, contract);
