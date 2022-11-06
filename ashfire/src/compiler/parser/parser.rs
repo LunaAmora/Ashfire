@@ -777,7 +777,7 @@ impl LocWord {
         let (index, step) = fold_bool!(is_local == store, (index - 1, 1), (index, -1));
         let id_range = range_step_from(index, step);
 
-        let members = members.iter().map(|m| m.get_type()).map(i32::from);
+        let members = members.iter().map(Typed::get_type).map(i32::from);
 
         for (operand, type_id) in id_range.zip(members) {
             if store {

@@ -175,7 +175,7 @@ pub fn format_frame<T: Typed + Location>(t: T) -> impl LazyFormatter<Fmt> {
 }
 
 pub fn format_stack<T: Typed>(stack: &[T]) -> impl LazyFormatter<Fmt> + 'static {
-    let types: Vec<TokenType> = stack.iter().map(|t| t.get_type()).collect();
+    let types: Vec<TokenType> = stack.iter().map(Typed::get_type).collect();
     lazyformat! { |f|
         format!(
             "[{}] ->",
