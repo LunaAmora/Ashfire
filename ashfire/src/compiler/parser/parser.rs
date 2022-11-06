@@ -675,6 +675,7 @@ impl Parser {
                     result.reverse()
                 }
             }
+
             let mut def_members = vec![];
             let mut item = result.into_iter();
 
@@ -684,11 +685,17 @@ impl Parser {
                         let value = ValueType::new(u.name().to_owned(), &item.next().unwrap());
                         def_members.push(StructType::Unit(value));
                     }
-                    StructType::Root(r) => {
+                    StructType::Root(root) => {
                         let mut new = vec![];
 
-                        for m in r.members() {
-                            let StructType::Unit(typ) = m else {
+                        let root_members: Vec<_> = if self.inside_proc() {
+                            root.members().iter().rev().collect()
+                        } else {
+                            root.members().iter().collect()
+                        };
+
+                        for member in root_members {
+                            let StructType::Unit(typ) = member else {
                                 todo!();
                             };
 
@@ -697,7 +704,7 @@ impl Parser {
                             new.push(StructType::Unit(value));
                         }
 
-                        let root = StructDef::new(r.name().to_owned(), new);
+                        let root = StructDef::new(root.name().to_owned(), new);
                         def_members.push(StructType::Root(root));
                     }
                 }
@@ -752,7 +759,11 @@ impl Parser {
 
 impl LocWord {
     fn get_var_pointer(&self, vars: &[StructType], push_type: OpType, stk_id: i32) -> Vec<Op> {
-        let index = get_field_pos(vars, &self).unwrap().0 as i32 + 1;
+        let mut index = get_field_pos(vars, &self).unwrap().0 as i32;
+
+        if push_type == OpType::PushLocal {
+            index += 1;
+        }
 
         vec![
             (Op::new(push_type, index as i32, self.loc)),
@@ -765,8 +776,7 @@ impl LocWord {
     ) -> Vec<Op> {
         let mut result = Vec::new();
         let loc = self.loc;
-
-        let index = get_field_pos(vars, self).unwrap().0 as i32 + 1;
+        let index = get_field_pos(vars, self).unwrap().0 as i32;
 
         let mut members = struct_type.units();
         if store {
@@ -774,8 +784,11 @@ impl LocWord {
         }
 
         let is_local = push_type == OpType::PushLocal;
-        let (index, step) = fold_bool!(is_local == store, (index - 1, 1), (index, -1));
-        let id_range = range_step_from(index, step);
+        let id_range = if store == is_local {
+            range_step_from(index, 1)
+        } else {
+            range_step_from(index + members.len() as i32 - 1, -1)
+        };
 
         let members = members.iter().map(Typed::get_type).map(i32::from);
 

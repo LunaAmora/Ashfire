@@ -8,7 +8,22 @@ end
 print_double : double_str : println println end
 
 hello double_str := "Hello World!" "Other Text" end
+new_text str := "-> a Really long text" end
 
 start proc ::
   hello print_double
+  
+  *new_text trim-left
+  *new_text trim-left
+  *new_text trim-left
+  *new_text trim-left
+  *new_text trim-left
+
+  new_text "Another one" !hello
+  hello print_double
+
+  hello.first.len
+  hello.first.data 
+  hello.second.len
+  hello.second.data print_double
 end
