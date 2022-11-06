@@ -79,7 +79,7 @@ impl Proc {
     pub fn push_mem(&mut self, word: &str, size: i32) {
         self.mem_size += size;
         self.local_mem_names
-            .push(SizeWord(word.to_string(), self.mem_size));
+            .push(SizeWord::new(word, self.mem_size));
     }
 
     pub fn get_label(&self) -> &str {
@@ -427,66 +427,55 @@ impl Deref for ValueType {
     }
 }
 
-pub struct OffsetWord {
-    word: SizeWord,
-    offset: i32,
+pub struct Offset<T, O = i32>(T, O);
+
+impl<T, O: Copy> Offset<T, O> {
+    pub fn offset(&self) -> O {
+        self.1
+    }
+
+    pub fn set_offset(&mut self, offset: O) {
+        self.1 = offset
+    }
 }
 
-impl OffsetWord {
-    pub fn new(name: &str, size: i32) -> Self {
-        Self { word: SizeWord(name.to_string(), size), offset: -1 }
+impl<T, O> Deref for Offset<T, O> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+pub type SizeWord = Offset<String>;
+
+impl SizeWord {
+    pub fn new(name: &str, offset: i32) -> Self {
+        Self(name.to_string(), offset)
     }
 
     pub fn size(&self) -> i32 {
-        self.word.1
-    }
-
-    pub fn offset(&self) -> i32 {
-        self.offset
-    }
-
-    pub fn set_offset(&mut self, offset: i32) {
-        self.offset = offset
-    }
-}
-
-impl Deref for OffsetWord {
-    type Target = String;
-
-    fn deref(&self) -> &Self::Target {
-        &self.word
-    }
-}
-
-pub struct SizeWord(pub String, pub i32);
-
-impl SizeWord {
-    pub fn value(&self) -> i32 {
         self.1
     }
 }
 
-impl Deref for SizeWord {
-    type Target = String;
+pub type OffsetWord = Offset<SizeWord>;
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl OffsetWord {
+    pub fn new(name: &str, value: i32) -> Self {
+        Self(SizeWord::new(name, value), -1)
     }
 }
 
-pub struct IndexWord(pub String, pub usize);
+pub type IndexWord = Offset<String, usize>;
 
 impl IndexWord {
+    pub fn new(name: &str, index: usize) -> Self {
+        Self(name.to_owned(), index)
+    }
+
     pub fn index(&self) -> usize {
         self.1
-    }
-}
-
-impl Deref for IndexWord {
-    type Target = String;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
 

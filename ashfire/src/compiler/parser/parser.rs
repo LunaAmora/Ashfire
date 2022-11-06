@@ -256,7 +256,7 @@ impl Parser {
     fn get_local_mem(&self, word: &LocWord, prog: &Program) -> Option<Vec<Op>> {
         self.current_proc(prog)
             .and_then(|proc| proc.local_mem_names.iter().find(|mem| word == mem.as_str()))
-            .map(|local| Op::new(OpType::PushLocalMem, local.value(), word.loc).into())
+            .map(|local| Op::new(OpType::PushLocalMem, local.offset(), word.loc).into())
     }
 
     /// Searches for a `variable` that matches the given [`word`][LocWord]
@@ -699,8 +699,7 @@ impl Parser {
         };
 
         self.name_scopes.register(word.to_string(), ctx);
-        self.structs
-            .push(IndexWord(word.to_string(), operand as usize));
+        self.structs.push(IndexWord::new(word, operand as usize));
         Ok(())
     }
 
@@ -842,7 +841,7 @@ impl Program {
         self.get_memory()
             .iter()
             .find(|mem| mem.as_str() == word.as_str())
-            .map(|global| Op::new(OpType::PushGlobalMem, global.value(), word.loc).into())
+            .map(|global| Op::new(OpType::PushGlobalMem, global.offset(), word.loc).into())
     }
 
     /// Searches for a `const` that matches the given[`word`][LocWord]

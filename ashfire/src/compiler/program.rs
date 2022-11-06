@@ -50,7 +50,7 @@ impl Program {
     }
 
     pub fn push_mem(&mut self, word: &str, size: i32) {
-        self.memory.push(SizeWord(word.to_string(), self.mem_size));
+        self.memory.push(SizeWord::new(word, self.mem_size));
         self.mem_size += size;
     }
 
