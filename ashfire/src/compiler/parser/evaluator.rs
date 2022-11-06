@@ -1,4 +1,4 @@
-use ashlib::{from_i32, DoubleResult, EvalStack, Stack};
+use ashlib::{from_i32, EvalStack, Stack};
 use either::Either;
 use firelib::lazy::LazyFormatter;
 
@@ -9,15 +9,17 @@ use crate::compiler::{
     types::*,
 };
 
+type DoubleResult<T> = ashlib::DoubleResult<T, IRToken, Fmt>;
+
 impl Parser {
-    pub fn compile_eval(&self, prog: &mut Program) -> DoubleResult<(IRToken, usize), IRToken> {
+    pub fn compile_eval(&self, prog: &mut Program) -> DoubleResult<(IRToken, usize)> {
         let (mut result, skip) = self.compile_eval_n(1, prog)?;
         DoubleResult::new((result.pop().unwrap(), skip))
     }
 
     pub fn compile_eval_n(
         &self, n: usize, prog: &mut Program,
-    ) -> DoubleResult<(Vec<IRToken>, usize), IRToken> {
+    ) -> DoubleResult<(Vec<IRToken>, usize)> {
         let mut stack = EvalStack::default();
         let mut i = 0;
 
@@ -56,12 +58,12 @@ impl Parser {
 
 impl Expect<IRToken> for EvalStack<IRToken> {}
 
-pub trait Evaluator<T> {
-    fn evaluate(&mut self, item: T, prog: &mut Program) -> DoubleResult<(), T>;
+pub trait Evaluator {
+    fn evaluate(&mut self, item: IRToken, prog: &mut Program) -> DoubleResult<()>;
 }
 
-impl Evaluator<IRToken> for EvalStack<IRToken> {
-    fn evaluate(&mut self, tok: IRToken, prog: &mut Program) -> DoubleResult<(), IRToken> {
+impl Evaluator for EvalStack<IRToken> {
+    fn evaluate(&mut self, tok: IRToken, prog: &mut Program) -> DoubleResult<()> {
         match tok.token_type {
             TokenType::Keyword => match from_i32(tok.operand) {
                 KeywordType::Drop => {

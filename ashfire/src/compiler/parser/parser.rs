@@ -527,13 +527,8 @@ impl Parser {
 
                 match kind {
                     Either::Left(stk) => {
-                        for member in stk.members() {
-                            push_by_condition(
-                                arrow,
-                                member.get_value().get_type(),
-                                &mut outs,
-                                &mut ins,
-                            );
+                        for typ in stk.units().iter().map(Typed::get_type) {
+                            push_by_condition(arrow, typ, &mut outs, &mut ins);
                         }
                     }
                     Either::Right(type_ptr) => {
@@ -588,23 +583,20 @@ impl Parser {
                     let ref_members = stk_typ.members();
 
                     if ref_members.len() == 1 {
-                        let typ = ref_members[0].get_value();
+                        let StructType::Unit(typ) = &ref_members[0] else {
+                            todo!();
+                        };
+
                         members.push(StructType::Unit((found_word, typ).into()));
                     } else {
-                        todo(word.loc)?; //Refactor broke stuff
-
-                        // for member in ref_members {
-                        //     let member = member.get_value();
-                        //     let member_name = format!("{}.{}", found_word, member.name());
-                        //     members.push(StructType::Unit((member_name, member).into()));
-                        // }
+                        let root = StructDef::new(found_word, ref_members.to_vec());
+                        members.push(StructType::Root(root));
                     }
                 }
                 Either::Right(typ_ptr) => {
                     members.push(StructType::Unit((found_word, typ_ptr).into()))
                 }
             }
-            continue;
         }
 
         error_loc("Expected struct members or `end` after struct declaration", loc).into()
@@ -624,7 +616,7 @@ impl Parser {
             .get_keyword()
             .unwrap();
 
-        let (mut result, eval) = match self.compile_eval_n(stk.members().len(), prog).value {
+        let (mut result, eval) = match self.compile_eval_n(stk.units().len(), prog).value {
             Ok(value) => value,
             Err(either) => match either {
                 Either::Right(err) => Err(err)?,
@@ -649,7 +641,11 @@ impl Parser {
                 let struct_word = StructDef::new(word.name.to_owned(), members);
                 self.register_const(&assign, StructType::Root(struct_word), prog);
             } else {
-                let member_type = members.last().unwrap().get_value().get_type();
+                let member_type = match members.last().unwrap() {
+                    StructType::Root(_) => todo!(),
+                    StructType::Unit(typ) => typ.get_type(),
+                };
+
                 if !equals_any!(member_type, Value::Any, eval.token_type) {
                     lazybail!(
                         |f| concat!(
@@ -666,7 +662,11 @@ impl Parser {
                 self.register_const(&assign, StructType::Unit(struct_word), prog);
             }
         } else {
-            let contract: Vec<TokenType> = members.iter().map(Typed::get_type).collect();
+            let contract: Vec<TokenType> = members
+                .iter()
+                .flat_map(StructType::units)
+                .map(Typed::get_type)
+                .collect();
             result.expect_exact(&contract, end_token.loc)?;
 
             if self.inside_proc() {
@@ -684,7 +684,22 @@ impl Parser {
                         let value = ValueType::new(u.name().to_owned(), &item.next().unwrap());
                         def_members.push(StructType::Unit(value));
                     }
-                    _ => todo(word.loc)?, //Refactor broke stuff
+                    StructType::Root(r) => {
+                        let mut new = vec![];
+
+                        for m in r.members() {
+                            let StructType::Unit(typ) = m else {
+                                todo!();
+                            };
+
+                            let value =
+                                ValueType::new(typ.name().to_owned(), &item.next().unwrap());
+                            new.push(StructType::Unit(value));
+                        }
+
+                        let root = StructDef::new(r.name().to_owned(), new);
+                        def_members.push(StructType::Root(root));
+                    }
                 }
             }
 
@@ -789,22 +804,22 @@ impl LocWord {
         let (index, i) = get_field_pos(vars, fields[0]).or_return(OptionErr::default)?;
 
         let mut fields = fields.into_iter().skip(1);
-        let mut offset = index as i32;
+        let mut offset = index;
         let mut var = &vars[i];
         let loc = self.loc;
 
-        while let Some(v) = fields.next() {
+        while let Some(field_name) = fields.next() {
             let StructType::Root(root) = var else {
                 return todo(loc).unwrap_err().into();
             };
 
-            let Some(pos) = root.members().iter().position(|m| m.name().eq(v)) else {
-                let error =
-                    format!("The variable `{}` does not contain the field `{v}`", var.name());
+            let Some((diff, pos)) = get_field_pos(root.members(), field_name) else {
+                let error = format!("The variable `{}` does not contain the field `{}`",
+                    var.name(), field_name);
                 return error_loc(&error, loc).into();
             };
 
-            offset += pos as i32;
+            offset += diff;
             var = &root.members()[pos];
         }
 
@@ -820,7 +835,7 @@ impl LocWord {
             result.push(Op::new(OpType::ExpectType, type_id, loc))
         }
 
-        result.push(Op::new(push_type, offset, loc));
+        result.push(Op::new(push_type, offset as i32, loc));
 
         if store {
             result.push(Op::from((IntrinsicType::Store32, loc)))

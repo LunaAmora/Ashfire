@@ -8,7 +8,7 @@ use Scope::*;
 
 use super::{
     program::*,
-    types::{Contract, IntrinsicType, Op, OpType, Proc},
+    types::{Contract, IntrinsicType, Op, OpType, Proc, StructType},
 };
 
 pub struct Generator {
@@ -110,7 +110,7 @@ impl Generator {
             }
         }
 
-        for var in program.global_vars.iter().flat_map(|v| v.units()) {
+        for var in program.global_vars.iter().flat_map(StructType::units) {
             wasm.add_data_value(var.value());
         }
 
@@ -133,7 +133,7 @@ impl Generator {
         }
 
         let mut index = (0..).into_iter();
-        for var in proc.local_vars.iter().flat_map(|v| v.units()) {
+        for var in proc.local_vars.iter().flat_map(StructType::units) {
             let i = index.next().unwrap();
 
             if var.value() > 0 {

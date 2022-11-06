@@ -39,7 +39,7 @@ impl Parser {
 
 pub fn get_field_pos(vars: &[StructType], word: &str) -> Option<(usize, usize)> {
     let Some(i) = vars.iter().position(|v| v.name() == word) else {
-        return  None;
+        return None;
     };
 
     let mut offset = 0;

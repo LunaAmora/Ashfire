@@ -94,34 +94,27 @@ impl<T, E> SuccessFrom for OptionErr<Vec<T>, E> {
     }
 }
 
-#[derive(FlowControl)]
-pub struct DoubleResult<T, E> {
-    pub value: Result<T, Either<E, Error>>,
+pub struct DoubleResult<T, E, F> {
+    pub value: Result<T, Either<E, LazyError<F>>>,
 }
 
-impl<T, E> DoubleResult<T, E> {
+impl<T, E, F> DoubleResult<T, E, F> {
     pub fn new(value: T) -> Self {
         Self { value: Ok(value) }
     }
 }
 
-impl<T, E> From<Error> for DoubleResult<T, E> {
-    fn from(err: Error) -> Self {
-        Self { value: Err(Either::Right(err)) }
-    }
-}
-
-impl<T, E> Deref for DoubleResult<T, E> {
-    type Target = Result<T, Either<E, Error>>;
+impl<T, E, F> Deref for DoubleResult<T, E, F> {
+    type Target = Result<T, Either<E, LazyError<F>>>;
 
     fn deref(&self) -> &Self::Target {
         &self.value
     }
 }
 
-impl<T, E> Try for DoubleResult<T, E> {
+impl<T, E, F> Try for DoubleResult<T, E, F> {
     type Output = T;
-    type Residual = Either<E, Error>;
+    type Residual = Either<E, LazyError<F>>;
 
     fn from_output(output: Self::Output) -> Self {
         Self { value: Ok(output) }
@@ -135,13 +128,13 @@ impl<T, E> Try for DoubleResult<T, E> {
     }
 }
 
-impl<T, E> FromResidual for DoubleResult<T, E> {
+impl<T, E, F> FromResidual for DoubleResult<T, E, F> {
     fn from_residual(residual: <Self as Try>::Residual) -> Self {
         Self { value: Err(residual) }
     }
 }
 
-impl<T, E> FromResidual<Result<Infallible, <Self as Try>::Residual>> for DoubleResult<T, E> {
+impl<T, E, F> FromResidual<Result<Infallible, <Self as Try>::Residual>> for DoubleResult<T, E, F> {
     fn from_residual(residual: Result<Infallible, <Self as Try>::Residual>) -> Self {
         match residual {
             Ok(_) => unreachable!(),
@@ -150,9 +143,9 @@ impl<T, E> FromResidual<Result<Infallible, <Self as Try>::Residual>> for DoubleR
     }
 }
 
-impl<T, E, U> FromResidual<Result<Infallible, LazyError<U>>> for DoubleResult<T, E> {
-    fn from_residual(_residual: Result<Infallible, LazyError<U>>) -> Self {
-        todo!()
+impl<T, E, F> FromResidual<Result<Infallible, LazyError<F>>> for DoubleResult<T, E, F> {
+    fn from_residual(residual: Result<Infallible, LazyError<F>>) -> Self {
+        Self { value: Err(Either::Right(residual.unwrap_err())) }
     }
 }
 

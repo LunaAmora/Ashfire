@@ -269,7 +269,12 @@ impl TypeChecker {
                     let index = usize::from(n);
                     let stk = &program.structs_types[index];
 
-                    for typ in stk.members().iter().map(Typed::get_type) {
+                    for typ in stk
+                        .members()
+                        .iter()
+                        .flat_map(StructType::units)
+                        .map(Typed::get_type)
+                    {
                         self.push_frame(typ, loc);
                     }
 
@@ -323,7 +328,11 @@ impl TypeChecker {
                 let stk = &prog.structs_types[usize::from(value)];
 
                 let index = get_struct_member_index(stk, word, op.loc)?;
-                let result = stk.members()[index].get_type();
+
+                let result = match &stk.members()[index] {
+                    StructType::Root(_) => todo!(),
+                    StructType::Unit(typ) => typ.get_type(),
+                };
 
                 prog.set_operand(ip, index * 4);
                 Ok(result)

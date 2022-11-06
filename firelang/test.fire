@@ -1,14 +1,14 @@
 include "lib/std.fire"
 
-hello str:: "Hello World!" end
-other str:= "Other Text" end
+double_str struct :
+  first  str
+  second str
+end
 
-start ::
-  true if
-    hello println
-    other.len other.data println
-  else
-    other println
-    hello println
-  end
+print_double : double_str : println println end
+
+hello double_str := "Hello World!" "Other Text" end
+
+start proc ::
+  hello print_double
 end

@@ -282,14 +282,6 @@ pub enum StructType {
 }
 
 impl StructType {
-    #[track_caller]
-    pub fn get_value(&self) -> &ValueType {
-        match self {
-            StructType::Unit(val) => val,
-            _ => unimplemented!("only supported for Unit Types"),
-        }
-    }
-
     pub fn name(&self) -> &str {
         match self {
             StructType::Unit(val) => &val.name,
@@ -308,15 +300,6 @@ impl StructType {
         match self {
             StructType::Root(s) => s.size(),
             StructType::Unit(_) => 4,
-        }
-    }
-}
-
-impl Typed for StructType {
-    fn get_type(&self) -> TokenType {
-        match self {
-            StructType::Unit(val) => val.token_type,
-            _ => unimplemented!("Temporary hack"),
         }
     }
 }
@@ -353,7 +336,7 @@ impl StructDef {
     }
 
     pub fn units(&self) -> Vec<&ValueType> {
-        self.members.iter().flat_map(|m| m.units()).collect()
+        self.members.iter().flat_map(StructType::units).collect()
     }
 
     pub fn size(&self) -> usize {
