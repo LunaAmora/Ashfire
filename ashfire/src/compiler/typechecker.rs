@@ -1,7 +1,7 @@
 use ashlib::{EvalStack, Stack};
 use firelib::{anyhow::Result, lazy::LazyCtx, lexer::Loc};
 
-use super::{evaluator::*, program::*, types::*};
+use super::{expect::*, program::*, types::*};
 
 type DataStack = EvalStack<TypeFrame>;
 

@@ -4,7 +4,7 @@ use ashlib::from_i32;
 use firelib::{lazy, lexer::Loc};
 use itertools::Itertools;
 
-use super::{parser::ParseContext, types::*};
+use super::types::*;
 
 #[derive(Default)]
 pub struct Program {
@@ -47,21 +47,6 @@ impl Program {
             }
         }
         operand
-    }
-
-    pub fn push_mem_by_context(
-        &mut self, proc_index: Option<usize>, word: &str, size: i32,
-    ) -> ParseContext {
-        match proc_index.and_then(|i| self.procs.get_mut(i)) {
-            Some(proc) => {
-                proc.push_mem(word, size);
-                ParseContext::LocalMem
-            }
-            None => {
-                self.push_mem(word, size);
-                ParseContext::GlobalMem
-            }
-        }
     }
 
     pub fn push_mem(&mut self, word: &str, size: i32) {
@@ -195,11 +180,11 @@ impl Program {
     }
 
     fn get_cast_type(&self, rest: &[u8]) -> Option<i32> {
-        self.get_data_type(std::str::from_utf8(rest).ok()?)
+        self.get_data_type_id(std::str::from_utf8(rest).ok()?)
             .map(|u| u as i32)
     }
 
-    pub fn get_data_type(&self, word: &str) -> Option<usize> {
+    pub fn get_data_type_id(&self, word: &str) -> Option<usize> {
         self.structs_types
             .iter()
             .position(|s| s.name() == word)
@@ -207,7 +192,7 @@ impl Program {
     }
 
     /// Searches for a `const` that matches the given `&str`.
-    pub fn get_const_name(&self, word: &str) -> Option<&StructType> {
+    pub fn get_const_by_name(&self, word: &str) -> Option<&StructType> {
         self.consts.iter().find(|cnst| word == cnst.name())
     }
 
