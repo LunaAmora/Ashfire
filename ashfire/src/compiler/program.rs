@@ -11,8 +11,8 @@ pub struct Program {
     pub ops: Vec<Op>,
     pub procs: Vec<Proc>,
     pub words: Vec<String>,
-    pub consts: Vec<ValueType>,
-    pub global_vars: Vec<ValueType>,
+    pub consts: Vec<StructType>,
+    pub global_vars: Vec<StructType>,
     pub structs_types: Vec<StructDef>,
     pub block_contracts: HashMap<usize, (usize, usize)>,
     pub included_files: Vec<String>,
@@ -87,7 +87,7 @@ impl Program {
     }
 
     pub fn global_vars_size(&self) -> i32 {
-        self.global_vars.len() as i32 * 4
+        self.global_vars.iter().fold(0, |acc, var| acc + var.size()) as i32
     }
 
     pub fn stack_start(&self) -> i32 {
@@ -95,11 +95,11 @@ impl Program {
     }
 
     pub fn get_word(&self, index: i32) -> &String {
-        self.words.get(index as usize).unwrap()
+        &self.words[index as usize]
     }
 
     pub fn get_string(&self, index: i32) -> &OffsetWord {
-        self.data.get(index as usize).unwrap()
+        &self.data[index as usize]
     }
 
     pub fn get_sorted_data(&self) -> Vec<&OffsetWord> {
@@ -116,7 +116,7 @@ impl Program {
             Value::Bool => "Boolean",
             Value::Ptr => "Pointer",
             Value::Any => "Any",
-            Value::Type(n) => self.structs_types.get(n).unwrap().name(),
+            Value::Type(n) => self.structs_types[n].name(),
         }
         .to_owned()
     }
@@ -151,7 +151,7 @@ impl Program {
         }
     }
 
-    fn loc_fmt<L: Location>(&self, loc: L) -> String {
+    pub fn loc_fmt<L: Location>(&self, loc: L) -> String {
         let loc = loc.loc();
         self.included_files
             .get(loc.file_index)
@@ -207,8 +207,8 @@ impl Program {
     }
 
     /// Searches for a `const` that matches the given `&str`.
-    pub fn get_const_name(&self, word: &str) -> Option<&ValueType> {
-        self.consts.iter().find(|cnst| word == cnst.as_str())
+    pub fn get_const_name(&self, word: &str) -> Option<&StructType> {
+        self.consts.iter().find(|cnst| word == cnst.name())
     }
 
     pub fn get_memory(&self) -> &[SizeWord] {
@@ -240,9 +240,10 @@ pub trait ProgramVisitor {
         }
     }
 
+    #[track_caller]
     fn visit_proc<'a>(&mut self, program: &'a Program, index: usize) -> &'a Proc {
         self.enter_proc(index);
-        program.procs.get(index).unwrap()
+        &program.procs[index]
     }
 
     fn enter_proc(&mut self, i: usize) {

@@ -62,7 +62,7 @@ pub struct Proc {
     pub name: String,
     pub contract: Contract,
     pub bindings: Vec<String>,
-    pub local_vars: Vec<ValueType>,
+    pub local_vars: Vec<StructType>,
     pub local_mem_names: Vec<SizeWord>,
     mem_size: i32,
 }
@@ -87,7 +87,7 @@ impl Proc {
     }
 
     pub fn total_size(&self) -> i32 {
-        self.mem_size + (self.local_vars.len() as i32 * 4)
+        self.mem_size + (self.local_vars.iter().fold(0, |acc, var| acc + var.size()) as i32)
     }
 
     pub fn var_mem_offset(&self, index: i32) -> i32 {
@@ -161,13 +161,31 @@ impl From<(OpType, Loc)> for Op {
     }
 }
 
+impl From<(&StructType, Loc)> for Op {
+    #[track_caller]
+    fn from(tuple: (&StructType, Loc)) -> Self {
+        let StructType::Unit(val) = tuple.0 else {
+            unimplemented!("Conversion supported only for Unit Types")
+        };
+
+        (val, tuple.1).into()
+    }
+}
+
 impl From<(&ValueType, Loc)> for Op {
+    #[track_caller]
     fn from(tuple: (&ValueType, Loc)) -> Self {
         let TokenType::DataType(typ) = tuple.0.token_type else {
-            unreachable!("Conversion supported only for DataTypes")
+            unimplemented!("Conversion supported only for DataTypes")
         };
 
         Op::new(OpType::PushData(typ), tuple.0.value, tuple.1)
+    }
+}
+
+impl From<(IntrinsicType, Loc)> for Op {
+    fn from(value: (IntrinsicType, Loc)) -> Self {
+        Op::new(OpType::Intrinsic, value.0.into(), value.1)
     }
 }
 
@@ -223,6 +241,7 @@ impl IRToken {
 }
 
 impl PartialEq<KeywordType> for &IRToken {
+    #[track_caller]
     fn eq(&self, other: &KeywordType) -> bool {
         self.token_type == TokenType::Keyword &&
             other == &FromPrimitive::from_i32(self.operand).unwrap()
@@ -241,13 +260,21 @@ impl PartialEq<Value> for &IRToken {
     }
 }
 
+impl From<(&StructType, Loc)> for IRToken {
+    fn from(value: (&StructType, Loc)) -> Self {
+        match value.0 {
+            StructType::Root(_) => todo!("Support const use on other consts"),
+            StructType::Unit(u) => (u, value.1).into(),
+        }
+    }
+}
+
 impl From<(&ValueType, Loc)> for IRToken {
     fn from(tuple: (&ValueType, Loc)) -> Self {
         IRToken::new(tuple.0.token_type, tuple.0.value, tuple.1)
     }
 }
 
-#[allow(dead_code)]
 #[derive(Clone)]
 pub enum StructType {
     Root(StructDef),
@@ -255,10 +282,11 @@ pub enum StructType {
 }
 
 impl StructType {
+    #[track_caller]
     pub fn get_value(&self) -> &ValueType {
         match self {
             StructType::Unit(val) => val,
-            _ => unimplemented!("Temporary hack"),
+            _ => unimplemented!("only supported for Unit Types"),
         }
     }
 
@@ -266,6 +294,20 @@ impl StructType {
         match self {
             StructType::Unit(val) => &val.name,
             StructType::Root(stk) => &stk.name,
+        }
+    }
+
+    pub fn units(&self) -> Vec<&ValueType> {
+        match self {
+            StructType::Root(s) => s.units(),
+            StructType::Unit(v) => vec![v],
+        }
+    }
+
+    pub fn size(&self) -> usize {
+        match self {
+            StructType::Root(s) => s.size(),
+            StructType::Unit(_) => 4,
         }
     }
 }
@@ -276,6 +318,18 @@ impl Typed for StructType {
             StructType::Unit(val) => val.token_type,
             _ => unimplemented!("Temporary hack"),
         }
+    }
+}
+
+impl From<ValueType> for StructType {
+    fn from(value: ValueType) -> Self {
+        StructType::Unit(value)
+    }
+}
+
+impl From<StructDef> for StructType {
+    fn from(value: StructDef) -> Self {
+        StructType::Root(value)
     }
 }
 
@@ -296,6 +350,16 @@ impl StructDef {
 
     pub fn members(&self) -> &[StructType] {
         &self.members
+    }
+
+    pub fn units(&self) -> Vec<&ValueType> {
+        self.members.iter().flat_map(|m| m.units()).collect()
+    }
+
+    pub fn size(&self) -> usize {
+        self.members
+            .iter()
+            .fold(0, |acc, member| acc + member.size())
     }
 }
 
@@ -549,7 +613,7 @@ impl From<Value> for usize {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OpType {
     PushData(Value),
     PushStr,

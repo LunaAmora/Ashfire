@@ -110,7 +110,7 @@ impl Generator {
             }
         }
 
-        for var in &program.global_vars {
+        for var in program.global_vars.iter().flat_map(|v| v.units()) {
             wasm.add_data_value(var.value());
         }
 
@@ -132,15 +132,12 @@ impl Generator {
             func.extend(vec![Const(proc_size), Call("aloc_local".into())]);
         }
 
-        for (var, index) in proc.local_vars.iter().zip(0..) {
-            let var_value = var.value();
-            if var_value > 0 {
-                func.extend(vec![
-                    Const(proc.var_mem_offset(index)),
-                    Call("push_local".into()),
-                    Const(var_value),
-                    I32(NumMethod::store),
-                ]);
+        let mut index = (0..).into_iter();
+        for var in proc.local_vars.iter().flat_map(|v| v.units()) {
+            let i = index.next().unwrap();
+
+            if var.value() > 0 {
+                func.store_local(proc.var_mem_offset(i), var.value());
             }
         }
 
@@ -239,16 +236,16 @@ impl Program {
             OpType::Rot => vec![Call("rot".into())],
 
             OpType::Call => {
-                let label = self.procs.get(op.operand as usize).unwrap().get_label();
+                let label = self.procs[op.operand as usize].get_label();
                 vec![Call(label.into())]
             }
 
             OpType::Equal => vec![I32(NumMethod::eq)],
 
             OpType::IfStart => {
-                let (ins, outs) = self.block_contracts.get(&(op.operand as usize)).unwrap();
+                let (ins, outs) = self.block_contracts[&(op.operand as usize)];
                 let contract =
-                    module.new_contract(&vec![WasmType::I32; *ins], &vec![WasmType::I32; *outs]);
+                    module.new_contract(&vec![WasmType::I32; ins], &vec![WasmType::I32; outs]);
 
                 vec![Block(BlockType::If, Some(Id(contract)))]
             }
@@ -278,7 +275,7 @@ impl Program {
     }
 
     fn unpack_struct(&self, index: usize) -> Vec<Instruction> {
-        let stk = self.structs_types.get(index).unwrap();
+        let stk = &self.structs_types[index];
         let count = stk.members().len() as i32;
         let mut instructions = vec![];
 
@@ -343,6 +340,15 @@ impl FuncGen {
 
     fn extend(&mut self, instructions: Vec<Instruction>) {
         self.code.extend(instructions);
+    }
+
+    fn store_local(&mut self, offset: i32, var_value: i32) {
+        self.extend(vec![
+            Const(offset),
+            Call("push_local".into()),
+            Const(var_value),
+            I32(NumMethod::store),
+        ]);
     }
 }
 

@@ -6,7 +6,7 @@ other str:= "Other Text" end
 start ::
   true if
     hello println
-    other println
+    other.len other.data println
   else
     other println
     hello println

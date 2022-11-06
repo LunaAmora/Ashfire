@@ -13,6 +13,7 @@ use firelib::{
     utils::*,
     ShortCircuit, TrySuccess,
 };
+use num::iter::range_step_from;
 
 use super::{
     evaluator::{format_frames, CompEvalStack, Evaluator, Expect},
@@ -75,8 +76,11 @@ impl LocWord {
     fn get_const_struct(&self, prog: &Program) -> Option<Vec<Op>> {
         prog.consts
             .iter()
-            .filter(|cnst| cnst.starts_with(&format!("{}.", self.name)))
-            .map(|tword| Op::from((tword, self.loc)))
+            .filter(|cnst| cnst.name() == self.name)
+            .flat_map(|tword| match tword {
+                StructType::Root(r) => r.units().iter().map(|&a| Op::from((a, self.loc))).collect(),
+                _ => vec![Op::from((tword, self.loc))],
+            })
             .collect::<Vec<Op>>()
             .empty_or_some()
     }
@@ -90,7 +94,7 @@ impl LocWord {
 
     fn get_intrinsic(&self, prog: &Program) -> Option<Vec<Op>> {
         prog.get_intrinsic_type(self)
-            .map(|i| vec![Op::new(OpType::Intrinsic, i.into(), self.loc)])
+            .map(|i| vec![Op::from((i, self.loc))])
     }
 
     fn get_proc_name(&self, prog: &Program) -> Option<Vec<Op>> {
@@ -98,6 +102,104 @@ impl LocWord {
             .iter()
             .position(|proc| self == proc.name.as_str())
             .map(|index| vec![Op::new(OpType::Call, index as i32, self.loc)])
+    }
+
+    fn get_var_fields(
+        &self, vars: &[StructType], push_type: OpType, struct_type: &StructDef, prog: &Program,
+        store: bool, pointer: bool,
+    ) -> Vec<Op> {
+        let mut result = Vec::new();
+        let loc = self.loc;
+
+        let index = get_field_pos(vars, self).unwrap().0 as i32 + 1;
+
+        if pointer {
+            let stk_id = prog.get_data_type(struct_type.name()).unwrap() as i32;
+
+            result.push(Op::new(push_type, index as i32, loc));
+            result.push(Op::from((IntrinsicType::Cast(-stk_id), loc)));
+            return result;
+        }
+
+        let mut members = struct_type.units();
+        if store {
+            members.reverse();
+        }
+
+        let is_local = push_type == OpType::PushLocal;
+        let (index, step) = fold_bool!(is_local == store, (index - 1, 1), (index, -1));
+        let id_range = range_step_from(index, step);
+
+        let members = members.iter().map(|m| m.get_type()).map(i32::from);
+
+        for (operand, type_id) in id_range.zip(members) {
+            if store {
+                result.push(Op::new(OpType::ExpectType, type_id, loc))
+            }
+
+            result.push(Op::new(push_type, operand, loc));
+
+            if store {
+                result.push(Op::from((IntrinsicType::Store32, loc)))
+            } else {
+                result.push(Op::from((IntrinsicType::Load32, loc)));
+                result.push(Op::from((IntrinsicType::Cast(type_id), loc)));
+            }
+        }
+
+        result
+    }
+
+    fn try_get_var_field(
+        &self, vars: &[StructType], push_type: OpType, store: bool, pointer: bool,
+    ) -> OptionErr<Vec<Op>> {
+        let fields: Vec<_> = self.name.split(".").collect();
+        let (index, i) = get_field_pos(vars, fields[0]).or_return(OptionErr::default)?;
+
+        let mut fields = fields.into_iter().skip(1);
+        let mut offset = index as i32;
+        let mut var = &vars[i];
+        let loc = self.loc;
+
+        while let Some(v) = fields.next() {
+            let StructType::Root(root) = var else {
+                return todo(loc).unwrap_err().into();
+            };
+
+            let Some(pos) = root.members().iter().position(|m| m.name().eq(v)) else {
+                let error =
+                    format!("The variable `{}` does not contain the field `{v}`", var.name());
+                return error_loc(&error, loc).into();
+            };
+
+            offset += pos as i32;
+            var = &root.members()[pos];
+        }
+
+        let StructType::Unit(typ) = var else {
+            //Not possible to `.` access a struct root yet, maybe unpack all fields?
+            return todo(loc).unwrap_err().into();
+        };
+
+        let type_id = i32::from(typ.get_type());
+        let mut result = Vec::new();
+
+        if store {
+            result.push(Op::new(OpType::ExpectType, type_id, loc))
+        }
+
+        result.push(Op::new(push_type, offset, loc));
+
+        if store {
+            result.push(Op::from((IntrinsicType::Store32, loc)))
+        } else if pointer {
+            result.push(Op::from((IntrinsicType::Cast(-type_id), loc)));
+        } else {
+            result.push(Op::from((IntrinsicType::Load32, loc)));
+            result.push(Op::from((IntrinsicType::Cast(type_id), loc)));
+        }
+
+        OptionErr::new(result)
     }
 }
 
@@ -137,6 +239,9 @@ struct NameScopes {
 
 impl NameScopes {
     fn lookup(&self, name: &str) -> Option<&ParseContext> {
+        //Todo: there must be a better way to support `.` accessing structs
+        let name = name.split(".").next().unwrap();
+
         for scope in self.scopes.iter().rev() {
             let ctx = scope.names.get(name);
             if ctx.is_some() {
@@ -417,102 +522,40 @@ impl Parser {
     fn get_variable(
         &self, word: &LocWord, var_typ: Option<VarWordType>, prog: &Program,
     ) -> OptionErr<Vec<Op>> {
+        use OpType::*;
         choice!(
             OptionErr,
             self.current_proc(prog)
-                .map(|proc| proc.local_vars.clone())
+                .map(|proc| &proc.local_vars)
                 .map_or_else(OptionErr::default, |vars| self
-                    .try_get_var(word, &vars, true, var_typ, prog)),
-            self.try_get_var(word, &prog.global_vars, false, var_typ, prog),
+                    .try_get_var(word, vars, PushLocal, var_typ, prog)),
+            self.try_get_var(word, &prog.global_vars, PushGlobal, var_typ, prog),
         )
     }
 
     fn try_get_var(
-        &self, word: &LocWord, vars: &[ValueType], local: bool, var_typ: Option<VarWordType>,
-        prog: &Program,
+        &self, word: &LocWord, vars: &[StructType], push_type: OpType,
+        var_typ: Option<VarWordType>, prog: &Program,
     ) -> OptionErr<Vec<Op>> {
-        let mut result = Vec::new();
-        let push_type = fold_bool!(local, OpType::PushLocal, OpType::PushGlobal);
-
         let (store, pointer) = match var_typ {
             Some(VarWordType::Store) => (true, false),
             Some(VarWordType::Pointer) => (false, true),
             _ => Default::default(),
         };
 
-        if let Some(index) = vars.iter().position(|name| word == name.as_str()) {
-            let typ = vars.get(index).unwrap().get_type().into();
-
-            if store {
-                result.push(Op::new(OpType::ExpectType, typ, word.loc))
-            }
-
-            result.push(Op::new(push_type, index as i32, word.loc));
-
-            if store {
-                result.push(Op::new(OpType::Intrinsic, IntrinsicType::Store32.into(), word.loc))
-            } else if pointer {
-                let ptr_typ = IntrinsicType::Cast(-typ);
-                result.push(Op::new(OpType::Intrinsic, ptr_typ.into(), word.loc));
-            } else {
-                let data_typ = IntrinsicType::Cast(typ);
-                result.push(Op::new(OpType::Intrinsic, IntrinsicType::Load32.into(), word.loc));
-                result.push(Op::new(OpType::Intrinsic, data_typ.into(), word.loc));
-            }
-
-            return OptionErr::new(result);
-        }
-
-        let struct_type = vars
-            .iter()
-            .any(|val| val.starts_with(&format!("{}.", word.name)))
-            .then(|| self.try_get_struct_type(word, prog))
-            .flatten()
-            .or_return(OptionErr::default)?;
-
-        let mut member = struct_type.members().first().unwrap().get_value();
-
-        if pointer {
-            let pattern = &format!("{}.{}", word.name, member.name());
-            let index = expect_index(vars, |name| name.eq(pattern));
-
-            let stk_id = prog.get_data_type(struct_type.name()).unwrap();
-            let ptr_typ = IntrinsicType::Cast(-(stk_id as i32));
-
-            result.push(Op::new(push_type, index as i32, word.loc));
-            result.push(Op::new(OpType::Intrinsic, ptr_typ.into(), word.loc));
+        if word.contains(".") {
+            word.try_get_var_field(vars, push_type, store, pointer)
         } else {
-            let mut members = struct_type.members().to_vec();
+            let struct_type = vars
+                .iter()
+                .any(|val| val.name() == word.name)
+                .then(|| self.try_get_struct_type(word, prog))
+                .flatten()
+                .or_return(OptionErr::default)?;
 
-            if store {
-                members.reverse();
-                member = members.first().unwrap().get_value();
-            }
-
-            let pattern = &format!("{}.{}", word.name, member.name());
-            let index = expect_index(vars, |name| name.eq(pattern)) as i32;
-
-            for (i, member) in (0_i32..).zip(members.into_iter()) {
-                let operand = index + fold_bool!(local == store, i, -i);
-                let member = member.get_value();
-
-                if store {
-                    result.push(Op::new(OpType::ExpectType, member.get_type().into(), word.loc))
-                }
-
-                result.push(Op::new(push_type, operand, word.loc));
-
-                if store {
-                    result.push(Op::new(OpType::Intrinsic, IntrinsicType::Store32.into(), word.loc))
-                } else {
-                    let data_typ = IntrinsicType::Cast(member.get_type().into());
-                    result.push(Op::new(OpType::Intrinsic, IntrinsicType::Load32.into(), word.loc));
-                    result.push(Op::new(OpType::Intrinsic, data_typ.into(), word.loc));
-                }
-            }
+            let result = word.get_var_fields(vars, push_type, struct_type, prog, store, pointer);
+            OptionErr::new(result)
         }
-
-        OptionErr::new(result)
     }
 
     /// Searches for a `struct` that matches the given `&str`,
@@ -608,14 +651,16 @@ impl Parser {
             (1, KeywordType::Equal) => {
                 self.skip(2);
                 match self.compile_eval(prog).value {
-                    Ok((result, eval)) => {
-                        if &result == Value::Any {
-                            Err(error_loc("Undefined variable value is not allowed", word.loc))?;
-                        }
+                    Ok((_, _)) => {
+                        todo(word.loc)?; //Refactor broke stuff
 
-                        self.skip(eval);
-                        let struct_word = ValueType::new(word.to_string(), &result);
-                        self.register_var(struct_word, prog);
+                        // if &result == Value::Any {
+                        //     Err(error_loc("Undefined variable value is not allowed", word.loc))?;
+                        // }
+
+                        // self.skip(eval);
+                        // let struct_word = ValueType::new(word.to_string(), &result);
+                        // self.register_var(struct_word, prog);
 
                         success!();
                     }
@@ -662,7 +707,8 @@ impl Parser {
         if let Ok((eval, skip)) = self.compile_eval(prog).value {
             if &eval != Value::Any {
                 self.skip(skip);
-                prog.consts.push(ValueType::new(word.to_string(), &eval));
+                prog.consts
+                    .push(ValueType::new(word.to_string(), &eval).into());
                 self.name_scopes
                     .register(word.to_string(), ParseContext::ConstName);
                 success!();
@@ -850,14 +896,16 @@ impl Parser {
                     let ref_members = stk_typ.members();
 
                     if ref_members.len() == 1 {
-                        let typ = ref_members.first().unwrap().get_value();
+                        let typ = ref_members[0].get_value();
                         members.push(StructType::Unit((found_word, typ).into()));
                     } else {
-                        for member in ref_members {
-                            let member = member.get_value();
-                            let member_name = format!("{}.{}", found_word, member.name());
-                            members.push(StructType::Unit((member_name, member).into()));
-                        }
+                        todo(word.loc)?; //Refactor broke stuff
+
+                        // for member in ref_members {
+                        //     let member = member.get_value();
+                        //     let member_name = format!("{}.{}", found_word, member.name());
+                        //     members.push(StructType::Unit((member_name, member).into()));
+                        // }
                     }
                 }
                 Either::Right(typ_ptr) => {
@@ -905,12 +953,9 @@ impl Parser {
                 if self.inside_proc() {
                     members.reverse();
                 }
-                for member in members {
-                    let member = member.get_value();
-                    let name = format!("{}.{}", word.name, member.name());
-                    let struct_word = ValueType::new(name, member);
-                    self.register_typed_word(&assign, struct_word, prog);
-                }
+
+                let struct_word = StructDef::new(word.name.to_owned(), members);
+                self.register_typed_word(&assign, StructType::Root(struct_word), prog);
             } else {
                 let member_type = members.last().unwrap().get_value().get_type();
                 if !equals_any!(member_type, Value::Any, eval.token_type) {
@@ -926,7 +971,7 @@ impl Parser {
                 }
 
                 let struct_word = ValueType::new(word.to_string(), &eval);
-                self.register_typed_word(&assign, struct_word, prog);
+                self.register_typed_word(&assign, StructType::Unit(struct_word), prog);
             }
         } else {
             let contract: Vec<TokenType> = members.iter().map(Typed::get_type).collect();
@@ -938,13 +983,21 @@ impl Parser {
                     result.reverse()
                 }
             }
+            let mut def_members = vec![];
+            let mut item = result.into_iter();
 
-            for (member, item) in members.into_iter().zip(result.into_iter()) {
-                let member = member.get_value();
-                let name = format!("{}.{}", word.name, member.name());
-                let struct_word = ValueType::new(name, &item);
-                self.register_typed_word(&assign, struct_word, prog);
+            for member in members {
+                match member {
+                    StructType::Unit(u) => {
+                        let value = ValueType::new(u.name().to_owned(), &item.next().unwrap());
+                        def_members.push(StructType::Unit(value));
+                    }
+                    _ => todo(word.loc)?, //Refactor broke stuff
+                }
             }
+
+            let struct_word = StructType::Root(StructDef::new(word.name.to_owned(), def_members));
+            self.register_typed_word(&assign, struct_word, prog);
         }
 
         let ctx = match assign {
@@ -960,7 +1013,7 @@ impl Parser {
     }
 
     fn register_typed_word(
-        &mut self, assign: &KeywordType, struct_word: ValueType, prog: &mut Program,
+        &mut self, assign: &KeywordType, struct_word: StructType, prog: &mut Program,
     ) {
         match assign {
             KeywordType::Colon => prog.consts.push(struct_word),
@@ -969,7 +1022,7 @@ impl Parser {
         }
     }
 
-    fn register_var(&mut self, struct_word: ValueType, prog: &mut Program) {
+    fn register_var(&mut self, struct_word: StructType, prog: &mut Program) {
         match self.current_proc_mut(prog) {
             Some(proc) => proc.local_vars.push(struct_word),
             _ => prog.global_vars.push(struct_word),
@@ -1006,6 +1059,19 @@ impl Parser {
         }
         Ok(self)
     }
+}
+
+fn get_field_pos(vars: &[StructType], word: &str) -> Option<(usize, usize)> {
+    let Some(i) = vars.iter().position(|v| v.name() == word) else {
+        return  None;
+    };
+
+    let mut offset = 0;
+    for (var, _) in vars.iter().zip(0..i) {
+        offset += var.size() / 4;
+    }
+
+    Some((offset, i))
 }
 
 impl Program {
@@ -1109,4 +1175,9 @@ fn expect_token_by(
         Some(tok) if pred(&tok) => Ok(tok),
         invalid => Err(invalid_option(invalid, desc, loc)),
     }
+}
+
+#[track_caller]
+fn todo(loc: Loc) -> LazyResult<()> {
+    Err(error_loc(&format!("\n[HERE]  {}", std::panic::Location::caller()), loc))
 }
