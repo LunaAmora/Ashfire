@@ -119,7 +119,7 @@ impl Evaluator<IRToken> for EvalStack<IRToken> {
                             let cast = match n {
                                 1.. => Value::from((n - 1) as usize).get_type(),
                                 0 => unreachable!(),
-                                _ => todo!("casting to ptr type not implemented yet"),
+                                _ => TokenType::DataPtr(Value::from((-n - 1) as usize)),
                             };
 
                             self.push(IRToken::new(cast, a.operand, tok.loc));

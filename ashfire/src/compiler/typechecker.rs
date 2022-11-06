@@ -130,7 +130,7 @@ impl TypeChecker {
                     let cast: TokenType = match n {
                         1.. => Value::from((n - 1) as usize).get_type(),
                         0 => unreachable!(),
-                        n => TokenType::DataPtr(Value::from((-n - 1) as usize)),
+                        _ => TokenType::DataPtr(Value::from((-n - 1) as usize)),
                     };
                     self.push_frame(cast, loc);
                 }
@@ -161,12 +161,10 @@ impl TypeChecker {
             }
 
             OpType::Call => {
-                let Proc { contract, .. } = &program.procs[op.operand as usize];
-                {
-                    self.data_stack.expect_contract_pop(contract.ins(), loc)?;
-                    for &typ in contract.outs() {
-                        self.push_frame(typ, loc);
-                    }
+                let contr = &program.procs[op.operand as usize].contract;
+                self.data_stack.expect_contract_pop(contr.ins(), loc)?;
+                for &typ in contr.outs() {
+                    self.push_frame(typ, loc);
                 }
             }
 
@@ -288,8 +286,8 @@ impl TypeChecker {
 
             OpType::ExpectType => {
                 let typ = match op.operand {
+                    n @ 1.. => Value::from((n - 1) as usize).get_type(),
                     0 => unreachable!(),
-                    n @ 1.. => TokenType::DataType(Value::from((n - 1) as usize)),
                     n => TokenType::DataPtr(Value::from((-n - 1) as usize)),
                 };
                 self.data_stack.expect_peek(ArityType::Type(typ), loc)?;
