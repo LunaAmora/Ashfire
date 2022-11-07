@@ -296,6 +296,13 @@ impl StructType {
         }
     }
 
+    pub fn count(&self) -> usize {
+        match self {
+            StructType::Root(s) => s.count(),
+            StructType::Unit(_) => 1,
+        }
+    }
+
     pub fn size(&self) -> usize {
         match self {
             StructType::Root(s) => s.size(),
@@ -337,6 +344,12 @@ impl StructDef {
 
     pub fn units(&self) -> Vec<&ValueType> {
         self.members.iter().flat_map(StructType::units).collect()
+    }
+
+    pub fn count(&self) -> usize {
+        self.members
+            .iter()
+            .fold(0, |acc, member| acc + member.count())
     }
 
     pub fn size(&self) -> usize {

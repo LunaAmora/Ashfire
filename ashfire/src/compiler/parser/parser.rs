@@ -688,10 +688,10 @@ impl Parser {
                     StructType::Root(root) => {
                         let mut new = vec![];
 
-                        let root_members: Vec<_> = if self.inside_proc() {
-                            root.members().iter().rev().collect()
+                        let root_members = if self.inside_proc() {
+                            Either::Right(root.members().iter().rev())
                         } else {
-                            root.members().iter().collect()
+                            Either::Left(root.members().iter())
                         };
 
                         for member in root_members {
@@ -778,19 +778,21 @@ impl LocWord {
         let loc = self.loc;
         let index = get_field_pos(vars, self).unwrap().0 as i32;
 
-        let mut members = struct_type.units();
-        if store {
-            members.reverse();
-        }
-
         let is_local = push_type == OpType::PushLocal;
         let id_range = if store == is_local {
             range_step_from(index, 1)
         } else {
-            range_step_from(index + members.len() as i32 - 1, -1)
+            range_step_from(index + struct_type.count() as i32 - 1, -1)
         };
 
-        let members = members.iter().map(Typed::get_type).map(i32::from);
+        let members = struct_type.units();
+        let members = if store {
+            Either::Left(members.into_iter().rev())
+        } else {
+            Either::Right(members.into_iter())
+        };
+
+        let members = members.map(Typed::get_type).map(i32::from);
 
         for (operand, type_id) in id_range.zip(members) {
             if store {
