@@ -628,16 +628,17 @@ impl Parser {
         };
 
         let end_token = self.skip(eval).unwrap();
-        let mut members = stk.members().to_vec();
+        let members = if self.inside_proc() {
+            Either::Left(stk.members().iter().rev())
+        } else {
+            Either::Right(stk.members().iter())
+        };
 
         if result.len() == 1 {
             let eval = result.pop().unwrap();
 
             if &eval == Value::Any {
-                if self.inside_proc() {
-                    members.reverse();
-                }
-
+                let members: Vec<StructType> = members.cloned().collect();
                 let struct_word = StructDef::new(word.name.to_owned(), members);
                 self.register_const(&assign, StructType::Root(struct_word), prog);
             } else {
@@ -662,18 +663,19 @@ impl Parser {
                 self.register_const(&assign, StructType::Unit(struct_word), prog);
             }
         } else {
-            let contract: Vec<TokenType> = members
-                .iter()
-                .flat_map(StructType::units)
-                .map(Typed::get_type)
-                .collect();
+            let contract: Vec<TokenType> = if self.inside_proc() {
+                Either::Left(members.clone().rev())
+            } else {
+                Either::Right(members.clone())
+            }
+            .flat_map(StructType::units)
+            .map(Typed::get_type)
+            .collect();
+
             result.expect_exact(&contract, end_token.loc)?;
 
-            if self.inside_proc() {
-                members.reverse();
-                if assign == KeywordType::Equal {
-                    result.reverse()
-                }
+            if self.inside_proc() && assign == KeywordType::Equal {
+                result.reverse()
             }
 
             let mut def_members = vec![];
@@ -689,9 +691,9 @@ impl Parser {
                         let mut new = vec![];
 
                         let root_members = if self.inside_proc() {
-                            Either::Right(root.members().iter().rev())
+                            Either::Left(root.members().iter().rev())
                         } else {
-                            Either::Left(root.members().iter())
+                            Either::Right(root.members().iter())
                         };
 
                         for member in root_members {
