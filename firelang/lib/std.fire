@@ -22,11 +22,11 @@ print : str :
   !string *string puts
 end
 
-println : str :
+println inline: str :
   print "\n" print
 end
 
-trim-left : *str :
+trim-left inline: *str :
   dup
   .*len  dec32
   .*data inc32

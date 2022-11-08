@@ -143,6 +143,7 @@ fn parse_as_keyword(tok: &Token) -> Option<IRToken> {
         "case" => KeywordType::Case,
         "while" => KeywordType::While,
         "struct" => KeywordType::Struct,
+        "inline" => KeywordType::Inline,
         "include" => KeywordType::Include,
         _ => return None,
     } as i32;

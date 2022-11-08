@@ -58,32 +58,18 @@ impl Operand for i32 {
 }
 
 #[derive(Default)]
-pub struct Proc {
-    pub name: String,
-    pub contract: Contract,
+pub struct ProcData {
     pub bindings: Vec<String>,
     pub local_vars: Vec<StructType>,
     pub local_mem_names: Vec<SizeWord>,
     mem_size: i32,
 }
 
-impl Proc {
-    pub fn new(name: &str, contract: Contract) -> Self {
-        Self {
-            name: name.to_owned(),
-            contract,
-            ..Default::default()
-        }
-    }
-
+impl ProcData {
     pub fn push_mem(&mut self, word: &str, size: i32) {
         self.mem_size += size;
         self.local_mem_names
             .push(SizeWord::new(word, self.mem_size));
-    }
-
-    pub fn get_label(&self) -> &str {
-        &self.name
     }
 
     pub fn total_size(&self) -> i32 {
@@ -92,6 +78,53 @@ impl Proc {
 
     pub fn var_mem_offset(&self, index: i32) -> i32 {
         self.mem_size + (index + 1) * 4
+    }
+}
+
+pub enum ProcType {
+    Inline(usize, usize),
+    Declare(ProcData),
+}
+
+impl Default for ProcType {
+    fn default() -> Self {
+        Self::Declare(ProcData::default())
+    }
+}
+
+#[derive(Default)]
+pub struct Proc {
+    pub name: String,
+    pub contract: Contract,
+    pub data: ProcType,
+}
+
+impl Proc {
+    pub fn new(name: &str, contract: Contract, inline: Option<usize>) -> Self {
+        let data = match inline {
+            Some(start) => ProcType::Inline(start, 0),
+            _ => ProcType::default(),
+        };
+
+        Self { name: name.to_owned(), contract, data }
+    }
+
+    pub fn get_label(&self) -> &str {
+        &self.name
+    }
+
+    pub fn get_data(&self) -> Option<&ProcData> {
+        match &self.data {
+            ProcType::Inline(..) => None,
+            ProcType::Declare(data) => Some(data),
+        }
+    }
+
+    pub fn get_data_mut(&mut self) -> Option<&mut ProcData> {
+        match &mut self.data {
+            ProcType::Inline(..) => None,
+            ProcType::Declare(data) => Some(data),
+        }
     }
 }
 
@@ -615,13 +648,16 @@ pub enum OpType {
     Over,
     Rot,
     Call,
+    CallInline,
     Equal,
     PrepProc,
+    PrepInline,
     IfStart,
     Else,
     EndIf,
     EndElse,
     EndProc,
+    EndInline,
     BindStack,
     PushBind,
     PopBind,
@@ -734,6 +770,7 @@ pub enum KeywordType {
     While,
     Do,
     At,
+    Inline,
     Include,
     Case,
 }

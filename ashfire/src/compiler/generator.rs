@@ -8,7 +8,7 @@ use Scope::*;
 
 use super::{
     program::*,
-    types::{Contract, IntrinsicType, Op, OpType, Proc, StructType},
+    types::{Contract, IntrinsicType, Op, OpType, Proc, ProcType, StructType},
 };
 
 pub struct Generator {
@@ -84,14 +84,18 @@ impl Generator {
             I32(NumMethod::sub),
         ]);
 
+        let mut skip = false;
         for op in program.ops.iter() {
-            match op.op_type {
-                OpType::PrepProc => self.prep_proc(program, op)?,
+            skip = match op.op_type {
+                OpType::PrepProc | OpType::PrepInline => self.prep_proc(program, op)?,
                 OpType::EndProc => self.end_proc(program, &mut wasm)?,
                 _ => {
-                    let proc = self.current_proc(program).unwrap();
-                    let func = self.current_fn()?;
-                    func.extend(program.generate_op(op, proc, func, &mut wasm)?)
+                    if !skip {
+                        let proc = self.current_proc(program).unwrap();
+                        let func = self.current_fn()?;
+                        func.extend(program.generate_op(op, proc, func, &mut wasm)?);
+                    }
+                    skip
                 }
             }
         }
@@ -117,27 +121,31 @@ impl Generator {
         Ok(wasm)
     }
 
-    fn prep_proc(&mut self, program: &Program, op: &Op) -> Result<()> {
+    fn prep_proc(&mut self, program: &Program, op: &Op) -> Result<bool> {
         if self.current_func.is_some() {
             anybail!("Cannot start an Wasm function block without closing the current one");
         }
 
         let proc = self.visit_proc(program, op.operand as usize);
+        let Some(data) = proc.get_data() else {
+            return Ok(true);
+        };
+
         self.current_func = Some(FuncGen::new(&proc.name, &proc.contract));
         let func = self.current_fn()?;
 
-        let proc_size = proc.total_size();
+        let proc_size = data.total_size();
 
         if proc_size > 0 {
             func.extend(vec![Const(proc_size), Call("aloc_local".into())]);
         }
 
         let mut index = (0..).into_iter();
-        for var in proc.local_vars.iter().flat_map(StructType::units) {
+        for var in data.local_vars.iter().flat_map(StructType::units) {
             let i = index.next().unwrap();
 
             if var.value() > 0 {
-                func.store_local(proc.var_mem_offset(i), var.value());
+                func.store_local(data.var_mem_offset(i), var.value());
             }
         }
 
@@ -145,24 +153,28 @@ impl Generator {
             func.push(Get(local, Id(i)));
         }
 
-        Ok(())
+        Ok(false)
     }
 
-    fn end_proc(&mut self, program: &Program, wasm: &mut Module) -> Result<()> {
+    fn end_proc(&mut self, program: &Program, wasm: &mut Module) -> Result<bool> {
+        let proc = self.current_proc(program).unwrap();
+        let Some(data) = proc.get_data() else {
+            return Ok(true);
+        };
+
         let mut func = self
             .current_func
             .take()
             .with_context(|| "No Wasm function block is open")?;
 
-        let proc = self.current_proc(program).unwrap();
-        let mem_to_free = proc.total_size();
+        let mem_to_free = data.total_size();
 
         if mem_to_free > 0 {
             func.extend(vec![Const(mem_to_free), Call("free_local".into())]);
         }
 
         wasm.add_fn(&func.label, &func.contract.0, &func.contract.1, func.code);
-        Ok(())
+        Ok(false)
     }
 
     fn current_fn(&mut self) -> Result<&mut FuncGen> {
@@ -194,7 +206,10 @@ impl Program {
             }
 
             OpType::PushLocal => {
-                let ptr = proc.var_mem_offset(func.bind_count + op.operand);
+                let ptr = proc
+                    .get_data()
+                    .unwrap()
+                    .var_mem_offset(func.bind_count + op.operand);
                 vec![Const(ptr), Call("push_local".into())]
             }
 
@@ -270,7 +285,24 @@ impl Program {
             OpType::CaseOption => todo!(),
             OpType::EndCase => todo!(),
 
-            OpType::PrepProc | OpType::EndProc => unreachable!(),
+            OpType::CallInline => {
+                let ProcType::Inline(start, end) = self.procs[op.operand as usize].data else {
+                    unreachable!();
+                };
+
+                let mut inlined = vec![];
+
+                for ip in start + 1..end {
+                    let in_op = &self.ops[ip];
+                    inlined.extend(self.generate_op(in_op, proc, func, module)?);
+                }
+
+                inlined
+            }
+
+            OpType::PrepProc | OpType::PrepInline | OpType::EndProc | OpType::EndInline => {
+                unreachable!()
+            }
         })
     }
 

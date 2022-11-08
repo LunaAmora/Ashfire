@@ -2,9 +2,9 @@ true  :: 1 #bool end
 false :: 0 #bool end
 null  :: 0 #ptr end
 
-inc32 : *any : dup @ #int 1 + swap !32 end
-dec32 : *any : dup @ #int 1 - swap !32 end
+inc32 inline: *any : dup @ #int 1 + swap !32 end
+dec32 inline: *any : dup @ #int 1 - swap !32 end
 
-lnot : bool -> bool : #int 1 swap - #bool end
-lor  : bool bool -> bool : #int swap #int or  #bool end
-land : bool bool -> bool : #int swap #int and #bool end
+lnot inline: bool -> bool : #int 1 swap - #bool end
+lor  inline: bool bool -> bool : #int swap #int or  #bool end
+land inline: bool bool -> bool : #int swap #int and #bool end

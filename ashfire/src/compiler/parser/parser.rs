@@ -204,10 +204,16 @@ impl Parser {
                     (OpType::EndProc, operand, loc).into()
                 }
 
+                Op { op_type: OpType::PrepInline, operand, .. } => {
+                    self.exit_proc();
+                    (OpType::EndInline, operand, loc).into()
+                }
+
                 block => Err(format_block("Expected `end` to close a valid block", block, loc))?,
             },
 
             KeywordType::Include |
+            KeywordType::Inline |
             KeywordType::Arrow |
             KeywordType::Proc |
             KeywordType::Mem |
@@ -241,7 +247,7 @@ impl Parser {
     /// Searches for a `binding` that matches the given [`word`][LocWord]
     /// on the current [`Proc`].
     fn get_binding(&self, word: &LocWord, prog: &Program) -> Option<Vec<Op>> {
-        self.current_proc(prog)
+        self.current_proc_data(prog)
             .and_then(|proc| {
                 proc.bindings
                     .iter()
@@ -254,7 +260,7 @@ impl Parser {
     /// Searches for a `mem` that matches the given [`word`][LocWord]
     /// on the current [`Proc`].
     fn get_local_mem(&self, word: &LocWord, prog: &Program) -> Option<Vec<Op>> {
-        self.current_proc(prog)
+        self.current_proc_data(prog)
             .and_then(|proc| proc.local_mem_names.iter().find(|mem| word == mem.as_str()))
             .map(|local| Op::new(OpType::PushLocalMem, local.offset(), word.loc).into())
     }
@@ -267,7 +273,7 @@ impl Parser {
         use OpType::*;
         choice!(
             OptionErr,
-            self.current_proc(prog)
+            self.current_proc_data(prog)
                 .map(|proc| &proc.local_vars)
                 .map_or_else(OptionErr::default, |vars| self
                     .try_get_var(word, vars, PushLocal, var_typ, prog)),
@@ -360,7 +366,7 @@ impl Parser {
     ) -> OptionErr<Vec<Op>> {
         prog.get_type_kind(found_word)
             .or_return(OptionErr::default)?;
-        self.parse_procedure(word, prog)
+        self.parse_procedure(word, prog, false)
     }
 
     fn parse_struct_ctx(
@@ -392,7 +398,12 @@ impl Parser {
 
             (0, KeywordType::Proc) => {
                 self.next();
-                self.parse_procedure(word, prog)
+                self.parse_procedure(word, prog, false)
+            }
+
+            (0, KeywordType::Inline) => {
+                self.next();
+                self.parse_procedure(word, prog, true)
             }
 
             (1, KeywordType::Equal) => {
@@ -441,14 +452,14 @@ impl Parser {
         (colons == 2).or_return(OptionErr::default)?;
 
         self.parse_static_ctx(ctx_size, word, prog)?;
-        self.define_proc(word, Contract::default(), prog)
+        self.define_proc(word, Contract::default(), prog, false)
             .into_success()?
     }
 
     fn parse_static_ctx(
         &mut self, ctx_size: usize, word: &LocWord, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
-        (ctx_size == 1).or_return(|| self.parse_procedure(word, prog))?;
+        (ctx_size == 1).or_return(|| self.parse_procedure(word, prog, false))?;
 
         self.skip(2);
         if let Ok((eval, skip)) = self.compile_eval(prog).value {
@@ -478,7 +489,7 @@ impl Parser {
     }
 
     fn define_proc(
-        &mut self, name: &LocWord, contract: Contract, prog: &mut Program,
+        &mut self, name: &LocWord, contract: Contract, prog: &mut Program, inline: bool,
     ) -> LazyResult<Op> {
         let loc = name.loc;
 
@@ -486,23 +497,27 @@ impl Parser {
             Err(error_loc("Cannot define a procedure inside of another procedure", loc))?;
         };
 
-        let proc = Proc::new(name, contract);
+        let inline_ip = fold_bool!(inline, Some(prog.ops.len()), None);
+        let proc = Proc::new(name, contract, inline_ip);
         let operand = prog.procs.len();
         self.enter_proc(operand);
         prog.procs.push(proc);
         self.name_scopes
             .register(name.to_string(), ParseContext::ProcName);
 
-        Ok(self.push_block(Op::new(OpType::PrepProc, operand as i32, loc)))
+        let prep = fold_bool!(inline, OpType::PrepInline, OpType::PrepProc);
+        Ok(self.push_block(Op::new(prep, operand as i32, loc)))
     }
 
-    fn parse_procedure(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
+    fn parse_procedure(
+        &mut self, word: &LocWord, prog: &mut Program, include: bool,
+    ) -> OptionErr<Vec<Op>> {
         let mut ins = Vec::new();
         let mut outs = Vec::new();
         let mut arrow = false;
         let loc = word.loc;
 
-        self.expect_keyword(KeywordType::Colon, "`:` after keyword `proc`", loc)?;
+        self.expect_keyword(KeywordType::Colon, "`:` after procedure declaration", loc)?;
         let tok_err = "proc contract or `:` after procedure definition";
 
         while let Some(tok) = self.next() {
@@ -516,7 +531,8 @@ impl Parser {
                         arrow = true;
                     }
                     KeywordType::Colon => {
-                        (self.define_proc(word, Contract::new(ins, outs), prog)).into_success()?
+                        (self.define_proc(word, Contract::new(ins, outs), prog, include))
+                            .into_success()?
                     }
                     _ => return invalid_option(Some(tok), tok_err, loc).into(),
                 }
@@ -548,7 +564,7 @@ impl Parser {
         self.expect_keyword(KeywordType::End, "`end` after memory size", loc)?;
 
         let size = ((value.operand + 3) / 4) * 4;
-        let ctx = prog.push_mem_by_context(self.get_index(), word, size);
+        let ctx = prog.push_mem_by_context(self.get_index(), word, size)?;
         self.name_scopes.register(word.to_string(), ctx);
 
         Ok(())
@@ -893,8 +909,15 @@ impl Program {
     fn get_proc_name(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.procs
             .iter()
-            .position(|proc| word == proc.name.as_str())
-            .map(|index| vec![Op::new(OpType::Call, index as i32, word.loc)])
+            .enumerate()
+            .find(|(_, proc)| word == proc.name.as_str())
+            .map(|(index, proc)| {
+                let call = match &proc.data {
+                    ProcType::Inline(..) => OpType::CallInline,
+                    ProcType::Declare(_) => OpType::Call,
+                };
+                vec![Op::new(call, index as i32, word.loc)]
+            })
     }
 
     fn get_type_kind(&self, type_name: String) -> Option<Either<&StructDef, TokenType>> {
@@ -929,15 +952,19 @@ impl Program {
 
     fn push_mem_by_context(
         &mut self, proc_index: Option<usize>, word: &str, size: i32,
-    ) -> ParseContext {
+    ) -> LazyResult<ParseContext> {
         match proc_index.and_then(|i| self.procs.get_mut(i)) {
             Some(proc) => {
-                proc.push_mem(word, size);
-                ParseContext::LocalMem
+                let Some(data) = proc.get_data_mut() else {
+                    todo!();
+                };
+
+                data.push_mem(word, size);
+                Ok(ParseContext::LocalMem)
             }
             None => {
                 self.push_mem(word, size);
-                ParseContext::GlobalMem
+                Ok(ParseContext::GlobalMem)
             }
         }
     }

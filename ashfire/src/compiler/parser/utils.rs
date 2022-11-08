@@ -31,7 +31,13 @@ impl Parser {
 
     pub fn register_var(&mut self, struct_word: StructType, prog: &mut Program) {
         match self.current_proc_mut(prog) {
-            Some(proc) => proc.local_vars.push(struct_word),
+            Some(proc) => {
+                let Some(data) = proc.get_data_mut() else {
+                    todo!();
+                };
+
+                data.local_vars.push(struct_word)
+            }
             None => prog.global_vars.push(struct_word),
         }
     }

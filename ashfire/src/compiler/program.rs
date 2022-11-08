@@ -217,6 +217,10 @@ pub trait ProgramVisitor {
         }
     }
 
+    fn current_proc_data<'a>(&self, program: &'a Program) -> Option<&'a ProcData> {
+        self.current_proc(program).and_then(Proc::get_data)
+    }
+
     fn current_proc_mut<'a>(&self, program: &'a mut Program) -> Option<&'a mut Proc> {
         if let Some(i) = self.get_index() {
             program.procs.get_mut(i)

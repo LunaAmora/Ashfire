@@ -160,7 +160,7 @@ impl TypeChecker {
                 self.data_stack.push_n([b, c, a]);
             }
 
-            OpType::Call => {
+            OpType::Call | OpType::CallInline => {
                 let contr = &program.procs[op.operand as usize].contract;
                 self.data_stack.expect_contract_pop(contr.ins(), loc)?;
                 for &typ in contr.outs() {
@@ -174,7 +174,7 @@ impl TypeChecker {
                 self.push_frame(BOOL, loc);
             }
 
-            OpType::PrepProc => {
+            OpType::PrepProc | OpType::PrepInline => {
                 for &typ in self.visit_proc(program, op.operand as usize).contract.ins() {
                     self.push_frame(typ, loc);
                 }
@@ -242,8 +242,9 @@ impl TypeChecker {
                 self.data_stack.stack_count = old_stack.stack_count;
             }
 
-            OpType::EndProc => {
-                let outs = self.current_proc(program).unwrap().contract.outs();
+            OpType::EndProc | OpType::EndInline => {
+                let proc = &mut self.current_proc_mut(program).unwrap();
+                let outs = proc.contract.outs();
 
                 if outs.is_empty() {
                     self.data_stack.expect_exact::<TokenType>(&[], loc)?;
@@ -254,6 +255,11 @@ impl TypeChecker {
                 }
 
                 self.data_stack = Default::default();
+
+                match proc.data {
+                    ProcType::Inline(start, _) => proc.data = ProcType::Inline(start, ip),
+                    _ => {}
+                }
                 self.exit_proc();
             }
 
