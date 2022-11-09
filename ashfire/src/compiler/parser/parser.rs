@@ -605,7 +605,8 @@ impl Parser {
 
                         members.push(StructType::Unit((found_word, typ).into()));
                     } else {
-                        let root = StructDef::new(found_word, ref_members.to_vec());
+                        let value = prog.get_struct_value_id(stk_typ).unwrap();
+                        let root = StructRef::new(found_word, ref_members.to_vec(), value);
                         members.push(StructType::Root(root));
                     }
                 }
@@ -655,7 +656,8 @@ impl Parser {
 
             if &eval == Value::Any {
                 let members: Vec<StructType> = members.cloned().collect();
-                let struct_word = StructDef::new(word.name.to_owned(), members);
+                let value = prog.get_struct_value_id(&stk).unwrap();
+                let struct_word = StructRef::new(word.name.to_owned(), members, value);
                 self.register_const(&assign, StructType::Root(struct_word), prog);
             } else {
                 let member_type = match members.last().unwrap() {
@@ -722,14 +724,15 @@ impl Parser {
                             new.push(StructType::Unit(value));
                         }
 
-                        let root = StructDef::new(root.name().to_owned(), new);
+                        let root = StructRef::new(root.name().to_owned(), new, root.get_ref_type());
                         def_members.push(StructType::Root(root));
                     }
                 }
             }
 
-            let struct_word = StructType::Root(StructDef::new(word.name.to_owned(), def_members));
-            self.register_const(&assign, struct_word, prog);
+            let value = prog.get_struct_value_id(&stk).unwrap();
+            let struct_ref = StructRef::new(word.name.to_owned(), def_members, value);
+            self.register_const(&assign, StructType::Root(struct_ref), prog);
         }
 
         let ctx = match assign {
@@ -856,13 +859,29 @@ impl LocWord {
             var = &root.members()[pos];
         }
 
-        let StructType::Unit(typ) = var else {
-            //Not possible to `.` access a struct root yet, maybe unpack all fields?
-            return todo(loc).unwrap_err().into();
+        let mut result = Vec::new();
+
+        let typ = match var {
+            StructType::Unit(unit) => unit,
+            StructType::Root(root) => {
+                if store {
+                    todo!()
+                }
+
+                let type_id = i32::from(root.get_ref_type().get_type());
+
+                result.push(Op::new(push_type, offset as i32, loc));
+                result.push(Op::from((IntrinsicType::Cast(-type_id), loc)));
+
+                if !pointer {
+                    result.push((OpType::Unpack, loc).into());
+                }
+
+                return OptionErr::new(result);
+            }
         };
 
         let type_id = i32::from(typ.get_type());
-        let mut result = Vec::new();
 
         if store {
             result.push(Op::new(OpType::ExpectType, type_id, loc))

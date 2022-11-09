@@ -49,8 +49,10 @@ impl TypeChecker {
     }
 
     pub fn type_check(&mut self, program: &mut Program) -> LazyResult<()> {
-        for ip in 0..program.ops.len() {
+        let mut ip = 0;
+        while ip < program.ops.len() {
             self.type_check_op(ip, program)?;
+            ip += 1;
         }
         Ok(())
     }
@@ -76,8 +78,14 @@ impl TypeChecker {
 
             OpType::OffsetLoad => {
                 let op = &op.clone();
-                let offset_type = self.expect_struct_pointer(program, ip, op, ".")?;
-                self.push_frame(offset_type, loc);
+                match self.expect_struct_pointer(program, ip, op, ".")? {
+                    TokenType::DataType(typ) => {
+                        self.push_frame(TokenType::DataPtr(typ), loc);
+                        program.ops.insert(ip + 1, Op::new(OpType::Unpack, 0, loc))
+                    }
+                    TokenType::DataPtr(_) => todo!(),
+                    _ => unreachable!(),
+                }
             }
 
             OpType::Offset => {
@@ -333,14 +341,14 @@ impl TypeChecker {
 
                 let stk = &prog.structs_types[usize::from(value)];
 
-                let index = get_struct_member_index(stk, word, op.loc)?;
+                let (offset, index) = get_struct_member_pos(stk, word, op.loc)?;
 
                 let result = match &stk.members()[index] {
-                    StructType::Root(_) => todo!(),
+                    StructType::Root(stk) => stk.get_type(),
                     StructType::Unit(typ) => typ.get_type(),
                 };
 
-                prog.set_operand(ip, index * 4);
+                prog.set_operand(ip, offset);
                 Ok(result)
             }
             typ => {
@@ -360,17 +368,21 @@ impl TypeChecker {
     }
 }
 
-fn get_struct_member_index(stk: &StructDef, word: String, loc: Loc) -> LazyResult<usize> {
-    let name = stk.name().to_owned();
-    stk.members()
-        .iter()
-        .position(|mem| mem.name() == word)
-        .with_ctx(move |f| {
-            format!(
-                "{}The struct {name} does not contain a member with name: `{word}`",
-                f.format(Fmt::Loc(loc)),
-            )
-        })
+fn get_struct_member_pos(stk: &StructDef, word: String, loc: Loc) -> LazyResult<(usize, usize)> {
+    let Some(i) = stk.members().iter().position(|s| s.name() == word) else {
+        let name = stk.name().to_owned();
+        lazybail!(|f|
+            "{}The struct {name} does not contain a member with name: `{word}`",
+            f.format(Fmt::Loc(loc))
+        )
+    };
+
+    let mut offset = 0;
+    for (var, _) in stk.members().iter().zip(0..i) {
+        offset += var.size();
+    }
+
+    Ok((offset, i))
 }
 
 impl Program {

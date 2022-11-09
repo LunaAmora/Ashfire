@@ -191,6 +191,13 @@ impl Program {
             .map(|u| u + 1)
     }
 
+    pub fn get_struct_value_id(&self, def: &StructDef) -> Option<Value> {
+        self.structs_types
+            .iter()
+            .position(|s| s.name() == def.name())
+            .map(|u| Value::from(u))
+    }
+
     /// Searches for a `const` that matches the given `&str`.
     pub fn get_const_by_name(&self, word: &str) -> Option<&StructType> {
         self.consts.iter().find(|cnst| word == cnst.name())

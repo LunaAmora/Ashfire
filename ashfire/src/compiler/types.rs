@@ -310,7 +310,7 @@ impl From<(&ValueType, Loc)> for IRToken {
 
 #[derive(Clone)]
 pub enum StructType {
-    Root(StructDef),
+    Root(StructRef),
     Unit(ValueType),
 }
 
@@ -347,12 +347,6 @@ impl StructType {
 impl From<ValueType> for StructType {
     fn from(value: ValueType) -> Self {
         StructType::Unit(value)
-    }
-}
-
-impl From<StructDef> for StructType {
-    fn from(value: StructDef) -> Self {
-        StructType::Root(value)
     }
 }
 
@@ -398,6 +392,36 @@ impl From<(&str, Value)> for StructDef {
             name: tuple.0.to_string(),
             members: vec![StructType::Unit((String::new(), tuple.1).into())],
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct StructRef {
+    data: StructDef,
+    reftype: Value,
+}
+
+impl Deref for StructRef {
+    type Target = StructDef;
+
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+impl StructRef {
+    pub fn new(name: String, members: Vec<StructType>, reftype: Value) -> Self {
+        Self { data: StructDef::new(name, members), reftype }
+    }
+
+    pub fn get_ref_type(&self) -> Value {
+        self.reftype
+    }
+}
+
+impl Typed for StructRef {
+    fn get_type(&self) -> TokenType {
+        self.reftype.get_type()
     }
 }
 

@@ -215,9 +215,7 @@ impl Program {
 
             OpType::PushGlobal => vec![Const(self.mem_start() + op.operand * 4)],
 
-            OpType::OffsetLoad => todo!(),
-
-            OpType::Offset => vec![Const(op.operand), I32(NumMethod::add)],
+            OpType::Offset | OpType::OffsetLoad => vec![Const(op.operand), I32(NumMethod::add)],
 
             OpType::Intrinsic => match IntrinsicType::from(op.operand) {
                 IntrinsicType::Div => todo!(),
