@@ -444,6 +444,26 @@ impl Parser {
                 self.parse_procedure(word, prog, true)
             }
 
+            (0, KeywordType::Ref) => {
+                self.next();
+                let ref_word = self.expect_word("type after `*`", word.loc)?;
+
+                let Some(data) = prog.get_data_ptr(ref_word.operand()) else {
+                    return invalid_option(Some(ref_word.into()), "struct type", word.loc).into()
+                };
+
+                let name = format!("*{}", ref_word.as_str(prog));
+
+                let value = ValueType::new(String::new(), data);
+                let stk = StructDef::new(name.to_string(), vec![StructType::Unit(value)]);
+
+                prog.structs_types.push(stk.clone()); //Todo: Check if the `*` type is already registered
+                prog.words.push(name);
+
+                self.parse_const_or_var(word, prog.words.len() as i32 - 1, stk, prog)
+                    .try_success()?;
+            }
+
             (1, KeywordType::Equal) => {
                 self.skip(2);
                 match self.compile_eval(prog).value {

@@ -612,6 +612,12 @@ impl Typed for Data {
     }
 }
 
+impl Operand for Data {
+    fn as_operand(&self) -> i32 {
+        i32::from(*self)
+    }
+}
+
 impl Data {
     pub fn get_value(self) -> Value {
         match self {
