@@ -306,7 +306,7 @@ impl Program {
 
     fn unpack_struct(&self, index: usize) -> Vec<Instruction> {
         let stk = &self.structs_types[index];
-        let count = stk.members().len() as i32;
+        let count = stk.units().len() as i32;
         let mut instructions = vec![];
 
         match count {
