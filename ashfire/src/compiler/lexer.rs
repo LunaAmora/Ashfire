@@ -19,7 +19,7 @@ impl Program {
         self.included_files.push(path.to_str().unwrap().to_owned());
 
         Ok(Lexer::builder(file)
-            .with_separators(vec![':', '='])
+            .with_separators(vec![':', '=', '*'])
             .with_matches(vec![Match::Same('\''), Match::Same('\"'), Match::Pair('(', ')')])
             .with_comments("//")
             .build(self.included_files.len() - 1))
@@ -140,6 +140,8 @@ fn parse_as_keyword(tok: &Token) -> Option<IRToken> {
         "let" => KeywordType::Let,
         "do" => KeywordType::Do,
         "@" => KeywordType::At,
+        "." => KeywordType::Dot,
+        "*" => KeywordType::Ref,
         "case" => KeywordType::Case,
         "while" => KeywordType::While,
         "struct" => KeywordType::Struct,

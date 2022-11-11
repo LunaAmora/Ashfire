@@ -35,16 +35,6 @@ impl LocWord {
     pub fn new(name: &str, loc: Loc) -> Self {
         Self { name: name.to_owned(), loc }
     }
-
-    /// Returns an `Vec<Op>` if the word started with a `.`
-    pub fn get_offset(&self, operand: i32) -> Option<Vec<Op>> {
-        let op = Op::from(match self.as_bytes() {
-            [b'.', b'*', ..] => (OpType::Offset, operand, self.loc),
-            [b'.', ..] => (OpType::OffsetLoad, operand, self.loc),
-            _ => return None,
-        });
-        Some(vec![op])
-    }
 }
 
 #[derive(Clone, Copy)]

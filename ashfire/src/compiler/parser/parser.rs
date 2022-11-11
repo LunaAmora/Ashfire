@@ -74,7 +74,7 @@ impl Parser {
         };
 
         let op = Op::from(match tok.token_type {
-            TokenType::Keyword => return self.define_keyword_op(tok.operand, tok.loc),
+            TokenType::Keyword => return self.define_keyword_op(tok.operand, tok.loc, &prog),
 
             TokenType::Str => (OpType::PushStr, prog.register_string(tok.operand), tok.loc),
 
@@ -99,7 +99,6 @@ impl Parser {
                 choice!(
                     OptionErr,
                     prog.get_intrinsic(word),
-                    word.get_offset(tok.operand),
                     self.lookup_context(word, prog),
                     self.define_context(word, prog)
                 )?;
@@ -112,7 +111,7 @@ impl Parser {
         OptionErr::new(vec![op])
     }
 
-    fn lookup_context(&self, word: &LocWord, prog: &Program) -> OptionErr<Vec<Op>> {
+    fn lookup_context(&self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
         let Some(ctx) = self.name_scopes.lookup(word.as_str()) else {
             return self.lookup_modfied_var(word, prog);
         };
@@ -128,10 +127,15 @@ impl Parser {
         .into()
     }
 
-    fn lookup_modfied_var(&self, word: &LocWord, prog: &Program) -> OptionErr<Vec<Op>> {
+    fn lookup_modfied_var(&self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
         let (rest, var_typ) = match word.split_at(1) {
             ("!", rest) => (rest, VarWordType::Store),
-            ("*", rest) => (rest, VarWordType::Pointer),
+            (".", rest) => {
+                let op = Op::new(OpType::OffsetLoad, prog.words.len() as i32, word.loc);
+                prog.words.push(rest.to_owned());
+
+                return OptionErr::new(vec![op]);
+            }
             _ => return OptionErr::default(),
         };
 
@@ -143,7 +147,7 @@ impl Parser {
         self.get_variable(&word, Some(var_typ), prog)
     }
 
-    fn define_keyword_op(&mut self, operand: i32, loc: Loc) -> OptionErr<Vec<Op>> {
+    fn define_keyword_op(&mut self, operand: i32, loc: Loc, prog: &Program) -> OptionErr<Vec<Op>> {
         let key = from_i32(operand);
 
         let op = match key {
@@ -154,6 +158,38 @@ impl Parser {
             KeywordType::Rot => (OpType::Rot, loc).into(),
             KeywordType::Equal => (OpType::Equal, loc).into(),
             KeywordType::At => (OpType::Unpack, loc).into(),
+            KeywordType::Dot => {
+                let Some(next_token) = self.next() else {
+                    todo!();
+                };
+
+                match next_token.token_type {
+                    TokenType::Keyword => {
+                        expect_token_by(
+                            Some(next_token),
+                            |t| t == KeywordType::Ref,
+                            "word or `*` after `.`",
+                            loc,
+                        )?;
+                        let word =
+                            self.expect_by(|t| t == TokenType::Word, "word after `.*`", loc)?;
+                        (OpType::Offset, word.operand, loc).into()
+                    }
+                    TokenType::Word => (OpType::OffsetLoad, next_token.operand, loc).into(),
+                    _ => todo!(),
+                }
+            }
+            KeywordType::Ref => {
+                let word = self.expect_by(|tok| tok == TokenType::Word, "type after `*`", loc)?;
+
+                let name = &prog.words[word.operand as usize];
+                let Some(ParseContext::Variable) = self.name_scopes.lookup(name) else {
+                    todo!();
+                };
+
+                let loc_word = LocWord::new(name, loc);
+                return self.get_variable(&loc_word, Some(VarWordType::Pointer), prog);
+            }
 
             KeywordType::While => self.push_block((OpType::While, loc).into()),
 
@@ -534,22 +570,24 @@ impl Parser {
                         (self.define_proc(word, Contract::new(ins, outs), prog, include))
                             .into_success()?
                     }
+                    KeywordType::Ref => {
+                        let typ =
+                            self.expect_by(|tok| tok == TokenType::Word, "type after `*`", loc)?;
+                        let Some(data_ptr) = prog.get_data_ptr(&prog.get_word(typ.operand)) else {
+                            return invalid_option(Some(typ), tok_err, typ.loc).into();
+                        };
+
+                        push_by_condition(arrow, data_ptr.get_type(), &mut outs, &mut ins);
+                    }
                     _ => return invalid_option(Some(tok), tok_err, loc).into(),
                 }
-            } else {
-                let Some(kind) = prog.get_kind_from_token(&tok) else {
-                    return invalid_option(Some(tok), tok_err, loc).into();
+            } else if &tok == TokenType::Word {
+                let Some(stk) = prog.get_type_name(prog.get_word(tok.operand)) else {
+                    return invalid_option(Some(tok), tok_err, tok.loc).into();
                 };
 
-                match kind {
-                    Either::Left(stk) => {
-                        for typ in stk.units().iter().map(Typed::get_type) {
-                            push_by_condition(arrow, typ, &mut outs, &mut ins);
-                        }
-                    }
-                    Either::Right(type_ptr) => {
-                        push_by_condition(arrow, type_ptr, &mut outs, &mut ins)
-                    }
+                for typ in stk.units().iter().map(Typed::get_type) {
+                    push_by_condition(arrow, typ, &mut outs, &mut ins);
                 }
             }
         }
@@ -947,7 +985,7 @@ impl Program {
         match self.get_type_name(&type_name) {
             Some(stk_typ) => Some(Either::Left(stk_typ)),
             None => self
-                .get_data_pointer(&type_name)
+                .get_data_ptr(&type_name)
                 .map(|typ_ptr| Either::Right(typ_ptr)),
         }
     }
@@ -956,21 +994,13 @@ impl Program {
         self.structs_types.iter().find(|s| s.name() == word)
     }
 
-    fn get_data_pointer(&self, word: &str) -> Option<TokenType> {
-        word.strip_prefix('*')
-            .and_then(|word| self.get_data_type_id(word))
+    fn get_data_ptr(&self, word: &str) -> Option<TokenType> {
+        self.get_data_type_id(word)
             .map(|i| TokenType::DataPtr(Value::from(i - 1)))
     }
 
     fn get_struct_type(&self, tok: &IRToken) -> Option<&StructDef> {
         fold_bool!(tok == TokenType::Word, self.get_type_name(self.get_word(tok.operand)))
-    }
-
-    fn get_kind_from_token(&self, tok: &IRToken) -> Option<Either<&StructDef, TokenType>> {
-        fold_bool!(
-            tok == TokenType::Word,
-            self.get_type_kind(self.get_word(tok.operand).to_string())
-        )
     }
 
     fn push_mem_by_context(

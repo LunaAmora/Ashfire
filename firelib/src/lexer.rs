@@ -190,11 +190,10 @@ impl Lexer {
                 Predicate::Separators if self.is_comment(buf) => return,
 
                 Predicate::Separators if self.separators.contains(&buf) => {
-                    if self.lex_pos > self.col_num {
-                        return;
-                    } else {
-                        self.lex_pos += 1
+                    if self.lex_pos == self.col_num {
+                        self.lex_pos += 1;
                     }
+                    return;
                 }
 
                 Predicate::Separators => match self.matches.get(&buf) {

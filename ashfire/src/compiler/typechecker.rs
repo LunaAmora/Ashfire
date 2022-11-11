@@ -78,7 +78,7 @@ impl TypeChecker {
 
             OpType::OffsetLoad => {
                 let op = &op.clone();
-                match self.expect_struct_pointer(program, ip, op, ".")? {
+                match self.expect_struct_pointer(program, ip, op)? {
                     TokenType::DataType(typ) => {
                         self.push_frame(TokenType::DataPtr(typ), loc);
                         program.ops.insert(ip + 1, Op::new(OpType::Unpack, 0, loc))
@@ -90,7 +90,7 @@ impl TypeChecker {
 
             OpType::Offset => {
                 let op = &op.clone();
-                match self.expect_struct_pointer(program, ip, op, ".*")? {
+                match self.expect_struct_pointer(program, ip, op)? {
                     TokenType::DataType(offset_type) => {
                         self.push_frame(TokenType::DataPtr(offset_type), loc)
                     }
@@ -329,17 +329,12 @@ impl TypeChecker {
     }
 
     fn expect_struct_pointer(
-        &mut self, prog: &mut Program, ip: usize, op: &Op, prefix: &str,
+        &mut self, prog: &mut Program, ip: usize, op: &Op,
     ) -> LazyResult<TokenType> {
         match self.data_stack.expect_pop(op.loc)?.get_type() {
             TokenType::DataPtr(value) => {
-                let word = prog
-                    .get_word(op.operand)
-                    .strip_prefix(prefix)
-                    .unwrap()
-                    .to_string();
-
                 let stk = &prog.structs_types[usize::from(value)];
+                let word = prog.get_word(op.operand).to_string();
 
                 let Some((offset, index)) = get_field_pos(stk.members(), &word) else {
                         let name = stk.name().to_owned();
@@ -374,7 +369,6 @@ impl TypeChecker {
         }
     }
 }
-
 
 impl Program {
     fn set_operand(&mut self, ip: usize, index: usize) {

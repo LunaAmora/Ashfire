@@ -5,7 +5,7 @@ double_str struct :
   second str
 end
 
-print_double : double_str : println println end
+print_double inline: double_str : println println end
 
 hello double_str := "Hello World!" "Other Text" end
 new_text str := "-> a Really long text" end
@@ -25,8 +25,7 @@ start proc ::
   *hello .*second .*len dup dec32 dec32
   *hello.second.len     dup dec32 dec32
 
-  hello.first.len
+  *hello .*first .len
   hello.first.data 
-  hello.second.len
-  hello.second.data print_double
+  hello.second print_double
 end

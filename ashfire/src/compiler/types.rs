@@ -820,6 +820,8 @@ pub enum KeywordType {
     While,
     Do,
     At,
+    Dot,
+    Ref,
     Inline,
     Include,
     Case,
