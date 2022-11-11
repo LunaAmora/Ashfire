@@ -29,6 +29,16 @@ impl LocWord {
     pub fn as_string(&self, prog: &Program) -> String {
         prog.words[self.index].to_owned()
     }
+
+    pub fn operand(&self) -> i32 {
+        self.index as i32
+    }
+}
+
+impl From<LocWord> for IRToken {
+    fn from(value: LocWord) -> Self {
+        Self::new(TokenType::Word, value.operand(), value.loc)
+    }
 }
 
 #[derive(Clone, Copy)]

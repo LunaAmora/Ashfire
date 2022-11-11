@@ -176,24 +176,22 @@ impl Parser {
                             "word or `*` after `.`",
                             loc,
                         )?;
-                        let word =
-                            self.expect_by(|t| t == TokenType::Word, "word after `.*`", loc)?;
-                        (OpType::Offset, word.operand, loc).into()
+                        let word = self.expect_word("word after `.*`", loc)?;
+                        (OpType::Offset, word.operand(), loc).into()
                     }
                     TokenType::Word => (OpType::OffsetLoad, next_token.operand, loc).into(),
                     _ => todo!(),
                 }
             }
             KeywordType::Ref => {
-                let word = self.expect_by(|tok| tok == TokenType::Word, "type after `*`", loc)?;
+                let ref_word = self.expect_word("type after `*`", loc)?;
 
-                let name = &prog.words[word.operand as usize];
+                let name = &prog.words[ref_word.index];
                 let Some(ParseContext::Variable) = self.name_scopes.lookup(name) else {
                     todo!();
                 };
 
-                let loc_word = LocWord::new(word.operand as usize, loc);
-                return self.get_variable(&loc_word, Some(VarWordType::Pointer), prog);
+                return self.get_variable(&ref_word, Some(VarWordType::Pointer), prog);
             }
 
             KeywordType::While => self.push_block((OpType::While, loc).into()),
@@ -579,11 +577,10 @@ impl Parser {
                         .into_success()?,
 
                     KeywordType::Ref => {
-                        let typ =
-                            self.expect_by(|tok| tok == TokenType::Word, "type after `*`", loc)?;
+                        let typ = self.expect_word("type after `*`", loc)?;
 
-                        let Some(data_ptr) = prog.get_data_ptr(typ.operand) else {
-                            return invalid_option(Some(typ), tok_err, loc).into();
+                        let Some(data_ptr) = prog.get_data_ptr(typ.operand()) else {
+                            return invalid_option(Some(typ.into()), tok_err, loc).into();
                         };
 
                         push_by_condition(arrow, data_ptr.get_type(), &mut outs, &mut ins);
@@ -632,15 +629,15 @@ impl Parser {
                 success!();
             }
 
-            let next = self.expect_by(|n| n == TokenType::Word, "struct member name", loc)?;
-            let name_type = self.expect_by(|n| n == TokenType::Word, "struct member type", loc)?;
+            let next = self.expect_word("struct member name", loc)?;
+            let name_type = self.expect_word("struct member type", loc)?;
             let as_ref = false; // Todo: Add pointers support
 
-            let Some(type_kind) = prog.get_type_kind(name_type.operand, as_ref) else {
-                return invalid_option(Some(name_type), "struct member type", loc).into()
+            let Some(type_kind) = prog.get_type_kind(name_type.operand(), as_ref) else {
+                return invalid_option(Some(name_type.into()), "struct member type", loc).into()
             };
 
-            let found_word = prog.get_word(next.operand).to_owned();
+            let found_word = prog.get_word(next.operand()).to_owned();
 
             match type_kind {
                 Either::Left(stk_typ) => {
@@ -706,7 +703,7 @@ impl Parser {
                 let members: Vec<StructType> = members.cloned().collect();
                 let value = prog.get_struct_value_id(&stk).unwrap();
                 let struct_word = StructRef::new(word.as_string(prog), members, value);
-                self.register_const(&assign, StructType::Root(struct_word), prog);
+                self.register_const_or_var(&assign, StructType::Root(struct_word), prog);
             } else {
                 let member_type = match members.last().unwrap() {
                     StructType::Root(_) => todo!(),
@@ -726,7 +723,7 @@ impl Parser {
                 }
 
                 let struct_word = ValueType::new(word.as_string(prog), &eval);
-                self.register_const(&assign, StructType::Unit(struct_word), prog);
+                self.register_const_or_var(&assign, StructType::Unit(struct_word), prog);
             }
         } else {
             let contract: Vec<TokenType> = if self.inside_proc() {
@@ -780,7 +777,7 @@ impl Parser {
 
             let value = prog.get_struct_value_id(&stk).unwrap();
             let struct_ref = StructRef::new(word.as_string(prog), def_members, value);
-            self.register_const(&assign, StructType::Root(struct_ref), prog);
+            self.register_const_or_var(&assign, StructType::Root(struct_ref), prog);
         }
 
         let ctx = match assign {

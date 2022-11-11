@@ -1,9 +1,9 @@
 use firelib::lexer::Loc;
 
-use super::parser::Parser;
+use super::{parser::Parser, types::LocWord};
 use crate::compiler::{
     program::{Fmt, LazyError, LazyResult, Program, ProgramVisitor},
-    types::{IRToken, KeywordType, Op, StructType},
+    types::{IRToken, KeywordType, Op, StructType, TokenType},
 };
 
 impl Parser {
@@ -13,13 +13,18 @@ impl Parser {
         self.expect_by(|tok| tok == key, error_text, loc)
     }
 
+    pub fn expect_word(&mut self, error_text: &str, loc: Loc) -> LazyResult<LocWord> {
+        self.expect_by(|tok| tok == TokenType::Word, error_text, loc)
+            .map(|tok| LocWord::new(tok.operand as usize, tok.loc))
+    }
+
     pub fn expect_by(
         &mut self, pred: impl FnOnce(&IRToken) -> bool, error_text: &str, loc: Loc,
     ) -> LazyResult<IRToken> {
         expect_token_by(self.next(), pred, error_text, loc)
     }
 
-    pub fn register_const(
+    pub fn register_const_or_var(
         &mut self, assign: &KeywordType, struct_word: StructType, prog: &mut Program,
     ) {
         match assign {
