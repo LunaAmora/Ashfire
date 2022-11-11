@@ -79,11 +79,11 @@ impl NameScopes {
         self.names.get(name)
     }
 
-    pub fn register(&mut self, name: String, ctx: ParseContext) {
+    pub fn register(&mut self, name: &str, ctx: ParseContext) {
         if let Some(scope) = self.scopes.last_mut() {
-            scope.names.insert(name, ctx);
+            scope.names.insert(name.to_string(), ctx);
         } else {
-            self.names.insert(name, ctx);
+            self.names.insert(name.to_string(), ctx);
         }
     }
 

@@ -162,6 +162,7 @@ impl Parser {
             KeywordType::Rot => (OpType::Rot, loc).into(),
             KeywordType::Equal => (OpType::Equal, loc).into(),
             KeywordType::At => (OpType::Unpack, loc).into(),
+
             KeywordType::Dot => {
                 let Some(next_token) = self.next() else {
                     todo!();
@@ -504,10 +505,11 @@ impl Parser {
         if let Ok((eval, skip)) = self.compile_eval(prog).value {
             if &eval != Value::Any {
                 self.skip(skip);
-                prog.consts
-                    .push(ValueType::new(word.as_string(prog), &eval).into());
-                self.name_scopes
-                    .register(word.as_string(prog), ParseContext::ConstStruct);
+                let value = ValueType::new(word.as_string(prog), &eval).into();
+                prog.consts.push(value);
+
+                let name = word.as_str(prog);
+                self.name_scopes.register(name, ParseContext::ConstStruct);
                 success!();
             }
         }
@@ -538,11 +540,13 @@ impl Parser {
 
         let inline_ip = fold_bool!(inline, Some(prog.ops.len()), None);
         let proc = Proc::new(name.as_str(prog), contract, inline_ip);
+
         let operand = prog.procs.len();
         self.enter_proc(operand);
         prog.procs.push(proc);
-        self.name_scopes
-            .register(name.as_string(prog), ParseContext::ProcName);
+
+        let name = name.as_str(prog);
+        self.name_scopes.register(name, ParseContext::ProcName);
 
         let prep = fold_bool!(inline, OpType::PrepInline, OpType::PrepProc);
         Ok(self.push_block(Op::new(prep, operand as i32, loc)))
@@ -569,25 +573,27 @@ impl Parser {
                         }
                         arrow = true;
                     }
-                    KeywordType::Colon => {
-                        (self.define_proc(word, Contract::new(ins, outs), prog, include))
-                            .into_success()?
-                    }
+
+                    KeywordType::Colon => self
+                        .define_proc(word, Contract::new(ins, outs), prog, include)
+                        .into_success()?,
+
                     KeywordType::Ref => {
                         let typ =
                             self.expect_by(|tok| tok == TokenType::Word, "type after `*`", loc)?;
 
                         let Some(data_ptr) = prog.get_data_ptr(typ.operand) else {
-                            return invalid_option(Some(typ), tok_err, typ.loc).into();
+                            return invalid_option(Some(typ), tok_err, loc).into();
                         };
 
                         push_by_condition(arrow, data_ptr.get_type(), &mut outs, &mut ins);
                     }
+
                     _ => return invalid_option(Some(tok), tok_err, loc).into(),
                 }
             } else if &tok == TokenType::Word {
                 let Some(stk) = prog.get_type_name(tok.operand) else {
-                    return invalid_option(Some(tok), tok_err, tok.loc).into();
+                    return invalid_option(Some(tok), tok_err, loc).into();
                 };
 
                 for typ in stk.units().iter().map(Typed::get_type) {
@@ -595,7 +601,7 @@ impl Parser {
                 }
             }
         }
-        invalid_option(None, tok_err, word.loc).into()
+        invalid_option(None, tok_err, loc).into()
     }
 
     fn parse_memory(&mut self, word: &LocWord, prog: &mut Program) -> LazyResult<()> {
@@ -607,7 +613,7 @@ impl Parser {
 
         let size = ((value.operand + 3) / 4) * 4;
         let ctx = prog.push_mem_by_context(self.get_index(), &word.as_string(prog), size)?;
-        self.name_scopes.register(word.as_string(prog), ctx);
+        self.name_scopes.register(word.as_str(prog), ctx);
 
         Ok(())
     }
@@ -783,9 +789,10 @@ impl Parser {
             _ => unreachable!(),
         };
 
-        self.name_scopes.register(word.as_string(prog), ctx);
-        self.structs
-            .push(IndexWord::new(word.as_str(prog), operand as usize));
+        let name = word.as_str(prog);
+        self.name_scopes.register(name, ctx);
+        self.structs.push(IndexWord::new(name, operand as usize));
+
         Ok(())
     }
 
@@ -826,13 +833,13 @@ impl Program {
         &self, word: &LocWord, vars: &[StructType], push_type: OpType, stk_id: i32,
     ) -> Vec<Op> {
         let index = if push_type == OpType::PushLocal {
-            get_field_pos_local(vars, word.as_str(self)).unwrap().0 as i32
+            get_field_pos_local(vars, word.as_str(self)).unwrap().0
         } else {
-            get_field_pos(vars, word.as_str(self)).unwrap().0 as i32
+            get_field_pos(vars, word.as_str(self)).unwrap().0
         };
 
         vec![
-            (Op::new(push_type, index, word.loc)),
+            Op::new(push_type, index as i32, word.loc),
             Op::from((IntrinsicType::Cast(-stk_id), word.loc)),
         ]
     }
@@ -964,7 +971,11 @@ impl Program {
     fn get_const_struct(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.get_const_by_name(word.as_str(self))
             .map(|tword| match tword {
-                StructType::Root(r) => r.units().iter().map(|&a| Op::from((a, word.loc))).collect(),
+                StructType::Root(root) => root
+                    .units()
+                    .iter()
+                    .map(|&value| Op::from((value, word.loc)))
+                    .collect(),
                 _ => vec![Op::from((tword, word.loc))],
             })
     }
