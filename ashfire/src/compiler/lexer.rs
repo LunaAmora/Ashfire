@@ -20,7 +20,12 @@ impl Program {
 
         Ok(Lexer::builder(file)
             .with_separators(vec![':', '=', '*'])
-            .with_matches(vec![Match::Same('\''), Match::Same('\"'), Match::Pair('(', ')')])
+            .with_matches(vec![
+                Match::Same('\''),
+                Match::Same('\"'),
+                Match::Pair('(', ')'),
+                Match::Pair('#', ' '),
+            ])
             .with_comments("//")
             .build(self.included_files.len() - 1))
     }

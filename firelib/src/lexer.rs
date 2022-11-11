@@ -197,10 +197,14 @@ impl Lexer {
                 }
 
                 Predicate::Separators => match self.matches.get(&buf) {
-                    Some(end) => {
+                    Some(&end) => {
                         self.lex_pos += 1;
-                        self.advance_by_predicate(Predicate::Char(*end));
-                        self.lex_pos += 1;
+                        self.advance_by_predicate(Predicate::Char(end));
+
+                        if end != ' ' {
+                            self.lex_pos += 1;
+                        }
+
                         return;
                     }
                     _ => self.lex_pos += 1,
