@@ -208,7 +208,7 @@ impl From<(&StructType, Loc)> for Op {
 impl From<(&ValueType, Loc)> for Op {
     #[track_caller]
     fn from(tuple: (&ValueType, Loc)) -> Self {
-        let TokenType::DataType(typ) = tuple.0.token_type else {
+        let Data::Typ(typ) = tuple.0.data_type else {
             unimplemented!("Conversion supported only for DataTypes")
         };
 
@@ -304,7 +304,7 @@ impl From<(&StructType, Loc)> for IRToken {
 
 impl From<(&ValueType, Loc)> for IRToken {
     fn from(tuple: (&ValueType, Loc)) -> Self {
-        IRToken::new(tuple.0.token_type, tuple.0.value, tuple.1)
+        IRToken::new(tuple.0.data_type.get_type(), tuple.0.value, tuple.1)
     }
 }
 
@@ -373,7 +373,7 @@ pub fn get_field_pos_local(vars: &[StructType], word: &str) -> Option<(usize, us
         offset += var.size() / 4;
     }
 
-    Some((offset, i))
+    Some((offset - 1, i))
 }
 
 #[derive(Clone)]
@@ -455,16 +455,16 @@ impl Typed for StructRef {
 pub struct ValueType {
     name: String,
     value: i32,
-    token_type: TokenType,
+    data_type: Data,
 }
 
 impl ValueType {
     pub fn new<T: Typed + Operand>(name: String, typed: T) -> Self {
-        Self {
-            name,
-            value: typed.as_operand(),
-            token_type: typed.get_type(),
-        }
+        let TokenType::Data(data_type) =  typed.get_type() else {
+            unimplemented!()
+        };
+
+        Self { name, value: typed.as_operand(), data_type }
     }
 
     pub fn name(&self) -> &str {
@@ -474,11 +474,15 @@ impl ValueType {
     pub fn value(&self) -> i32 {
         self.value
     }
+
+    pub fn data(&self) -> &Data {
+        &self.data_type
+    }
 }
 
 impl Typed for ValueType {
     fn get_type(&self) -> TokenType {
-        self.token_type
+        self.data_type.get_type()
     }
 }
 
@@ -490,11 +494,11 @@ impl Operand for ValueType {
 
 impl<T: Typed> From<(String, T)> for ValueType {
     fn from(tuple: (String, T)) -> Self {
-        Self {
-            name: tuple.0,
-            value: 0,
-            token_type: tuple.1.get_type(),
-        }
+        let TokenType::Data(data_type) = tuple.1.get_type() else {
+            unimplemented!()
+        };
+
+        Self { name: tuple.0, value: 0, data_type }
     }
 }
 
@@ -591,18 +595,46 @@ pub struct CaseOption {
     pub values: Vec<i32>,
 }
 
-pub const INT: TokenType = TokenType::DataType(Value::Int);
-pub const BOOL: TokenType = TokenType::DataType(Value::Bool);
-pub const PTR: TokenType = TokenType::DataType(Value::Ptr);
-pub const ANY: TokenType = TokenType::DataType(Value::Any);
+pub const INT: TokenType = TokenType::Data(Data::Typ(Value::Int));
+pub const BOOL: TokenType = TokenType::Data(Data::Typ(Value::Bool));
+pub const PTR: TokenType = TokenType::Data(Data::Typ(Value::Ptr));
+pub const ANY: TokenType = TokenType::Data(Data::Typ(Value::Any));
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Data {
+    Typ(Value),
+    Ptr(Value),
+}
+
+impl Typed for Data {
+    fn get_type(&self) -> TokenType {
+        TokenType::Data(*self)
+    }
+}
+
+impl Data {
+    pub fn get_value(self) -> Value {
+        match self {
+            Data::Typ(val) | Data::Ptr(val) => val,
+        }
+    }
+}
+
+impl From<Data> for i32 {
+    fn from(data: Data) -> Self {
+        match data {
+            Data::Typ(value) => 1 + usize::from(value) as i32,
+            Data::Ptr(value) => -(1 + usize::from(value) as i32),
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TokenType {
     Keyword,
     Word,
     Str,
-    DataType(Value),
-    DataPtr(Value),
+    Data(Data),
 }
 
 impl Typed for TokenType {
@@ -626,8 +658,7 @@ impl From<TypeFrame> for TokenType {
 impl From<TokenType> for i32 {
     fn from(tok: TokenType) -> Self {
         match tok {
-            TokenType::DataType(value) => 1 + usize::from(value) as i32,
-            TokenType::DataPtr(value) => -(1 + usize::from(value) as i32),
+            TokenType::Data(data) => data.into(),
             _ => 0,
         }
     }
@@ -636,7 +667,16 @@ impl From<TokenType> for i32 {
 impl PartialEq<Value> for TokenType {
     fn eq(&self, other: &Value) -> bool {
         match self {
-            Self::DataType(typ) => typ == other,
+            Self::Data(Data::Typ(typ)) => typ == other,
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq<Data> for TokenType {
+    fn eq(&self, other: &Data) -> bool {
+        match self {
+            Self::Data(data) => data == other,
             _ => false,
         }
     }
@@ -653,7 +693,7 @@ pub enum Value {
 
 impl Typed for Value {
     fn get_type(&self) -> TokenType {
-        TokenType::DataType(*self)
+        TokenType::Data(Data::Typ(*self))
     }
 }
 

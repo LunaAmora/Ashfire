@@ -79,7 +79,7 @@ impl Program {
         self.global_vars_start() + self.global_vars_size()
     }
 
-    pub fn get_word(&self, index: i32) -> &String {
+    pub fn get_word(&self, index: i32) -> &str {
         &self.words[index as usize]
     }
 
@@ -106,12 +106,14 @@ impl Program {
         .to_owned()
     }
 
-    fn type_name(&self, typ: TokenType) -> String {
+    pub fn type_name(&self, typ: TokenType) -> String {
         match typ {
             TokenType::Keyword => "Keyword",
             TokenType::Word => "Word or Intrinsic",
-            TokenType::DataType(value) => return self.data_name(value),
-            TokenType::DataPtr(value) => return self.data_name(value) + " Pointer",
+            TokenType::Data(data) => match data {
+                Data::Typ(value) => return self.data_name(value),
+                Data::Ptr(value) => return self.data_name(value) + " Pointer",
+            },
             TokenType::Str => "String",
         }
         .to_owned()
@@ -125,13 +127,11 @@ impl Program {
         }
     }
 
-    fn type_display(&self, tok: IRToken) -> String {
+    pub fn type_display(&self, tok: IRToken) -> String {
         match tok.token_type {
             TokenType::Keyword => format!("{:?}", from_i32::<KeywordType>(tok.operand)),
             TokenType::Word => self.get_word(tok.operand).to_owned(),
-            TokenType::DataType(value) | TokenType::DataPtr(value) => {
-                self.data_display(value, tok.operand)
-            }
+            TokenType::Data(data) => self.data_display(data.get_value(), tok.operand),
             TokenType::Str => self.get_string(tok.operand).to_string(),
         }
     }

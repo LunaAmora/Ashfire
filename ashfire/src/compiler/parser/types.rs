@@ -1,13 +1,13 @@
-use std::{collections::HashMap, ops::Deref};
+use std::collections::HashMap;
 
 use firelib::lexer::Loc;
 
-use crate::compiler::{expect::Expect, types::*};
+use crate::compiler::{expect::Expect, program::Program, types::*};
 
 impl Expect<IRToken> for Vec<IRToken> {}
 
 pub struct LocWord {
-    pub name: String,
+    pub index: usize,
     pub loc: Loc,
 }
 
@@ -17,23 +17,17 @@ impl Location for LocWord {
     }
 }
 
-impl PartialEq<str> for LocWord {
-    fn eq(&self, other: &str) -> bool {
-        self.name == other
-    }
-}
-
-impl Deref for LocWord {
-    type Target = String;
-
-    fn deref(&self) -> &Self::Target {
-        &self.name
-    }
-}
-
 impl LocWord {
-    pub fn new(name: &str, loc: Loc) -> Self {
-        Self { name: name.to_owned(), loc }
+    pub fn new(index: usize, loc: Loc) -> Self {
+        Self { index, loc }
+    }
+
+    pub fn as_str<'a>(&self, prog: &'a Program) -> &'a str {
+        &prog.words[self.index]
+    }
+
+    pub fn as_string(&self, prog: &Program) -> String {
+        prog.words[self.index].to_owned()
     }
 }
 

@@ -79,11 +79,11 @@ impl TypeChecker {
             OpType::OffsetLoad => {
                 let op = &op.clone();
                 match self.expect_struct_pointer(program, ip, op)? {
-                    TokenType::DataType(typ) => {
-                        self.push_frame(TokenType::DataPtr(typ), loc);
+                    TokenType::Data(Data::Typ(typ)) => {
+                        self.push_frame(Data::Ptr(typ).get_type(), loc);
                         program.ops.insert(ip + 1, Op::new(OpType::Unpack, 0, loc))
                     }
-                    TokenType::DataPtr(_) => todo!(),
+                    TokenType::Data(Data::Ptr(_)) => todo!(),
                     _ => unreachable!(),
                 }
             }
@@ -91,8 +91,8 @@ impl TypeChecker {
             OpType::Offset => {
                 let op = &op.clone();
                 match self.expect_struct_pointer(program, ip, op)? {
-                    TokenType::DataType(offset_type) => {
-                        self.push_frame(TokenType::DataPtr(offset_type), loc)
+                    TokenType::Data(Data::Typ(offset_type)) => {
+                        self.push_frame(Data::Ptr(offset_type).get_type(), loc)
                     }
                     _ => unreachable!(),
                 }
@@ -138,7 +138,7 @@ impl TypeChecker {
                     let cast: TokenType = match n {
                         1.. => Value::from((n - 1) as usize).get_type(),
                         0 => unreachable!(),
-                        _ => TokenType::DataPtr(Value::from((-n - 1) as usize)),
+                        _ => Data::Ptr(Value::from((-n - 1) as usize)).get_type(),
                     };
                     self.push_frame(cast, loc);
                 }
@@ -279,7 +279,7 @@ impl TypeChecker {
             OpType::EndWhile => todo!(),
 
             OpType::Unpack => match self.data_stack.expect_pop(op.loc)?.get_type() {
-                TokenType::DataPtr(n) => {
+                TokenType::Data(Data::Ptr(n)) => {
                     let index = usize::from(n);
                     let stk = &program.structs_types[index];
 
@@ -307,7 +307,7 @@ impl TypeChecker {
                 let typ = match op.operand {
                     n @ 1.. => Value::from((n - 1) as usize).get_type(),
                     0 => unreachable!(),
-                    n => TokenType::DataPtr(Value::from((-n - 1) as usize)),
+                    n => Data::Ptr(Value::from((-n - 1) as usize)).get_type(),
                 };
                 self.data_stack.expect_peek(ArityType::Type(typ), loc)?;
             }
@@ -332,7 +332,7 @@ impl TypeChecker {
         &mut self, prog: &mut Program, ip: usize, op: &Op,
     ) -> LazyResult<TokenType> {
         match self.data_stack.expect_pop(op.loc)?.get_type() {
-            TokenType::DataPtr(value) => {
+            TokenType::Data(Data::Ptr(value)) => {
                 let stk = &prog.structs_types[usize::from(value)];
                 let word = prog.get_word(op.operand).to_string();
 

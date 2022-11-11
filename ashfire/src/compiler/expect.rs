@@ -133,12 +133,7 @@ pub trait Expect<T: Clone + Typed + Location + 'static>: Stack<T> {
 fn expect_type<T: Clone + Typed + Location + 'static, V: Typed>(
     frame: &T, expected: V, loc: Loc,
 ) -> LazyResult<()> {
-    if !equals_any!(
-        expected.get_type(),
-        Value::Any,
-        TokenType::DataPtr(Value::Any),
-        frame.get_type()
-    ) {
+    if !equals_any!(expected.get_type(), Value::Any, Data::Ptr(Value::Any), frame.get_type()) {
         Err(format_type_diff(frame.clone(), expected.get_type(), loc))
     } else {
         Ok(())

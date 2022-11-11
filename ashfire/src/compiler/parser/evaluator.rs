@@ -121,7 +121,7 @@ impl Evaluator for EvalStack<IRToken> {
                             let cast = match n {
                                 1.. => Value::from((n - 1) as usize).get_type(),
                                 0 => unreachable!(),
-                                _ => TokenType::DataPtr(Value::from((-n - 1) as usize)),
+                                _ => Data::Ptr(Value::from((-n - 1) as usize)).get_type(),
                             };
 
                             self.push(IRToken::new(cast, a.operand, tok.loc));
@@ -147,7 +147,7 @@ impl Evaluator for EvalStack<IRToken> {
                 self.push(IRToken::new(PTR, data.offset(), tok.loc));
             }
 
-            TokenType::DataType(value) => match value {
+            TokenType::Data(Data::Typ(value)) => match value {
                 Value::Int | Value::Bool | Value::Ptr => self.push(tok),
                 _ => Err(Either::Left(tok))?,
             },
