@@ -43,19 +43,6 @@ impl Parser {
     }
 }
 
-pub fn get_field_pos(vars: &[StructType], word: &str) -> Option<(usize, usize)> {
-    let Some(i) = vars.iter().position(|v| v.name() == word) else {
-        return None;
-    };
-
-    let mut offset = 0;
-    for (var, _) in vars.iter().zip(0..i) {
-        offset += var.size() / 4;
-    }
-
-    Some((offset, i))
-}
-
 pub fn error_loc(error: &str, loc: Loc) -> LazyError {
     let error = error.to_string();
     LazyError::new(move |f| format!("{}{error}", f.format(Fmt::Loc(loc))))

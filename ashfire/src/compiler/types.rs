@@ -350,6 +350,32 @@ impl From<ValueType> for StructType {
     }
 }
 
+pub fn get_field_pos(vars: &[StructType], word: &str) -> Option<(usize, usize)> {
+    let Some(i) = vars.iter().position(|v| v.name() == word) else {
+        return None;
+    };
+
+    let mut offset = 0;
+    for (var, _) in vars.iter().zip(0..i) {
+        offset += var.size() / 4;
+    }
+
+    Some((offset, i))
+}
+
+pub fn get_field_pos_local(vars: &[StructType], word: &str) -> Option<(usize, usize)> {
+    let Some(i) = vars.iter().position(|v| v.name() == word) else {
+        return None;
+    };
+
+    let mut offset = 0;
+    for (var, _) in vars.iter().zip(0..=i) {
+        offset += var.size() / 4;
+    }
+
+    Some((offset, i))
+}
+
 #[derive(Clone)]
 pub struct StructDef {
     name: String,

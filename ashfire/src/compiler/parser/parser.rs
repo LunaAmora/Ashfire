@@ -780,14 +780,14 @@ impl Parser {
 
 impl LocWord {
     fn get_var_pointer(&self, vars: &[StructType], push_type: OpType, stk_id: i32) -> Vec<Op> {
-        let mut index = get_field_pos(vars, &self).unwrap().0 as i32;
-
-        if push_type == OpType::PushLocal {
-            index += 1;
-        }
+        let index = if push_type == OpType::PushLocal {
+            get_field_pos_local(vars, &self).unwrap().0 as i32 - 1
+        } else {
+            get_field_pos(vars, &self).unwrap().0 as i32
+        };
 
         vec![
-            (Op::new(push_type, index as i32, self.loc)),
+            (Op::new(push_type, index, self.loc)),
             Op::from((IntrinsicType::Cast(-stk_id), self.loc)),
         ]
     }
@@ -866,6 +866,10 @@ impl LocWord {
             StructType::Root(root) => {
                 if store {
                     todo!()
+                }
+
+                if push_type == OpType::PushLocal {
+                    offset += 1;
                 }
 
                 let type_id = i32::from(root.get_ref_type().get_type());
