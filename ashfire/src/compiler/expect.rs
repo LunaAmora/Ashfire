@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use ashlib::Stack;
 use firelib::{lazy::LazyFormatter, lexer::Loc};
 use itertools::Itertools;
@@ -92,7 +94,11 @@ pub trait Expect<T: Clone + Typed + Location + 'static>: Stack<T> {
         };
         Ok(())
     }
+}
 
+impl<T: Clone + Typed + Location + 'static, X: Stack<T> + ?Sized> Compare<T> for X {}
+
+pub trait Compare<T: Clone + Typed + Location + 'static>: Deref<Target = [T]> {
     fn expect_exact<V: Typed>(&self, contract: &[V], loc: Loc) -> LazyResult<()> {
         if !(self.len() == contract.len() && self.expect_arity(&contract, loc).is_ok()) {
             Err(self.format_stack_diff(contract, loc))

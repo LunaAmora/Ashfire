@@ -263,41 +263,6 @@ impl<T: Clone> Stack<T> for EvalStack<T> {
     }
 }
 
-impl<T> Stack<T> for Vec<T> {
-    fn push(&mut self, item: T) {
-        self.push(item)
-    }
-
-    fn push_n<const N: usize>(&mut self, items: [T; N]) {
-        self.extend(items)
-    }
-
-    fn pop(&mut self) -> Option<T> {
-        self.pop()
-    }
-
-    fn pop_n<E>(&mut self, n: usize) -> LazyResult<Vec<T>, E> {
-        let range = (self.len() - n)..;
-        Ok(self.drain(range).collect())
-    }
-
-    fn pop_array<E, const N: usize>(&mut self) -> LazyResult<[T; N], E> {
-        todo!()
-    }
-
-    fn peek(&mut self) -> Option<&T> {
-        self.last()
-    }
-
-    fn get_from(&self, n: usize) -> Option<&T> {
-        if n > self.len() {
-            return None;
-        }
-
-        Some(&self[self.len() - 1 - n])
-    }
-}
-
 #[track_caller]
 pub fn from_i32<T: FromPrimitive>(value: i32) -> T {
     FromPrimitive::from_i32(value).unwrap()

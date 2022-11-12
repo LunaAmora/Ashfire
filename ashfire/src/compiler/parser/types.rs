@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use firelib::lexer::Loc;
 
-use crate::compiler::{expect::Expect, program::Program, types::*};
+use crate::compiler::{expect::Compare, program::Program, types::*};
 
-impl Expect<IRToken> for Vec<IRToken> {}
+impl Compare<IRToken> for Vec<IRToken> {}
 
 pub struct LocWord {
     pub index: usize,
