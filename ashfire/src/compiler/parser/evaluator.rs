@@ -1,4 +1,4 @@
-use ashlib::{from_i32, EvalStack, Stack};
+use ashlib::{from_i32, EvalStack, UncheckedStack};
 use either::Either;
 use firelib::lazy::LazyFormatter;
 
@@ -71,23 +71,23 @@ impl Evaluator for EvalStack<IRToken> {
                 }
 
                 KeywordType::Dup => {
-                    let top = (*self.expect_peek(ArityType::Any, tok.loc)?).clone();
+                    let top = self.expect_peek(ArityType::Any, tok.loc)?.clone();
                     self.push(top);
                 }
 
                 KeywordType::Swap => {
                     let [a, b] = self.expect_pop_n(tok.loc)?;
-                    self.push_n([b, a]);
+                    self.extend([b, a]);
                 }
 
                 KeywordType::Over => {
                     let [a, b] = self.expect_pop_n(tok.loc)?;
-                    self.push_n([a.clone(), b, a]);
+                    self.extend([a, b, a]);
                 }
 
                 KeywordType::Rot => {
                     let [a, b, c] = self.expect_pop_n(tok.loc)?;
-                    self.push_n([b, c, a]);
+                    self.extend([b, c, a]);
                 }
 
                 KeywordType::Equal => {

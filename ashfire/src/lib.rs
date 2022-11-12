@@ -8,7 +8,6 @@ use either::Either;
 use firelib::{
     alternative,
     anyhow::{Error, Result},
-    bail,
     choice::Alternative,
     lazy::{LazyError, LazyResult},
     FlowControl, Success, SuccessFrom,
@@ -149,14 +148,15 @@ impl<T, E, F> FromResidual<Result<Infallible, LazyError<F>>> for DoubleResult<T,
     }
 }
 
-pub trait Stack<T>: Deref<Target = [T]> {
+/// An unchecked Stack API.
+pub trait UncheckedStack<T>: Deref<Target = [T]> {
     fn push(&mut self, item: T);
-    fn push_n<const N: usize>(&mut self, items: [T; N]);
-    fn pop(&mut self) -> Option<T>;
-    fn pop_n<E>(&mut self, n: usize) -> LazyResult<Vec<T>, E>;
-    fn pop_array<E, const N: usize>(&mut self) -> LazyResult<[T; N], E>;
-    fn peek(&mut self) -> Option<&T>;
-    fn get_from(&self, n: usize) -> Option<&T>;
+    fn extend<const N: usize>(&mut self, items: [T; N]);
+    unsafe fn pop(&mut self) -> T;
+    unsafe fn pop_n(&mut self, n: usize) -> Vec<T>;
+    unsafe fn pop_array<const N: usize>(&mut self) -> [T; N];
+    unsafe fn peek(&mut self) -> &T;
+    unsafe fn get_from_top(&self, n: usize) -> &T;
 }
 
 #[derive(Clone)]
@@ -183,12 +183,14 @@ impl<T> Default for EvalStack<T> {
 impl<T: Clone> EvalStack<T> {
     pub fn new(other: &EvalStack<T>) -> Self {
         Self {
-            frames: other.frames.clone(),
+            frames: other.frames.to_vec(),
             min_count: other.min_count,
             stack_count: 0,
         }
     }
+}
 
+impl<T> EvalStack<T> {
     pub fn reset_max_count(&mut self) {
         self.stack_count = 0;
     }
@@ -201,65 +203,46 @@ impl<T: Clone> EvalStack<T> {
     }
 }
 
-impl<T: Clone> Stack<T> for EvalStack<T> {
+impl<T> UncheckedStack<T> for EvalStack<T> {
     fn push(&mut self, item: T) {
         self.stack_count += 1;
         self.frames.push(item)
     }
 
-    fn push_n<const N: usize>(&mut self, items: [T; N]) {
+    fn extend<const N: usize>(&mut self, items: [T; N]) {
         self.stack_count += N as i32;
         self.frames.extend(items)
     }
 
-    fn pop(&mut self) -> Option<T> {
-        if self.is_empty() {
-            return None;
-        }
-
+    unsafe fn pop(&mut self) -> T {
         self.stack_minus(1);
-        self.frames.pop()
+        self.frames.pop().unwrap_unchecked()
     }
 
-    fn pop_n<E>(&mut self, n: usize) -> LazyResult<Vec<T>, E> {
-        if n == 0 || n > self.len() {
-            bail!("Invalid quantity of elements to pop: `{n}`/`{}`", self.len())
-        };
-
+    unsafe fn pop_n(&mut self, n: usize) -> Vec<T> {
         self.stack_minus(n);
         let len = self.len();
         let range = (len - n)..;
-        Ok(self.frames.drain(range).collect())
+        self.frames.drain(range).collect()
     }
 
-    fn pop_array<E, const N: usize>(&mut self) -> LazyResult<[T; N], E> {
-        if N == 0 || N > self.len() {
-            bail!("Invalid quantity of elements to pop: `{N}`/`{}`", self.len())
-        };
-
+    unsafe fn pop_array<const N: usize>(&mut self) -> [T; N] {
         self.stack_minus(N);
         let len = self.len();
         let range = (len - N)..;
         let drain: Vec<T> = self.frames.drain(range).collect();
 
-        match drain.try_into() {
-            Ok(t) => Ok(t),
-            _ => unreachable!("Failed to collect into an correctly sized array"),
-        }
+        drain.try_into().ok().unwrap_unchecked()
     }
 
-    fn peek(&mut self) -> Option<&T> {
-        if self.is_empty() {
-            return None;
-        }
-
+    unsafe fn peek(&mut self) -> &T {
         self.stack_minus(1);
         self.stack_count += 1;
-        self.frames.last()
+        self.frames.get_unchecked(self.len() - 1)
     }
 
-    fn get_from(&self, n: usize) -> Option<&T> {
-        self.frames.get(self.len() - 1 - n)
+    unsafe fn get_from_top(&self, n: usize) -> &T {
+        self.frames.get_unchecked(self.len() - 1 - n)
     }
 }
 

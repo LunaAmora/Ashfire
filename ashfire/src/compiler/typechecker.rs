@@ -1,4 +1,4 @@
-use ashlib::{EvalStack, Stack};
+use ashlib::{EvalStack, UncheckedStack};
 use firelib::{anyhow::Result, lazy::LazyCtx, lexer::Loc};
 
 use super::{expect::*, program::*, types::*};
@@ -155,17 +155,17 @@ impl TypeChecker {
 
             OpType::Swap => {
                 let [a, b] = self.data_stack.expect_pop_n(loc)?;
-                self.data_stack.push_n([b, a]);
+                self.data_stack.extend([b, a]);
             }
 
             OpType::Over => {
                 let [a, b] = self.data_stack.expect_pop_n(loc)?;
-                self.data_stack.push_n([a.clone(), b, a]);
+                self.data_stack.extend([a, b, a]);
             }
 
             OpType::Rot => {
                 let [a, b, c] = self.data_stack.expect_pop_n(loc)?;
-                self.data_stack.push_n([b, c, a]);
+                self.data_stack.extend([b, c, a]);
             }
 
             OpType::Call | OpType::CallInline => {

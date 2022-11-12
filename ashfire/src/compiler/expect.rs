@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use ashlib::Stack;
+use ashlib::UncheckedStack;
 use firelib::{lazy::LazyFormatter, lexer::Loc};
 use itertools::Itertools;
 
@@ -15,67 +15,67 @@ pub enum ArityType<T: Copy> {
     Type(T),
 }
 
-pub trait Expect<T: Clone + Typed + Location + 'static>: Stack<T> {
+/// Safe wrapper for [`UncheckedStack`] with proper errors messages.
+pub trait Expect<T: Clone + Typed + Location + 'static>: UncheckedStack<T> {
     fn expect_exact_pop(&mut self, contract: &[TokenType], loc: Loc) -> LazyResult<Vec<T>> {
         self.expect_stack_size(contract.len(), loc)?;
         self.expect_exact(contract, loc)?;
-        self.pop_n(contract.len())
+        Ok(unsafe { self.pop_n(contract.len()) })
     }
 
-    fn expect_contract_pop(&mut self, contr: &[TokenType], loc: Loc) -> LazyResult<Vec<T>> {
-        self.expect_stack_size(contr.len(), loc)?;
-        self.expect_arity(contr, loc)?;
-        self.pop_n(contr.len())
+    fn expect_contract_pop(&mut self, contract: &[TokenType], loc: Loc) -> LazyResult<Vec<T>> {
+        self.expect_stack_size(contract.len(), loc)?;
+        self.expect_arity(contract, loc)?;
+        Ok(unsafe { self.pop_n(contract.len()) })
     }
 
     fn expect_array_pop<const N: usize>(
-        &mut self, contr: [TokenType; N], loc: Loc,
+        &mut self, contract: [TokenType; N], loc: Loc,
     ) -> LazyResult<[T; N]> {
-        self.expect_stack_size(contr.len(), loc)?;
-        self.expect_arity(&contr, loc)?;
-        self.pop_array()
+        self.expect_stack_size(contract.len(), loc)?;
+        self.expect_arity(&contract, loc)?;
+        Ok(unsafe { self.pop_array() })
     }
 
     fn expect_arity_pop<const N: usize>(
         &mut self, arity: ArityType<TokenType>, loc: Loc,
     ) -> LazyResult<[T; N]> {
-        self.expect_arity_type(N, arity, loc)?;
-        self.pop_array()
+        self.expect_arity_type::<N>(arity, loc)?;
+        Ok(unsafe { self.pop_array() })
     }
 
     fn expect_peek(&mut self, arity_t: ArityType<TokenType>, loc: Loc) -> LazyResult<&T> {
-        self.expect_arity_type(1, arity_t, loc)?;
-        Ok(self.peek().unwrap())
+        self.expect_arity_type::<1>(arity_t, loc)?;
+        Ok(unsafe { self.peek() })
     }
 
     fn expect_pop(&mut self, loc: Loc) -> LazyResult<T> {
         self.expect_stack_size(1, loc)?;
-        Ok(self.pop().unwrap())
+        Ok(unsafe { self.pop() })
     }
 
     fn expect_pop_n<const N: usize>(&mut self, loc: Loc) -> LazyResult<[T; N]> {
         self.expect_stack_size(N, loc)?;
-        self.pop_array()
+        Ok(unsafe { self.pop_array() })
     }
 
     fn expect_pop_type(&mut self, arity_t: TokenType, loc: Loc) -> LazyResult<T> {
-        self.expect_arity_type(1, ArityType::Type(arity_t), loc)?;
-        Ok(self.pop().unwrap())
+        self.expect_arity_type::<1>(ArityType::Type(arity_t), loc)?;
+        Ok(unsafe { self.pop() })
     }
 
-    fn expect_arity_type(&self, n: usize, arity: ArityType<TokenType>, loc: Loc) -> LazyResult<()> {
-        self.expect_stack_size(n, loc)?;
+    fn expect_arity_type<const N: usize>(
+        &self, arity: ArityType<TokenType>, loc: Loc,
+    ) -> LazyResult<()> {
+        self.expect_stack_size(N, loc)?;
 
-        let (typ, start) = match arity {
+        let typ = match arity {
             ArityType::Any => return Ok(()),
-            ArityType::Same => (self.get_from(0).cloned().unwrap().get_type(), 1),
-            ArityType::Type(typ) => (typ, 0),
+            ArityType::Same => unsafe { self.get_from_top(0) }.get_type(),
+            ArityType::Type(typ) => typ,
         };
 
-        for i in start..n {
-            expect_type(self.get_from(i).unwrap(), typ, loc)?;
-        }
-
+        self.expect_arity(&[typ; N], loc)?;
         Ok(())
     }
 
@@ -96,26 +96,25 @@ pub trait Expect<T: Clone + Typed + Location + 'static>: Stack<T> {
     }
 }
 
-impl<T: Clone + Typed + Location + 'static, X: Stack<T> + ?Sized> Compare<T> for X {}
+impl<T: Clone + Typed + Location + 'static, X: UncheckedStack<T> + ?Sized> Compare<T> for X {}
 
 pub trait Compare<T: Clone + Typed + Location + 'static>: Deref<Target = [T]> {
     fn expect_exact<V: Typed>(&self, contract: &[V], loc: Loc) -> LazyResult<()> {
-        if !(self.len() == contract.len() && self.expect_arity(&contract, loc).is_ok()) {
-            Err(self.format_stack_diff(contract, loc))
-        } else {
-            Ok(())
+        if self.len() == contract.len() && self.expect_arity(&contract, loc).is_ok() {
+            return Ok(());
         }
+        Err(self.format_stack_diff(contract, loc))
     }
 
     fn expect_arity<V: Typed>(&self, contract: &[V], loc: Loc) -> LazyResult<()> {
-        for (stk, contr) in self.iter().rev().zip(contract.iter().rev()) {
-            expect_type(stk, contr, loc)?;
+        for (stk, contract) in self.iter().rev().zip(contract.iter().rev()) {
+            expect_type(stk, contract, loc)?;
         }
         Ok(())
     }
 
     fn format_stack_diff<V: Typed>(&self, contract: &[V], loc: Loc) -> LazyError {
-        let contr = format_stack(contract);
+        let contract = format_stack(contract);
         let stack = format_stack(self);
         let frame = format_frames(self);
 
@@ -127,7 +126,7 @@ pub trait Compare<T: Clone + Typed + Location + 'static>: Deref<Target = [T]> {
                     "[INFO] {}Actual types:   {}\n{}"
                 ),
                 f.format(Fmt::Loc(loc)),
-                contr.apply(f),
+                contract.apply(f),
                 f.format(Fmt::Loc(loc)),
                 stack.apply(f),
                 frame.apply(f)
@@ -139,11 +138,10 @@ pub trait Compare<T: Clone + Typed + Location + 'static>: Deref<Target = [T]> {
 fn expect_type<T: Clone + Typed + Location + 'static, V: Typed>(
     frame: &T, expected: V, loc: Loc,
 ) -> LazyResult<()> {
-    if !equals_any!(expected.get_type(), Value::Any, Data::Ptr(Value::Any), frame.get_type()) {
-        Err(format_type_diff(frame.clone(), expected.get_type(), loc))
-    } else {
-        Ok(())
+    if equals_any!(expected.get_type(), Value::Any, Data::Ptr(Value::Any), frame.get_type()) {
+        return Ok(());
     }
+    Err(format_type_diff(frame.clone(), expected.get_type(), loc))
 }
 
 fn format_type_diff<T: Clone + Typed + Location + 'static>(
