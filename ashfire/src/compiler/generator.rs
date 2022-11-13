@@ -4,6 +4,7 @@ use firelib::anyhow::{Context, Result};
 use wasm_backend::{wasm_types::*, Module};
 use Ident::*;
 use Instruction::*;
+use NumMethod::*;
 use Scope::*;
 
 use super::{
@@ -59,30 +60,26 @@ impl Generator {
         let aloc_local = wasm.add_fn("aloc_local", i1, &[], vec![
             Get(global, Id(stk)),
             Get(local, Id(0)),
-            I32(NumMethod::add),
+            I32(add),
             Set(global, Id(stk)),
         ]);
 
         wasm.add_fn("free_local", i1, &[], vec![
             Get(global, Id(stk)),
             Get(local, Id(0)),
-            I32(NumMethod::sub),
+            I32(sub),
             Set(global, Id(stk)),
         ]);
 
         wasm.add_fn("bind_local", i1, &[], vec![
             Get(global, Id(stk)),
             Get(local, Id(0)),
-            I32(NumMethod::store),
+            I32(store),
             Const(4),
             Call(Id(aloc_local)),
         ]);
 
-        wasm.add_fn("push_local", i1, i1, vec![
-            Get(global, Id(stk)),
-            Get(local, Id(0)),
-            I32(NumMethod::sub),
-        ]);
+        wasm.add_fn("push_local", i1, i1, vec![Get(global, Id(stk)), Get(local, Id(0)), I32(sub)]);
 
         let mut skip = false;
         for op in program.ops.iter() {
@@ -92,8 +89,7 @@ impl Generator {
                 _ => {
                     if !skip {
                         let proc = self.current_proc(program).unwrap();
-                        let func = self.current_fn()?;
-                        func.extend(program.generate_op(op, proc, func, &mut wasm)?);
+                        self.current_fn()?.append_op(program, op, proc, &mut wasm)?;
                     }
                     skip
                 }
@@ -184,88 +180,99 @@ impl Generator {
     }
 }
 
-impl Program {
-    fn generate_op(
-        &self, op: &Op, proc: &Proc, func: &FuncGen, module: &mut Module,
-    ) -> Result<Vec<Instruction>> {
-        Ok(match op.op_type {
-            OpType::PushData(_) => vec![Const(op.operand)],
+struct FuncGen {
+    label: String,
+    contract: (Vec<WasmType>, Vec<WasmType>),
+    code: Vec<Instruction>,
+    bind_count: i32,
+}
+
+impl FuncGen {
+    fn append_op(
+        &mut self, prog: &Program, op: &Op, proc: &Proc, module: &mut Module,
+    ) -> Result<()> {
+        match op.op_type {
+            OpType::PushData(_) => self.push(Const(op.operand)),
 
             OpType::PushStr => {
-                let data = self.get_string(op.operand);
-                vec![Const(data.size()), Const(data.offset())]
+                let data = prog.get_string(op.operand);
+                self.extend([Const(data.size()), Const(data.offset())])
             }
 
             OpType::PushLocalMem => {
-                let ptr = func.bind_count * 4 + op.operand;
-                vec![Const(ptr), Call("push_local".into())]
+                let ptr = self.bind_count * 4 + op.operand;
+                self.extend([Const(ptr), Call("push_local".into())]);
             }
 
             OpType::PushGlobalMem => {
-                vec![Const(self.global_vars_start() + op.operand)]
+                let ptr = prog.global_vars_start() + op.operand;
+                self.push(Const(ptr))
             }
 
             OpType::PushLocal => {
                 let ptr = proc
                     .get_data()
                     .unwrap()
-                    .var_mem_offset(func.bind_count + op.operand);
-                vec![Const(ptr), Call("push_local".into())]
+                    .var_mem_offset(self.bind_count + op.operand);
+                self.extend([Const(ptr), Call("push_local".into())]);
             }
 
-            OpType::PushGlobal => vec![Const(self.mem_start() + op.operand * 4)],
+            OpType::PushGlobal => {
+                let ptr = prog.mem_start() + op.operand * 4;
+                self.push(Const(ptr))
+            }
 
-            OpType::Offset | OpType::OffsetLoad => vec![Const(op.operand), I32(NumMethod::add)],
+            OpType::Offset | OpType::OffsetLoad => self.extend([Const(op.operand), I32(add)]),
 
             OpType::Intrinsic => match IntrinsicType::from(op.operand) {
                 IntrinsicType::Div => todo!(),
                 IntrinsicType::Times => todo!(),
 
-                IntrinsicType::Plus => vec![I32(NumMethod::add)],
-                IntrinsicType::Minus => vec![I32(NumMethod::sub)],
-                IntrinsicType::Greater => vec![I32(NumMethod::gt_s)],
-                IntrinsicType::GreaterE => vec![I32(NumMethod::ge_s)],
-                IntrinsicType::Lesser => vec![I32(NumMethod::lt_s)],
-                IntrinsicType::LesserE => vec![I32(NumMethod::le_s)],
-                IntrinsicType::And => vec![I32(NumMethod::and)],
-                IntrinsicType::Or => vec![I32(NumMethod::or)],
-                IntrinsicType::Xor => vec![I32(NumMethod::xor)],
-                IntrinsicType::Load8 => vec![I32(NumMethod::load8_s)],
-                IntrinsicType::Load16 => vec![I32(NumMethod::load16_s)],
-                IntrinsicType::Load32 => vec![I32(NumMethod::load)],
+                IntrinsicType::Plus => self.push(I32(add)),
+                IntrinsicType::Minus => self.push(I32(sub)),
+                IntrinsicType::Greater => self.push(I32(gt_s)),
+                IntrinsicType::GreaterE => self.push(I32(ge_s)),
+                IntrinsicType::Lesser => self.push(I32(lt_s)),
+                IntrinsicType::LesserE => self.push(I32(le_s)),
+                IntrinsicType::And => self.push(I32(and)),
+                IntrinsicType::Or => self.push(I32(or)),
+                IntrinsicType::Xor => self.push(I32(xor)),
+                IntrinsicType::Load8 => self.push(I32(load8_s)),
+                IntrinsicType::Load16 => self.push(I32(load16_s)),
+                IntrinsicType::Load32 => self.push(I32(load)),
 
-                IntrinsicType::Store8 => vec![Call("swap".into()), I32(NumMethod::store8)],
-                IntrinsicType::Store16 => vec![Call("swap".into()), I32(NumMethod::store16)],
-                IntrinsicType::Store32 => vec![Call("swap".into()), I32(NumMethod::store)],
-                IntrinsicType::FdWrite => vec![Call("fd_write".into())],
+                IntrinsicType::Store8 => self.extend([Call("swap".into()), I32(store8)]),
+                IntrinsicType::Store16 => self.extend([Call("swap".into()), I32(store16)]),
+                IntrinsicType::Store32 => self.extend([Call("swap".into()), I32(store)]),
+                IntrinsicType::FdWrite => self.extend([Call("fd_write".into())]),
 
-                IntrinsicType::Cast(_) => vec![],
+                IntrinsicType::Cast(_) => {}
             },
 
-            OpType::Drop => vec![Drop],
-            OpType::Dup => vec![Call("dup".into())],
-            OpType::Swap => vec![Call("swap".into())],
-            OpType::Over => vec![Call("over".into())],
-            OpType::Rot => vec![Call("rot".into())],
+            OpType::Drop => self.push(Drop),
+            OpType::Dup => self.push(Call("dup".into())),
+            OpType::Swap => self.push(Call("swap".into())),
+            OpType::Over => self.push(Call("over".into())),
+            OpType::Rot => self.push(Call("rot".into())),
 
             OpType::Call => {
-                let label = self.procs[op.operand as usize].get_label();
-                vec![Call(label.into())]
+                let label = prog.get_proc(op.operand).get_label();
+                self.push(Call(label.into()));
             }
 
-            OpType::Equal => vec![I32(NumMethod::eq)],
+            OpType::Equal => self.push(I32(eq)),
 
             OpType::IfStart => {
-                let (ins, outs) = self.block_contracts[&(op.operand as usize)];
+                let (ins, outs) = prog.get_contract(op.operand);
                 let contract =
                     module.new_contract(&vec![WasmType::I32; ins], &vec![WasmType::I32; outs]);
 
-                vec![Block(BlockType::If, Some(Id(contract)))]
+                self.push(Block(BlockType::If, Some(Id(contract))))
             }
 
-            OpType::Else => vec![Else],
+            OpType::Else => self.push(Else),
 
-            OpType::EndIf | OpType::EndElse => vec![End],
+            OpType::EndIf | OpType::EndElse => self.push(End),
 
             OpType::BindStack => todo!(),
             OpType::PushBind => todo!(),
@@ -274,9 +281,9 @@ impl Program {
             OpType::Do => todo!(),
             OpType::EndWhile => todo!(),
 
-            OpType::Unpack => self.unpack_struct(op.operand as usize),
+            OpType::Unpack => self.extend(prog.unpack_struct(op.operand as usize)),
 
-            OpType::ExpectType => vec![],
+            OpType::ExpectType => {}
 
             OpType::CaseStart => todo!(),
             OpType::CaseMatch => todo!(),
@@ -284,40 +291,75 @@ impl Program {
             OpType::EndCase => todo!(),
 
             OpType::CallInline => {
-                let ProcType::Inline(start, end) = self.procs[op.operand as usize].data else {
+                let ProcType::Inline(start, end) = prog.get_proc(op.operand).data else {
                     unreachable!();
                 };
 
-                let mut inlined = vec![];
-
                 for ip in start + 1..end {
-                    let in_op = &self.ops[ip];
-                    inlined.extend(self.generate_op(in_op, proc, func, module)?);
+                    let in_op = &prog.ops[ip];
+                    self.append_op(prog, in_op, proc, module)?;
                 }
-
-                inlined
             }
 
             OpType::PrepProc | OpType::PrepInline | OpType::EndProc | OpType::EndInline => {
                 unreachable!()
             }
-        })
+        }
+        Ok(())
     }
 
+    fn new(label: &String, contract: &Contract) -> Self {
+        Self {
+            label: label.to_owned(),
+            contract: contract.into(),
+            code: Vec::new(),
+            bind_count: 0,
+        }
+    }
+
+    fn push(&mut self, instruction: Instruction) {
+        self.code.push(instruction);
+    }
+
+    fn extend<I>(&mut self, instructions: I)
+    where
+        I: IntoIterator<Item = Instruction>,
+    {
+        self.code.extend(instructions);
+    }
+
+    fn store_local(&mut self, offset: i32, var_value: i32) {
+        self.code.extend(vec![
+            Const(offset),
+            Call("push_local".into()),
+            Const(var_value),
+            I32(store),
+        ]);
+    }
+}
+
+impl From<&Contract> for (Vec<WasmType>, Vec<WasmType>) {
+    fn from(contract: &Contract) -> Self {
+        let (ins, outs) = contract.size();
+        (vec![WasmType::I32; ins], vec![WasmType::I32; outs])
+    }
+}
+
+impl Program {
     fn unpack_struct(&self, index: usize) -> Vec<Instruction> {
         let stk = &self.structs_types[index];
         let count = stk.units().len() as i32;
         let mut instructions = vec![];
 
         match count {
-            1 => instructions.push(I32(NumMethod::load)),
+            1 => instructions.push(I32(load)),
             2 => instructions.extend(vec![
                 Call("dup".into()),
-                I32(NumMethod::load),
+                I32(load),
                 Call("swap".into()),
                 Const(4),
-                I32(NumMethod::add),
-                I32(NumMethod::load),
+                I32(add),
+                I32(load),
             ]),
             _ => {
                 instructions.push(Call("bind_local".into()));
@@ -326,10 +368,10 @@ impl Program {
                     instructions.extend(vec![
                         Const(4),
                         Call("push_local".into()),
-                        I32(NumMethod::load),
+                        I32(load),
                         Const(4 * offset),
-                        I32(NumMethod::add),
-                        I32(NumMethod::load),
+                        I32(add),
+                        I32(load),
                     ]);
                 }
 
@@ -344,47 +386,5 @@ impl Program {
 
         let writer = BufWriter::new(File::create(output)?);
         Generator::new().generate_module(self)?.write_text(writer)
-    }
-}
-
-struct FuncGen {
-    label: String,
-    contract: (Vec<WasmType>, Vec<WasmType>),
-    code: Vec<Instruction>,
-    bind_count: i32,
-}
-
-impl FuncGen {
-    fn new(label: &String, contract: &Contract) -> Self {
-        Self {
-            label: label.to_owned(),
-            contract: contract.into(),
-            code: Vec::new(),
-            bind_count: 0,
-        }
-    }
-
-    fn push(&mut self, instruction: Instruction) {
-        self.code.push(instruction);
-    }
-
-    fn extend(&mut self, instructions: Vec<Instruction>) {
-        self.code.extend(instructions);
-    }
-
-    fn store_local(&mut self, offset: i32, var_value: i32) {
-        self.extend(vec![
-            Const(offset),
-            Call("push_local".into()),
-            Const(var_value),
-            I32(NumMethod::store),
-        ]);
-    }
-}
-
-impl From<&Contract> for (Vec<WasmType>, Vec<WasmType>) {
-    fn from(contract: &Contract) -> Self {
-        let (ins, outs) = contract.size();
-        (vec![WasmType::I32; ins], vec![WasmType::I32; outs])
     }
 }

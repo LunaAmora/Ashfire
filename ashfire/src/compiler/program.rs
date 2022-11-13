@@ -87,12 +87,19 @@ impl Program {
         &self.data[index as usize]
     }
 
-    pub fn get_sorted_data(&self) -> Vec<&OffsetWord> {
+    pub fn get_proc(&self, index: i32) -> &Proc {
+        &self.procs[index as usize]
+    }
+
+    pub fn get_contract(&self, index: i32) -> (usize, usize) {
+        self.block_contracts[&(index as usize)]
+    }
+
+    pub fn get_sorted_data(&self) -> impl Iterator<Item = &OffsetWord> {
         self.data
             .iter()
             .filter(|d| d.offset() >= 0)
             .sorted_by_key(|d| d.offset())
-            .collect()
     }
 
     fn data_name(&self, value: Value) -> String {
