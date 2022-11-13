@@ -118,12 +118,7 @@ impl Evaluator for EvalStack<IRToken> {
                         IntrinsicType::Cast(n) => {
                             let a = self.expect_pop(tok.loc)?;
 
-                            let cast = match n {
-                                1.. => Value::from((n - 1) as usize).get_type(),
-                                0 => unreachable!(),
-                                _ => Data::Ptr(Value::from((-n - 1) as usize)).get_type(),
-                            };
-
+                            let cast = Data::from(n).get_type();
                             self.push(IRToken::new(cast, a.operand, tok.loc));
                         }
 

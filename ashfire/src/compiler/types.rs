@@ -606,18 +606,6 @@ pub enum Data {
     Ptr(Value),
 }
 
-impl Typed for Data {
-    fn get_type(&self) -> TokenType {
-        TokenType::Data(*self)
-    }
-}
-
-impl Operand for Data {
-    fn as_operand(&self) -> i32 {
-        i32::from(*self)
-    }
-}
-
 impl Data {
     pub fn get_value(self) -> Value {
         match self {
@@ -626,11 +614,27 @@ impl Data {
     }
 }
 
-impl From<Data> for i32 {
-    fn from(data: Data) -> Self {
-        match data {
-            Data::Typ(value) => 1 + usize::from(value) as i32,
-            Data::Ptr(value) => -(1 + usize::from(value) as i32),
+impl Typed for Data {
+    fn get_type(&self) -> TokenType {
+        TokenType::Data(*self)
+    }
+}
+
+impl Operand for Data {
+    fn as_operand(&self) -> i32 {
+        match self {
+            Data::Typ(value) => 1 + usize::from(*value) as i32,
+            Data::Ptr(value) => -(1 + usize::from(*value) as i32),
+        }
+    }
+}
+
+impl From<i32> for Data {
+    fn from(value: i32) -> Self {
+        match value {
+            0 => unimplemented!("Not a valid value"),
+            1.. => Data::Typ(Value::from((value - 1) as usize)),
+            _ => Data::Ptr(Value::from((-value - 1) as usize)),
         }
     }
 }
@@ -658,15 +662,6 @@ impl From<IRToken> for TokenType {
 impl From<TypeFrame> for TokenType {
     fn from(frame: TypeFrame) -> Self {
         (&frame).get_type()
-    }
-}
-
-impl From<TokenType> for i32 {
-    fn from(tok: TokenType) -> Self {
-        match tok {
-            TokenType::Data(data) => data.into(),
-            _ => 0,
-        }
     }
 }
 
@@ -700,6 +695,12 @@ pub enum Value {
 impl Typed for Value {
     fn get_type(&self) -> TokenType {
         TokenType::Data(Data::Typ(*self))
+    }
+}
+
+impl Operand for Value {
+    fn as_operand(&self) -> i32 {
+        Data::Typ(*self).as_operand()
     }
 }
 

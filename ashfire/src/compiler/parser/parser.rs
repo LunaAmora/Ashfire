@@ -883,7 +883,7 @@ impl Program {
             Either::Right(members.into_iter())
         };
 
-        let members = members.map(Typed::get_type).map(i32::from);
+        let members = members.map(ValueType::data).map(Operand::as_operand);
 
         for (operand, type_id) in id_range.zip(members) {
             if store {
@@ -942,7 +942,7 @@ impl Program {
                     offset += 1;
                 }
 
-                let type_id = i32::from(root.get_ref_type().get_type());
+                let type_id = root.get_ref_type().as_operand();
 
                 result.push(Op::new(push_type, offset as i32, loc));
                 result.push(Op::from((IntrinsicType::Cast(-type_id), loc)));
@@ -955,7 +955,7 @@ impl Program {
             }
         };
 
-        let type_id = i32::from(typ.get_type());
+        let type_id = typ.data().as_operand();
 
         if store {
             result.push(Op::new(OpType::ExpectType, type_id, loc))

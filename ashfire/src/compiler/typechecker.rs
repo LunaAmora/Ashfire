@@ -135,11 +135,7 @@ impl TypeChecker {
                 IntrinsicType::Cast(n) => {
                     self.data_stack.expect_pop(loc)?;
 
-                    let cast: TokenType = match n {
-                        1.. => Value::from((n - 1) as usize).get_type(),
-                        0 => unreachable!(),
-                        _ => Data::Ptr(Value::from((-n - 1) as usize)).get_type(),
-                    };
+                    let cast = Data::from(n).get_type();
                     self.push_frame(cast, loc);
                 }
             },
@@ -304,11 +300,7 @@ impl TypeChecker {
             },
 
             OpType::ExpectType => {
-                let typ = match op.operand {
-                    n @ 1.. => Value::from((n - 1) as usize).get_type(),
-                    0 => unreachable!(),
-                    n => Data::Ptr(Value::from((-n - 1) as usize)).get_type(),
-                };
+                let typ = Data::from(op.operand).get_type();
                 self.data_stack.expect_peek(ArityType::Type(typ), loc)?;
             }
 
