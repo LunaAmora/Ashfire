@@ -17,16 +17,16 @@ pub enum ArityType<T: Copy> {
 
 /// Safe wrapper for [`UncheckedStack`] with proper errors messages.
 pub trait Expect<T: Clone + Typed + Location + 'static>: UncheckedStack<T> {
-    fn expect_exact_pop(&mut self, contract: &[TokenType], loc: Loc) -> LazyResult<Vec<T>> {
+    fn expect_exact_pop(&mut self, contract: &[TokenType], loc: Loc) -> LazyResult<()> {
         self.expect_stack_size(contract.len(), loc)?;
         self.expect_exact(contract, loc)?;
-        Ok(unsafe { self.pop_n(contract.len()) })
+        Ok(self.truncate(contract.len()))
     }
 
-    fn expect_contract_pop(&mut self, contract: &[TokenType], loc: Loc) -> LazyResult<Vec<T>> {
+    fn expect_contract_pop(&mut self, contract: &[TokenType], loc: Loc) -> LazyResult<()> {
         self.expect_stack_size(contract.len(), loc)?;
         self.expect_arity(contract, loc)?;
-        Ok(unsafe { self.pop_n(contract.len()) })
+        Ok(self.truncate(contract.len()))
     }
 
     fn expect_array_pop<const N: usize>(

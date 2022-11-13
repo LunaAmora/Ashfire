@@ -152,8 +152,8 @@ impl<T, E, F> FromResidual<Result<Infallible, LazyError<F>>> for DoubleResult<T,
 pub trait UncheckedStack<T>: Deref<Target = [T]> {
     fn push(&mut self, item: T);
     fn extend<const N: usize>(&mut self, items: [T; N]);
+    fn truncate(&mut self, n: usize);
     unsafe fn pop(&mut self) -> T;
-    unsafe fn pop_n(&mut self, n: usize) -> Vec<T>;
     unsafe fn pop_array<const N: usize>(&mut self) -> [T; N];
     unsafe fn peek(&mut self) -> &T;
     unsafe fn get_from_top(&self, n: usize) -> &T;
@@ -219,11 +219,9 @@ impl<T> UncheckedStack<T> for EvalStack<T> {
         self.frames.pop().unwrap_unchecked()
     }
 
-    unsafe fn pop_n(&mut self, n: usize) -> Vec<T> {
+    fn truncate(&mut self, n: usize) {
         self.stack_minus(n);
-        let len = self.len();
-        let range = (len - n)..;
-        self.frames.drain(range).collect()
+        self.frames.truncate(self.len() - n);
     }
 
     unsafe fn pop_array<const N: usize>(&mut self) -> [T; N] {

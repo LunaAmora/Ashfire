@@ -138,8 +138,10 @@ impl Evaluator for EvalStack<IRToken> {
                 prog.register_string(tok.operand);
                 let data = prog.get_string(tok.operand);
 
-                self.push(IRToken::new(INT, data.size(), tok.loc));
-                self.push(IRToken::new(PTR, data.offset(), tok.loc));
+                self.extend([
+                    IRToken::new(INT, data.size(), tok.loc),
+                    IRToken::new(PTR, data.offset(), tok.loc),
+                ]);
             }
 
             TokenType::Data(Data::Typ(value)) => match value {

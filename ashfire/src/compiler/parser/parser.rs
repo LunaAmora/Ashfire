@@ -895,8 +895,10 @@ impl Program {
             if store {
                 result.push(Op::from((IntrinsicType::Store32, loc)))
             } else {
-                result.push(Op::from((IntrinsicType::Load32, loc)));
-                result.push(Op::from((IntrinsicType::Cast(type_id), loc)));
+                result.extend([
+                    Op::from((IntrinsicType::Load32, loc)),
+                    Op::from((IntrinsicType::Cast(type_id), loc)),
+                ]);
             }
         }
 
@@ -944,8 +946,10 @@ impl Program {
 
                 let type_id = root.get_ref_type().as_operand();
 
-                result.push(Op::new(push_type, offset as i32, loc));
-                result.push(Op::from((IntrinsicType::Cast(-type_id), loc)));
+                result.extend([
+                    Op::new(push_type, offset as i32, loc),
+                    Op::from((IntrinsicType::Cast(-type_id), loc)),
+                ]);
 
                 if !pointer {
                     result.push((OpType::Unpack, loc).into());
@@ -968,8 +972,10 @@ impl Program {
         } else if pointer {
             result.push(Op::from((IntrinsicType::Cast(-type_id), loc)));
         } else {
-            result.push(Op::from((IntrinsicType::Load32, loc)));
-            result.push(Op::from((IntrinsicType::Cast(type_id), loc)));
+            result.extend([
+                Op::from((IntrinsicType::Load32, loc)),
+                Op::from((IntrinsicType::Cast(type_id), loc)),
+            ]);
         }
 
         OptionErr::new(result)

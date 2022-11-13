@@ -165,7 +165,7 @@ impl TypeChecker {
             }
 
             OpType::Call | OpType::CallInline => {
-                let contr = &program.procs[op.operand as usize].contract;
+                let contr = &program.get_proc(op.operand).contract;
                 self.data_stack.expect_contract_pop(contr.ins(), loc)?;
                 for &typ in contr.outs() {
                     self.push_frame(typ, loc);
