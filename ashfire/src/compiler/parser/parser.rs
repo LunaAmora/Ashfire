@@ -76,7 +76,7 @@ impl Parser {
         let op = Op::from(match tok.token_type {
             TokenType::Keyword => return self.define_keyword_op(tok.operand, tok.loc, prog),
 
-            TokenType::Str => (OpType::PushStr, prog.register_string(tok.operand), tok.loc),
+            TokenType::Str => (OpType::PushStr, tok.operand, tok.loc),
 
             TokenType::Data(data) => match data {
                 Data::Typ(val) => match val {
@@ -640,7 +640,7 @@ impl Parser {
         let value = self.expect_by(|tok| tok == Value::Int, "memory size after `:`", loc)?;
         self.expect_keyword(KeywordType::End, "`end` after memory size", loc)?;
 
-        let size = ((value.operand + 3) / 4) * 4;
+        let size = ((value.operand as usize + 3) / 4) * 4;
         let ctx = prog.push_mem_by_context(self.get_index(), &word.as_string(prog), size)?;
         self.name_scopes.register(word.as_str(prog), ctx);
 
@@ -1060,7 +1060,7 @@ impl Program {
     }
 
     fn push_mem_by_context(
-        &mut self, proc_index: Option<usize>, word: &str, size: i32,
+        &mut self, proc_index: Option<usize>, word: &str, size: usize,
     ) -> LazyResult<ParseContext> {
         match proc_index.and_then(|i| self.procs.get_mut(i)) {
             Some(proc) => {

@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use ashlib::from_i32;
 use firelib::{lazy, lexer::Loc};
-use itertools::Itertools;
 
 use super::types::*;
 
@@ -16,10 +15,10 @@ pub struct Program {
     pub structs_types: Vec<StructDef>,
     pub block_contracts: HashMap<usize, (usize, usize)>,
     pub included_files: Vec<String>,
-    mem_size: i32,
-    memory: Vec<SizeWord>,
-    data_size: i32,
-    data: Vec<OffsetWord>,
+    mem_size: usize,
+    memory: Vec<OffsetWord>,
+    data_size: usize,
+    data: Vec<OffsetData>,
 }
 
 pub type OptionErr<T, E = Fmt> = ashlib::OptionErr<T, E>;
@@ -39,36 +38,29 @@ impl Program {
         }
     }
 
-    pub fn register_string(&mut self, operand: i32) -> i32 {
-        if let Some(data) = self.data.get_mut(operand as usize) {
-            if data.offset() < 0 {
-                data.set_offset(self.data_size);
-                self.data_size += data.size();
-            }
-        }
-        operand
-    }
-
-    pub fn push_mem(&mut self, word: &str, size: i32) {
-        self.memory.push(SizeWord::new(word, self.mem_size));
+    pub fn push_mem(&mut self, word: &str, size: usize) {
+        self.memory
+            .push(OffsetWord::new(word, self.mem_size as i32));
         self.mem_size += size;
     }
 
     pub fn push_data(&mut self, word: &str, size: usize) -> usize {
-        self.data.push(OffsetWord::new(word, size as i32));
+        self.data
+            .push(OffsetData::new(word, size as i32, self.data_size as i32));
+        self.data_size += size;
         self.data.len() - 1
     }
 
-    pub fn data_size(&self) -> i32 {
+    pub fn data_size(&self) -> usize {
         self.data_size
     }
 
     pub fn mem_start(&self) -> i32 {
-        ((self.data_size + 3) / 4) * 4
+        ((self.data_size as i32 + 3) / 4) * 4
     }
 
     pub fn global_vars_start(&self) -> i32 {
-        self.mem_start() + self.mem_size
+        self.mem_start() + self.mem_size as i32
     }
 
     pub fn global_vars_size(&self) -> i32 {
@@ -83,7 +75,7 @@ impl Program {
         &self.words[index as usize]
     }
 
-    pub fn get_string(&self, index: i32) -> &OffsetWord {
+    pub fn get_string(&self, index: i32) -> &OffsetData {
         &self.data[index as usize]
     }
 
@@ -95,11 +87,12 @@ impl Program {
         self.block_contracts[&(index as usize)]
     }
 
-    pub fn get_sorted_data(&self) -> impl Iterator<Item = &OffsetWord> {
-        self.data
-            .iter()
-            .filter(|d| d.offset() >= 0)
-            .sorted_by_key(|d| d.offset())
+    pub fn get_data(&self) -> &[OffsetData] {
+        &self.data
+    }
+
+    pub fn get_memory(&self) -> &[OffsetWord] {
+        &self.memory
     }
 
     fn data_name(&self, value: Value) -> String {
@@ -208,10 +201,6 @@ impl Program {
     /// Searches for a `const` that matches the given `&str`.
     pub fn get_const_by_name(&self, word: &str) -> Option<&StructType> {
         self.consts.iter().find(|cnst| word == cnst.name())
-    }
-
-    pub fn get_memory(&self) -> &[SizeWord] {
-        &self.memory
     }
 }
 

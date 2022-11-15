@@ -98,15 +98,14 @@ impl Generator {
 
         wasm.add_export("_start", Bind::Func("start".into()));
 
-        for data in program.get_sorted_data() {
+        for data in program.get_data() {
             wasm.add_data(data.to_string())
         }
 
         if !program.global_vars.is_empty() {
-            let padding = 4 - (program.data_size() % 4) as usize;
+            let padding = 4 - program.data_size() % 4;
             if padding < 4 {
-                let pad_string = (0..padding).map(|_| "\\00").collect::<String>();
-                wasm.add_data(pad_string);
+                wasm.add_data((0..padding).map(|_| "\\00").collect());
             }
         }
 
@@ -195,8 +194,8 @@ impl FuncGen {
             OpType::PushData(_) => self.push(Const(op.operand)),
 
             OpType::PushStr => {
-                let data = prog.get_string(op.operand);
-                self.extend([Const(data.size()), Const(data.offset())])
+                let (size, offset) = prog.get_string(op.operand).data();
+                self.extend([Const(size), Const(offset)])
             }
 
             OpType::PushLocalMem => {

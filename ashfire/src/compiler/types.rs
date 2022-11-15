@@ -61,23 +61,23 @@ impl Operand for i32 {
 pub struct ProcData {
     pub bindings: Vec<String>,
     pub local_vars: Vec<StructType>,
-    pub local_mem_names: Vec<SizeWord>,
-    mem_size: i32,
+    pub local_mem_names: Vec<OffsetWord>,
+    mem_size: usize,
 }
 
 impl ProcData {
-    pub fn push_mem(&mut self, word: &str, size: i32) {
+    pub fn push_mem(&mut self, word: &str, size: usize) {
         self.mem_size += size;
         self.local_mem_names
-            .push(SizeWord::new(word, self.mem_size));
+            .push(OffsetWord::new(word, self.mem_size as i32));
     }
 
     pub fn total_size(&self) -> i32 {
-        self.mem_size + (self.local_vars.iter().fold(0, |acc, var| acc + var.size()) as i32)
+        (self.mem_size + self.local_vars.iter().fold(0, |acc, var| acc + var.size())) as i32
     }
 
     pub fn var_mem_offset(&self, index: i32) -> i32 {
-        self.mem_size + (index + 1) * 4
+        self.mem_size as i32 + (index + 1) * 4
     }
 }
 
@@ -516,10 +516,6 @@ impl<T, O: Copy> Offset<T, O> {
     pub fn offset(&self) -> O {
         self.1
     }
-
-    pub fn set_offset(&mut self, offset: O) {
-        self.1 = offset
-    }
 }
 
 impl<T, O> Deref for Offset<T, O> {
@@ -530,23 +526,27 @@ impl<T, O> Deref for Offset<T, O> {
     }
 }
 
-pub type SizeWord = Offset<String>;
+pub type OffsetData = Offset<OffsetWord>;
 
-impl SizeWord {
-    pub fn new(name: &str, offset: i32) -> Self {
-        Self(name.to_string(), offset)
+impl OffsetData {
+    pub fn new(name: &str, size: i32, offset: i32) -> Self {
+        Self(OffsetWord::new(name, size), offset)
+    }
+
+    pub fn data(&self) -> (i32, i32) {
+        (self.size(), self.offset())
     }
 
     pub fn size(&self) -> i32 {
-        self.1
+        self.0.offset()
     }
 }
 
-pub type OffsetWord = Offset<SizeWord>;
+pub type OffsetWord = Offset<String>;
 
 impl OffsetWord {
-    pub fn new(name: &str, value: i32) -> Self {
-        Self(SizeWord::new(name, value), -1)
+    pub fn new(name: &str, offset: i32) -> Self {
+        Self(name.to_owned(), offset)
     }
 }
 

@@ -12,14 +12,12 @@ use crate::compiler::{
 type DoubleResult<T> = ashlib::DoubleResult<T, IRToken, Fmt>;
 
 impl Parser {
-    pub fn compile_eval(&self, prog: &mut Program) -> DoubleResult<(IRToken, usize)> {
+    pub fn compile_eval(&self, prog: &Program) -> DoubleResult<(IRToken, usize)> {
         let (mut result, skip) = self.compile_eval_n(1, prog)?;
         DoubleResult::new((result.pop().unwrap(), skip))
     }
 
-    pub fn compile_eval_n(
-        &self, n: usize, prog: &mut Program,
-    ) -> DoubleResult<(Vec<IRToken>, usize)> {
+    pub fn compile_eval_n(&self, n: usize, prog: &Program) -> DoubleResult<(Vec<IRToken>, usize)> {
         let mut stack = EvalStack::default();
         let mut i = 0;
 
@@ -59,11 +57,11 @@ impl Parser {
 impl Expect<IRToken> for EvalStack<IRToken> {}
 
 pub trait Evaluator {
-    fn evaluate(&mut self, item: IRToken, prog: &mut Program) -> DoubleResult<()>;
+    fn evaluate(&mut self, item: IRToken, prog: &Program) -> DoubleResult<()>;
 }
 
 impl Evaluator for EvalStack<IRToken> {
-    fn evaluate(&mut self, tok: IRToken, prog: &mut Program) -> DoubleResult<()> {
+    fn evaluate(&mut self, tok: IRToken, prog: &Program) -> DoubleResult<()> {
         match tok.token_type {
             TokenType::Keyword => match from_i32(tok.operand) {
                 KeywordType::Drop => {
@@ -135,12 +133,11 @@ impl Evaluator for EvalStack<IRToken> {
             }
 
             TokenType::Str => {
-                prog.register_string(tok.operand);
-                let data = prog.get_string(tok.operand);
+                let (size, offset) = prog.get_string(tok.operand).data();
 
                 self.extend([
-                    IRToken::new(INT, data.size(), tok.loc),
-                    IRToken::new(PTR, data.offset(), tok.loc),
+                    IRToken::new(INT, size, tok.loc),
+                    IRToken::new(PTR, offset, tok.loc),
                 ]);
             }
 
