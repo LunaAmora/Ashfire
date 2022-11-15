@@ -50,10 +50,11 @@ pub enum VarWordType {
 #[allow(dead_code)]
 pub enum ParseContext {
     ProcName,
-    GlobalMem,
-    ConstStruct,
-    Variable,
     LocalMem,
+    GlobalMem,
+    LocalVar,
+    GlobalVar,
+    ConstStruct,
     Binding,
 }
 

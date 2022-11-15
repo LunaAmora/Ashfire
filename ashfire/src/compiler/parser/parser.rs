@@ -122,9 +122,10 @@ impl Parser {
             ParseContext::ProcName => prog.get_proc_name(word),
             ParseContext::GlobalMem => prog.get_global_mem(word),
             ParseContext::Binding => self.get_binding(word, prog),
-            ParseContext::ConstStruct => prog.get_const_struct(word),
             ParseContext::LocalMem => self.get_local_mem(word, prog),
-            ParseContext::Variable => return self.get_variable(word, None, prog),
+            ParseContext::ConstStruct => prog.get_const_struct(word),
+            ParseContext::LocalVar => return self.get_local_var(word, None, prog),
+            ParseContext::GlobalVar => return self.get_global_var(word, None, prog),
         }
         .into()
     }
@@ -141,14 +142,20 @@ impl Parser {
             _ => return OptionErr::default(),
         };
 
-        let Some(ParseContext::Variable) = self.name_scopes.lookup(rest) else {
-            return OptionErr::default();
+        let local = match self.name_scopes.lookup(rest) {
+            Some(ParseContext::LocalVar) => true,
+            Some(ParseContext::GlobalVar) => false,
+            _ => return OptionErr::default(),
         };
 
         let word = LocWord::new(prog.words.len(), word.loc);
         prog.words.push(rest.to_owned());
 
-        self.get_variable(&word, Some(var_typ), prog)
+        if local {
+            self.get_local_var(&word, Some(var_typ), prog)
+        } else {
+            self.get_global_var(&word, Some(var_typ), prog)
+        }
     }
 
     fn define_keyword_op(&mut self, operand: i32, loc: Loc, prog: &Program) -> OptionErr<Vec<Op>> {
@@ -185,13 +192,17 @@ impl Parser {
             }
             KeywordType::Ref => {
                 let ref_word = self.expect_word("type after `*`", loc)?;
-
                 let name = &prog.words[ref_word.index];
-                let Some(ParseContext::Variable) = self.name_scopes.lookup(name) else {
-                    todo!();
-                };
 
-                return self.get_variable(&ref_word, Some(VarWordType::Pointer), prog);
+                return match self.name_scopes.lookup(name) {
+                    Some(ParseContext::LocalVar) => {
+                        self.get_local_var(&ref_word, Some(VarWordType::Pointer), prog)
+                    }
+                    Some(ParseContext::GlobalVar) => {
+                        self.get_global_var(&ref_word, Some(VarWordType::Pointer), prog)
+                    }
+                    _ => todo!(),
+                };
             }
 
             KeywordType::While => self.push_block((OpType::While, loc).into()),
@@ -308,20 +319,21 @@ impl Parser {
             .map(|local| Op::new(OpType::PushLocalMem, local.offset(), word.loc).into())
     }
 
-    /// Searches for a `variable` that matches the given [`word`][LocWord]
+    /// Searches for a local `variable` that matches the given [`word`][LocWord]
     /// and parses `store` and `pointer` information.
-    fn get_variable(
+    fn get_local_var(
         &self, word: &LocWord, var_typ: Option<VarWordType>, prog: &Program,
     ) -> OptionErr<Vec<Op>> {
-        use OpType::*;
-        choice!(
-            OptionErr,
-            self.current_proc_data(prog)
-                .map(|proc| &proc.local_vars)
-                .map_or_else(OptionErr::default, |vars| self
-                    .try_get_var(word, vars, PushLocal, var_typ, prog)),
-            self.try_get_var(word, &prog.global_vars, PushGlobal, var_typ, prog),
-        )
+        let proc = self.current_proc_data(prog).or_return(OptionErr::default)?;
+        self.try_get_var(word, &proc.local_vars, OpType::PushLocal, var_typ, prog)
+    }
+
+    /// Searches for a global `variable` that matches the given [`word`][LocWord]
+    /// and parses `store` and `pointer` information.
+    fn get_global_var(
+        &self, word: &LocWord, var_typ: Option<VarWordType>, prog: &Program,
+    ) -> OptionErr<Vec<Op>> {
+        self.try_get_var(word, &prog.global_vars, OpType::PushGlobal, var_typ, prog)
     }
 
     fn try_get_var(
@@ -800,9 +812,10 @@ impl Parser {
             self.register_const_or_var(&assign, StructType::Root(struct_ref), prog);
         }
 
-        let ctx = match assign {
-            KeywordType::Colon => ParseContext::ConstStruct,
-            KeywordType::Equal => ParseContext::Variable,
+        let ctx = match (assign, self.inside_proc()) {
+            (KeywordType::Colon, _) => ParseContext::ConstStruct,
+            (KeywordType::Equal, true) => ParseContext::LocalVar,
+            (KeywordType::Equal, false) => ParseContext::GlobalVar,
             _ => unreachable!(),
         };
 
