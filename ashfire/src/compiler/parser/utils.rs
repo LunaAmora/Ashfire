@@ -15,7 +15,7 @@ impl Parser {
 
     pub fn expect_word(&mut self, error_text: &str, loc: Loc) -> LazyResult<LocWord> {
         self.expect_by(|tok| tok == TokenType::Word, error_text, loc)
-            .map(|tok| LocWord::new(tok.operand as usize, tok.loc))
+            .map(|tok| LocWord::new(&tok, tok.loc))
     }
 
     pub fn expect_by(
@@ -61,7 +61,7 @@ pub fn invalid_option(tok: Option<IRToken>, desc: &str, loc: Loc) -> LazyError {
                 "{}Expected {desc}, but found: {} `{}`",
                 f.format(Fmt::Loc(tok.loc)),
                 f.format(Fmt::Typ(tok.token_type)),
-                f.format(Fmt::Tok(tok))
+                f.format(Fmt::Tok(tok.clone()))
             )
         }),
         None => LazyError::new(move |f| {
@@ -77,7 +77,7 @@ pub fn invalid_token(tok: IRToken, error: &str) -> LazyError {
             "{}Invalid `{}` found on {error}: `{}`",
             f.format(Fmt::Loc(tok.loc)),
             f.format(Fmt::Typ(tok.token_type)),
-            f.format(Fmt::Tok(tok))
+            f.format(Fmt::Tok(tok.clone()))
         )
     })
 }

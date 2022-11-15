@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use ashlib::from_i32;
 use firelib::{lazy, lexer::Loc};
 
 use super::types::*;
@@ -71,20 +70,20 @@ impl Program {
         self.global_vars_start() + self.global_vars_size()
     }
 
-    pub fn get_word(&self, index: i32) -> &str {
-        &self.words[index as usize]
+    pub fn get_word<O: Operand>(&self, index: O) -> &str {
+        &self.words[index.index()]
     }
 
-    pub fn get_string(&self, index: i32) -> &OffsetData {
-        &self.data[index as usize]
+    pub fn get_string<O: Operand>(&self, index: O) -> &OffsetData {
+        &self.data[index.index()]
     }
 
-    pub fn get_proc(&self, index: i32) -> &Proc {
-        &self.procs[index as usize]
+    pub fn get_proc<O: Operand>(&self, index: O) -> &Proc {
+        &self.procs[index.index()]
     }
 
-    pub fn get_contract(&self, index: i32) -> (usize, usize) {
-        self.block_contracts[&(index as usize)]
+    pub fn get_contract<O: Operand>(&self, index: O) -> (usize, usize) {
+        self.block_contracts[&(index.index())]
     }
 
     pub fn get_data(&self) -> &[OffsetData] {
@@ -119,7 +118,8 @@ impl Program {
         .to_owned()
     }
 
-    fn data_display(&self, value: Value, operand: i32) -> String {
+    fn data_display<O: Operand>(&self, value: Value, operand: O) -> String {
+        let operand = operand.operand();
         match value {
             Value::Bool => fold_bool!(operand != 0, "True", "False").to_owned(),
             Value::Ptr => format!("*{}", operand),
@@ -129,10 +129,10 @@ impl Program {
 
     pub fn type_display(&self, tok: IRToken) -> String {
         match tok.token_type {
-            TokenType::Keyword => format!("{:?}", from_i32::<KeywordType>(tok.operand)),
-            TokenType::Word => self.get_word(tok.operand).to_owned(),
-            TokenType::Data(data) => self.data_display(data.get_value(), tok.operand),
-            TokenType::Str => self.get_string(tok.operand).to_string(),
+            TokenType::Keyword => format!("{:?}", tok.as_keyword()),
+            TokenType::Word => self.get_word(tok).to_string(),
+            TokenType::Str => self.get_string(tok).to_string(),
+            TokenType::Data(data) => self.data_display(data.get_value(), tok),
         }
     }
 

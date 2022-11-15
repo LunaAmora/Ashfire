@@ -52,14 +52,14 @@ impl Program {
             .with_ctx(move |f| {
                 format!("{}Missing closing `\"` in string literal", f.format(Fmt::Loc(loc)))
             })
-            .map(|name| self.push_data(name, name.len() - escaped_len(&name)) as i32)
+            .map(|name| self.push_data(name, name.len() - escaped_len(&name)))
             .map(|operand| IRToken::new(TokenType::Str, operand, loc))
             .map(OptionErr::new)?
     }
 
     fn define_word(&mut self, tok: Token) -> OptionErr<IRToken> {
         self.words.push(tok.name);
-        let operand = self.words.len() as i32 - 1;
+        let operand = self.words.len() - 1;
 
         OptionErr::new(IRToken::new(TokenType::Word, operand, tok.loc))
     }

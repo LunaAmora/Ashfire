@@ -138,7 +138,7 @@ impl TypeChecker {
             OpType::Rot => self.data_stack.pop_extend(|[a, b, c]| [b, c, a], loc)?,
 
             OpType::Call | OpType::CallInline => {
-                let contr = &program.get_proc(op.operand).contract;
+                let contr = &program.get_proc(op).contract;
                 self.data_stack.expect_contract_pop(contr.ins(), loc)?;
                 for &typ in contr.outs() {
                     self.push_frame(typ, loc);
@@ -151,7 +151,7 @@ impl TypeChecker {
             }
 
             OpType::PrepProc | OpType::PrepInline => {
-                for &typ in self.visit_proc(program, op.operand as usize).contract.ins() {
+                for &typ in self.visit_proc(program, op.index()).contract.ins() {
                     self.push_frame(typ, loc);
                 }
             }
@@ -302,7 +302,7 @@ impl TypeChecker {
         match self.data_stack.expect_pop(op.loc)?.get_type() {
             TokenType::Data(Data::Ptr(value)) => {
                 let stk = &prog.structs_types[usize::from(value)];
-                let word = prog.get_word(op.operand).to_string();
+                let word = prog.get_word(op).to_string();
 
                 let Some((offset, index)) = get_field_pos(stk.members(), &word) else {
                         let name = stk.name().to_owned();
@@ -341,7 +341,7 @@ impl TypeChecker {
 impl Program {
     fn set_operand(&mut self, ip: usize, index: usize) {
         let op = &mut self.ops[ip];
-        op.operand = index as i32;
+        op.set_operand(index as i32);
     }
 
     pub fn type_check(&mut self) -> Result<&mut Self> {

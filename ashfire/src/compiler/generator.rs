@@ -7,10 +7,7 @@ use Instruction::*;
 use NumMethod::*;
 use Scope::*;
 
-use super::{
-    program::*,
-    types::{Contract, IntrinsicType, Op, OpType, Proc, ProcType, StructType},
-};
+use super::{program::*, types::*};
 
 pub struct Generator {
     current_proc: Option<usize>,
@@ -121,7 +118,7 @@ impl Generator {
             anybail!("Cannot start an Wasm function block without closing the current one");
         }
 
-        let proc = self.visit_proc(program, op.operand as usize);
+        let proc = self.visit_proc(program, op.index());
         let Some(data) = proc.get_data() else {
             return Ok(true);
         };
@@ -194,7 +191,7 @@ impl FuncGen {
             OpType::PushData(_) => self.push(Const(op.operand)),
 
             OpType::PushStr => {
-                let (size, offset) = prog.get_string(op.operand).data();
+                let (size, offset) = prog.get_string(op).data();
                 self.extend([Const(size), Const(offset)])
             }
 
@@ -255,14 +252,14 @@ impl FuncGen {
             OpType::Rot => self.push(Call("rot".into())),
 
             OpType::Call => {
-                let label = prog.get_proc(op.operand).get_label();
+                let label = prog.get_proc(op).get_label();
                 self.push(Call(label.into()));
             }
 
             OpType::Equal => self.push(I32(eq)),
 
             OpType::IfStart => {
-                let (ins, outs) = prog.get_contract(op.operand);
+                let (ins, outs) = prog.get_contract(op);
                 let contract =
                     module.new_contract(&vec![WasmType::I32; ins], &vec![WasmType::I32; outs]);
 
@@ -280,7 +277,7 @@ impl FuncGen {
             OpType::Do => todo!(),
             OpType::EndWhile => todo!(),
 
-            OpType::Unpack => self.extend(prog.unpack_struct(op.operand as usize)),
+            OpType::Unpack => self.extend(prog.unpack_struct(op.index())),
 
             OpType::ExpectType => {}
 
@@ -290,7 +287,7 @@ impl FuncGen {
             OpType::EndCase => todo!(),
 
             OpType::CallInline => {
-                let ProcType::Inline(start, end) = prog.get_proc(op.operand).data else {
+                let ProcType::Inline(start, end) = prog.get_proc(op).data else {
                     unreachable!();
                 };
 

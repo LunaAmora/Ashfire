@@ -7,8 +7,18 @@ use crate::compiler::{expect::Compare, program::Program, types::*};
 impl Compare<IRToken> for Vec<IRToken> {}
 
 pub struct LocWord {
-    pub index: usize,
+    index: usize,
     pub loc: Loc,
+}
+
+impl Operand for LocWord {
+    fn operand(&self) -> i32 {
+        self.index as i32
+    }
+
+    fn index(&self) -> usize {
+        self.index
+    }
 }
 
 impl Location for LocWord {
@@ -18,8 +28,8 @@ impl Location for LocWord {
 }
 
 impl LocWord {
-    pub fn new(index: usize, loc: Loc) -> Self {
-        Self { index, loc }
+    pub fn new<O: Operand>(index: O, loc: Loc) -> Self {
+        Self { index: index.index(), loc }
     }
 
     pub fn as_str<'a>(&self, prog: &'a Program) -> &'a str {
@@ -28,10 +38,6 @@ impl LocWord {
 
     pub fn as_string(&self, prog: &Program) -> String {
         prog.words[self.index].to_owned()
-    }
-
-    pub fn operand(&self) -> i32 {
-        self.index as i32
     }
 }
 

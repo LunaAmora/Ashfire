@@ -1,4 +1,4 @@
-use ashlib::{from_i32, EvalStack, UncheckedStack};
+use ashlib::{EvalStack, UncheckedStack};
 use either::Either;
 use firelib::lazy::LazyFormatter;
 
@@ -63,14 +63,14 @@ pub trait Evaluator {
 impl Evaluator for EvalStack<IRToken> {
     fn evaluate(&mut self, tok: IRToken, prog: &Program) -> DoubleResult<()> {
         match tok.token_type {
-            TokenType::Keyword => match from_i32(tok.operand) {
+            TokenType::Keyword => match tok.as_keyword() {
                 KeywordType::Drop => {
                     self.expect_pop(tok.loc)?;
                 }
 
-                KeywordType::Dup => self.pop_extend(|[a]| [a, a], tok.loc)?,
+                KeywordType::Dup => self.pop_extend(|[a]| [a.clone(), a], tok.loc)?,
                 KeywordType::Swap => self.pop_extend(|[a, b]| [b, a], tok.loc)?,
-                KeywordType::Over => self.pop_extend(|[a, b]| [a, b, a], tok.loc)?,
+                KeywordType::Over => self.pop_extend(|[a, b]| [a.clone(), b, a], tok.loc)?,
                 KeywordType::Rot => self.pop_extend(|[a, b, c]| [b, c, a], tok.loc)?,
 
                 KeywordType::Equal => self.pop_push_arity(
@@ -79,11 +79,11 @@ impl Evaluator for EvalStack<IRToken> {
                     tok.loc,
                 )?,
 
-                _ => Err(Either::Left(IRToken::new(TokenType::Keyword, tok.operand, tok.loc)))?,
+                _ => Err(Either::Left(IRToken::new(TokenType::Keyword, &tok, tok.loc)))?,
             },
 
             TokenType::Word => {
-                let word = prog.get_word(tok.operand);
+                let word = prog.get_word(&tok);
                 match prog.get_intrinsic_type(word) {
                     Some(intrinsic) => match intrinsic {
                         IntrinsicType::Plus => self.pop_push_arity(
@@ -99,14 +99,12 @@ impl Evaluator for EvalStack<IRToken> {
                         )?,
 
                         IntrinsicType::Cast(n) => self.pop_push_arity(
-                            |[a]| IRToken::new(Data::from(n).get_type(), a.operand, tok.loc),
+                            |[a]| IRToken::new(Data::from(n).get_type(), a, tok.loc),
                             ArityType::Any,
                             tok.loc,
                         )?,
 
-                        _ => {
-                            Err(Either::Left(IRToken::new(TokenType::Word, tok.operand, tok.loc)))?
-                        }
+                        _ => Err(Either::Left(IRToken::new(TokenType::Word, &tok, tok.loc)))?,
                     },
 
                     None => match prog.get_const_by_name(word) {
@@ -117,7 +115,7 @@ impl Evaluator for EvalStack<IRToken> {
             }
 
             TokenType::Str => {
-                let (size, offset) = prog.get_string(tok.operand).data();
+                let (size, offset) = prog.get_string(&tok).data();
 
                 self.extend([
                     IRToken::new(INT, size, tok.loc),

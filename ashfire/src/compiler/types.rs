@@ -42,18 +42,28 @@ impl Location for &Token {
 }
 
 pub trait Operand {
-    fn as_operand(&self) -> i32;
+    fn operand(&self) -> i32;
+
+    fn index(&self) -> usize {
+        self.operand() as usize
+    }
 }
 
 impl<T: Operand> Operand for &T {
-    fn as_operand(&self) -> i32 {
-        (*self).as_operand()
+    fn operand(&self) -> i32 {
+        (*self).operand()
     }
 }
 
 impl Operand for i32 {
-    fn as_operand(&self) -> i32 {
+    fn operand(&self) -> i32 {
         *self
+    }
+}
+
+impl Operand for usize {
+    fn operand(&self) -> i32 {
+        *self as i32
     }
 }
 
@@ -165,9 +175,19 @@ pub struct Op {
     pub loc: Loc,
 }
 
+impl Operand for Op {
+    fn operand(&self) -> i32 {
+        self.operand
+    }
+}
+
 impl Op {
     pub fn new(op_type: OpType, operand: i32, loc: Loc) -> Self {
         Self { op_type, operand, loc }
+    }
+
+    pub fn set_operand(&mut self, value: i32) {
+        self.operand = value;
     }
 }
 
@@ -182,9 +202,10 @@ impl Display for Op {
     }
 }
 
-impl From<(OpType, i32, Loc)> for Op {
-    fn from(tuple: (OpType, i32, Loc)) -> Self {
-        Self { op_type: tuple.0, operand: tuple.1, loc: tuple.2 }
+impl<O: Operand> From<(OpType, O, Loc)> for Op {
+    fn from(tuple: (OpType, O, Loc)) -> Self {
+        let (op_type, operand, loc) = (tuple.0, tuple.1.operand(), tuple.2);
+        Self { op_type, operand, loc }
     }
 }
 
@@ -234,7 +255,7 @@ impl From<Op> for Result<Option<Vec<Op>>> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct IRToken {
     pub token_type: TokenType,
     pub operand: i32,
@@ -248,7 +269,7 @@ impl Typed for IRToken {
 }
 
 impl Operand for IRToken {
-    fn as_operand(&self) -> i32 {
+    fn operand(&self) -> i32 {
         self.operand
     }
 }
@@ -260,8 +281,8 @@ impl Location for IRToken {
 }
 
 impl IRToken {
-    pub fn new(token_type: TokenType, operand: i32, loc: Loc) -> Self {
-        Self { token_type, operand, loc }
+    pub fn new<O: Operand>(token_type: TokenType, operand: O, loc: Loc) -> Self {
+        Self { token_type, operand: operand.operand(), loc }
     }
 
     pub fn get_keyword(&self) -> Option<KeywordType> {
@@ -270,6 +291,11 @@ impl IRToken {
         } else {
             None
         }
+    }
+
+    #[track_caller]
+    pub fn as_keyword(&self) -> KeywordType {
+        FromPrimitive::from_i32(self.operand).unwrap()
     }
 }
 
@@ -284,8 +310,7 @@ impl Deref for IRToken {
 impl PartialEq<KeywordType> for &IRToken {
     #[track_caller]
     fn eq(&self, other: &KeywordType) -> bool {
-        self.token_type == TokenType::Keyword &&
-            other == &FromPrimitive::from_i32(self.operand).unwrap()
+        self.token_type == TokenType::Keyword && other == &self.as_keyword()
     }
 }
 
@@ -472,7 +497,7 @@ impl ValueType {
             unimplemented!()
         };
 
-        Self { name, value: typed.as_operand(), data_type }
+        Self { name, value: typed.operand(), data_type }
     }
 
     pub fn name(&self) -> &str {
@@ -491,12 +516,6 @@ impl ValueType {
 impl Typed for ValueType {
     fn get_type(&self) -> TokenType {
         self.data_type.get_type()
-    }
-}
-
-impl Operand for ValueType {
-    fn as_operand(&self) -> i32 {
-        self.value
     }
 }
 
@@ -560,13 +579,19 @@ impl OffsetWord {
 
 pub type IndexWord = Offset<String, usize>;
 
-impl IndexWord {
-    pub fn new(name: &str, index: usize) -> Self {
-        Self(name.to_owned(), index)
+impl Operand for IndexWord {
+    fn operand(&self) -> i32 {
+        self.1 as i32
     }
 
-    pub fn index(&self) -> usize {
+    fn index(&self) -> usize {
         self.1
+    }
+}
+
+impl IndexWord {
+    pub fn new<O: Operand>(name: &str, index: O) -> Self {
+        Self(name.to_owned(), index.index())
     }
 }
 
@@ -629,11 +654,15 @@ impl Typed for Data {
 }
 
 impl Operand for Data {
-    fn as_operand(&self) -> i32 {
+    fn operand(&self) -> i32 {
         match self {
             Data::Typ(value) => 1 + usize::from(*value) as i32,
             Data::Ptr(value) => -(1 + usize::from(*value) as i32),
         }
+    }
+
+    fn index(&self) -> usize {
+        unimplemented!()
     }
 }
 
@@ -707,8 +736,8 @@ impl Typed for Value {
 }
 
 impl Operand for Value {
-    fn as_operand(&self) -> i32 {
-        Data::Typ(*self).as_operand()
+    fn operand(&self) -> i32 {
+        Data::Typ(*self).operand()
     }
 }
 

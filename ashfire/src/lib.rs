@@ -12,7 +12,6 @@ use firelib::{
     lazy::{LazyError, LazyResult},
     FlowControl, Success, SuccessFrom,
 };
-use num::FromPrimitive;
 
 #[derive(FlowControl)]
 #[alternative(value, Ok(None))]
@@ -242,9 +241,4 @@ impl<T> UncheckedStack<T> for EvalStack<T> {
     unsafe fn get_from_top(&self, n: usize) -> &T {
         self.frames.get_unchecked(self.len() - 1 - n)
     }
-}
-
-#[track_caller]
-pub fn from_i32<T: FromPrimitive>(value: i32) -> T {
-    FromPrimitive::from_i32(value).unwrap()
 }
