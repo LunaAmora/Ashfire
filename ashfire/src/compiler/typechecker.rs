@@ -66,43 +66,34 @@ impl TypeChecker {
                 Value::Any | Value::Type(_) => unreachable!(),
             },
 
-            OpType::PushStr => {
-                self.push_value(Value::Int, loc);
-                self.push_value(Value::Ptr, loc);
-            }
+            OpType::PushStr => self.extend_value([Value::Int, Value::Ptr], loc),
 
             OpType::PushLocalMem |
             OpType::PushGlobalMem |
             OpType::PushLocal |
             OpType::PushGlobal => self.push_value(Value::Ptr, loc),
 
-            OpType::OffsetLoad => {
-                let op = &op.clone();
-                match self.expect_struct_pointer(program, ip, op)? {
-                    TokenType::Data(Data::Typ(typ)) => {
-                        self.push_frame(Data::Ptr(typ).get_type(), loc);
-                        program.ops.insert(ip + 1, Op::new(OpType::Unpack, 0, loc))
-                    }
-                    TokenType::Data(Data::Ptr(_)) => todo!(),
-                    _ => unreachable!(),
+            OpType::OffsetLoad => match self.expect_struct_pointer(program, ip)? {
+                TokenType::Data(Data::Typ(typ)) => {
+                    self.push_frame(Data::Ptr(typ).get_type(), loc);
+                    program.ops.insert(ip + 1, Op::new(OpType::Unpack, 0, loc))
                 }
-            }
+                _ => todo!(),
+            },
 
-            OpType::Offset => {
-                let op = &op.clone();
-                match self.expect_struct_pointer(program, ip, op)? {
-                    TokenType::Data(Data::Typ(offset_type)) => {
-                        self.push_frame(Data::Ptr(offset_type).get_type(), loc)
-                    }
-                    _ => unreachable!(),
+            OpType::Offset => match self.expect_struct_pointer(program, ip)? {
+                TokenType::Data(Data::Typ(offset_type)) => {
+                    self.push_frame(Data::Ptr(offset_type).get_type(), loc)
                 }
-            }
+                _ => todo!(),
+            },
 
             OpType::Intrinsic => match IntrinsicType::from(op.operand) {
-                IntrinsicType::Plus | IntrinsicType::Minus => {
-                    let [top, _] = self.data_stack.expect_arity_pop(ArityType::Same, loc)?;
-                    self.push_frame(top.get_type(), loc);
-                }
+                IntrinsicType::Plus | IntrinsicType::Minus => self.data_stack.pop_push_arity(
+                    |[top, _]| (top.get_type(), loc).into(),
+                    ArityType::Same,
+                    loc,
+                )?,
 
                 IntrinsicType::Times => todo!(),
                 IntrinsicType::Div => todo!(),
@@ -113,8 +104,7 @@ impl TypeChecker {
                 IntrinsicType::LesserE => todo!(),
 
                 IntrinsicType::And | IntrinsicType::Or | IntrinsicType::Xor => {
-                    self.data_stack.expect_array_pop([INT, INT], loc)?;
-                    self.push_frame(INT, loc);
+                    self.pop_push([INT, INT], INT, loc)?;
                 }
 
                 IntrinsicType::Load8 | IntrinsicType::Load16 | IntrinsicType::Load32 => {
@@ -127,9 +117,7 @@ impl TypeChecker {
                 }
 
                 IntrinsicType::FdWrite => {
-                    self.data_stack
-                        .expect_array_pop([INT, PTR, INT, PTR], loc)?;
-                    self.push_frame(PTR, loc);
+                    self.pop_push([INT, PTR, INT, PTR], PTR, loc)?;
                 }
 
                 IntrinsicType::Cast(n) => {
@@ -144,25 +132,10 @@ impl TypeChecker {
                 self.data_stack.expect_pop(loc)?;
             }
 
-            OpType::Dup => {
-                let typ = self.data_stack.expect_peek(ArityType::Any, loc)?.get_type();
-                self.push_frame(typ, loc);
-            }
-
-            OpType::Swap => {
-                let [a, b] = self.data_stack.expect_pop_n(loc)?;
-                self.data_stack.extend([b, a]);
-            }
-
-            OpType::Over => {
-                let [a, b] = self.data_stack.expect_pop_n(loc)?;
-                self.data_stack.extend([a, b, a]);
-            }
-
-            OpType::Rot => {
-                let [a, b, c] = self.data_stack.expect_pop_n(loc)?;
-                self.data_stack.extend([b, c, a]);
-            }
+            OpType::Dup => self.data_stack.pop_extend(|[a]| [a, a], loc)?,
+            OpType::Swap => self.data_stack.pop_extend(|[a, b]| [b, a], loc)?,
+            OpType::Over => self.data_stack.pop_extend(|[a, b]| [a, b, a], loc)?,
+            OpType::Rot => self.data_stack.pop_extend(|[a, b, c]| [b, c, a], loc)?,
 
             OpType::Call | OpType::CallInline => {
                 let contr = &program.get_proc(op.operand).contract;
@@ -174,8 +147,7 @@ impl TypeChecker {
 
             OpType::Equal => {
                 self.data_stack
-                    .expect_arity_pop::<2>(ArityType::Same, loc)?;
-                self.push_frame(BOOL, loc);
+                    .pop_push_arity(|[_, _]| (BOOL, loc).into(), ArityType::Same, loc)?
             }
 
             OpType::PrepProc | OpType::PrepInline => {
@@ -279,13 +251,8 @@ impl TypeChecker {
                     let index = usize::from(n);
                     let stk = &program.structs_types[index];
 
-                    for typ in stk
-                        .members()
-                        .iter()
-                        .flat_map(StructType::units)
-                        .map(Typed::get_type)
-                    {
-                        self.push_frame(typ, loc);
+                    for typ in stk.members().iter().flat_map(StructType::units) {
+                        self.push_frame(typ.get_type(), loc);
                     }
 
                     program.set_operand(ip, index);
@@ -312,6 +279,16 @@ impl TypeChecker {
         Ok(())
     }
 
+    fn pop_push<const N: usize>(
+        &mut self, contr: [TokenType; N], token: TokenType, loc: Loc,
+    ) -> LazyResult<()> {
+        self.data_stack.pop_push(contr, (token, loc).into(), loc)
+    }
+
+    fn extend_value<const N: usize>(&mut self, value: [Value; N], loc: Loc) {
+        self.data_stack.extend(value.map(|v| (v, loc).into()))
+    }
+
     fn push_value(&mut self, value: Value, loc: Loc) {
         self.data_stack.push((value, loc).into())
     }
@@ -320,9 +297,8 @@ impl TypeChecker {
         self.data_stack.push((typ, loc).into())
     }
 
-    fn expect_struct_pointer(
-        &mut self, prog: &mut Program, ip: usize, op: &Op,
-    ) -> LazyResult<TokenType> {
+    fn expect_struct_pointer(&mut self, prog: &mut Program, ip: usize) -> LazyResult<TokenType> {
+        let op = &prog.ops[ip];
         match self.data_stack.expect_pop(op.loc)?.get_type() {
             TokenType::Data(Data::Ptr(value)) => {
                 let stk = &prog.structs_types[usize::from(value)];

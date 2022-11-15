@@ -68,31 +68,16 @@ impl Evaluator for EvalStack<IRToken> {
                     self.expect_pop(tok.loc)?;
                 }
 
-                KeywordType::Dup => {
-                    let top = self.expect_peek(ArityType::Any, tok.loc)?.clone();
-                    self.push(top);
-                }
+                KeywordType::Dup => self.pop_extend(|[a]| [a, a], tok.loc)?,
+                KeywordType::Swap => self.pop_extend(|[a, b]| [b, a], tok.loc)?,
+                KeywordType::Over => self.pop_extend(|[a, b]| [a, b, a], tok.loc)?,
+                KeywordType::Rot => self.pop_extend(|[a, b, c]| [b, c, a], tok.loc)?,
 
-                KeywordType::Swap => {
-                    let [a, b] = self.expect_pop_n(tok.loc)?;
-                    self.extend([b, a]);
-                }
-
-                KeywordType::Over => {
-                    let [a, b] = self.expect_pop_n(tok.loc)?;
-                    self.extend([a, b, a]);
-                }
-
-                KeywordType::Rot => {
-                    let [a, b, c] = self.expect_pop_n(tok.loc)?;
-                    self.extend([b, c, a]);
-                }
-
-                KeywordType::Equal => {
-                    let [a, b] = self.expect_arity_pop(ArityType::Same, tok.loc)?;
-                    let value = fold_bool!(a.operand == b.operand, 1, 0);
-                    self.push(IRToken::new(BOOL, value, tok.loc))
-                }
+                KeywordType::Equal => self.pop_push_arity(
+                    |[a, b]| IRToken::new(BOOL, fold_bool!(*a == *b, 1, 0), tok.loc),
+                    ArityType::Same,
+                    tok.loc,
+                )?,
 
                 _ => Err(Either::Left(IRToken::new(TokenType::Keyword, tok.operand, tok.loc)))?,
             },
@@ -101,24 +86,23 @@ impl Evaluator for EvalStack<IRToken> {
                 let word = prog.get_word(tok.operand);
                 match prog.get_intrinsic_type(word) {
                     Some(intrinsic) => match intrinsic {
-                        IntrinsicType::Plus => {
-                            let [a, b] = self.expect_arity_pop(ArityType::Same, tok.loc)?;
-                            let value = a.operand + b.operand;
-                            self.push(IRToken::new(a.token_type, value, tok.loc))
-                        }
+                        IntrinsicType::Plus => self.pop_push_arity(
+                            |[a, b]| IRToken::new(a.token_type, *a + *b, tok.loc),
+                            ArityType::Same,
+                            tok.loc,
+                        )?,
 
-                        IntrinsicType::Minus => {
-                            let [a, b] = self.expect_arity_pop(ArityType::Same, tok.loc)?;
-                            let value = a.operand - b.operand;
-                            self.push(IRToken::new(a.token_type, value, tok.loc))
-                        }
+                        IntrinsicType::Minus => self.pop_push_arity(
+                            |[a, b]| IRToken::new(a.token_type, *a - *b, tok.loc),
+                            ArityType::Same,
+                            tok.loc,
+                        )?,
 
-                        IntrinsicType::Cast(n) => {
-                            let a = self.expect_pop(tok.loc)?;
-
-                            let cast = Data::from(n).get_type();
-                            self.push(IRToken::new(cast, a.operand, tok.loc));
-                        }
+                        IntrinsicType::Cast(n) => self.pop_push_arity(
+                            |[a]| IRToken::new(Data::from(n).get_type(), a.operand, tok.loc),
+                            ArityType::Any,
+                            tok.loc,
+                        )?,
 
                         _ => {
                             Err(Either::Left(IRToken::new(TokenType::Word, tok.operand, tok.loc)))?

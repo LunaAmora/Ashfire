@@ -273,6 +273,14 @@ impl IRToken {
     }
 }
 
+impl Deref for IRToken {
+    type Target = i32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.operand
+    }
+}
+
 impl PartialEq<KeywordType> for &IRToken {
     #[track_caller]
     fn eq(&self, other: &KeywordType) -> bool {

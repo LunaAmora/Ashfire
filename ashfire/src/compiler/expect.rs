@@ -94,6 +94,34 @@ pub trait Expect<T: Clone + Typed + Location + 'static>: UncheckedStack<T> {
         };
         Ok(())
     }
+
+    fn pop_push<const N: usize>(
+        &mut self, contr: [TokenType; N], to_push: T, loc: Loc,
+    ) -> LazyResult<()> {
+        self.expect_array_pop(contr, loc)?;
+        self.push(to_push);
+        Ok(())
+    }
+
+    fn pop_push_arity<const N: usize, F>(
+        &mut self, f: F, arity_t: ArityType<TokenType>, loc: Loc,
+    ) -> LazyResult<()>
+    where
+        F: Fn([T; N]) -> T,
+    {
+        let popped = self.expect_arity_pop(arity_t, loc)?;
+        self.push(f(popped));
+        Ok(())
+    }
+
+    fn pop_extend<const N: usize, const M: usize, F>(&mut self, f: F, loc: Loc) -> LazyResult<()>
+    where
+        F: Fn([T; N]) -> [T; M],
+    {
+        let popped = self.expect_pop_n(loc)?;
+        self.extend(f(popped));
+        Ok(())
+    }
 }
 
 impl<T: Clone + Typed + Location + 'static, X: UncheckedStack<T> + ?Sized> Compare<T> for X {}
