@@ -299,14 +299,14 @@ impl TypeChecker {
 
     fn expect_struct_pointer(&mut self, prog: &mut Program, ip: usize) -> LazyResult<TokenType> {
         let op = &prog.ops[ip];
-        match self.data_stack.expect_pop(op.loc)?.get_type() {
+        let loc = op.loc;
+        match self.data_stack.expect_pop(loc)?.get_type() {
             TokenType::Data(Data::Ptr(value)) => {
                 let stk = &prog.structs_types[usize::from(value)];
                 let word = prog.get_word(op).to_string();
 
                 let Some((offset, index)) = get_field_pos(stk.members(), &word) else {
                         let name = stk.name().to_owned();
-                        let loc = op.loc;
                         lazybail!(|f|
                             "{}The struct {name} does not contain a member with name: `{word}`",
                             f.format(Fmt::Loc(loc))
@@ -321,9 +321,11 @@ impl TypeChecker {
                 prog.set_operand(ip, offset * 4);
                 Ok(result)
             }
-            typ => {
-                lazybail!(|f| "Cannot `.` access elements of type: `{}`", f.format(Fmt::Typ(typ)))
-            }
+            typ => lazybail!(
+                |f| "{}Cannot `.` access elements of type: `{}`",
+                f.format(Fmt::Loc(loc)),
+                f.format(Fmt::Typ(typ))
+            ),
         }
     }
 

@@ -105,7 +105,7 @@ impl Parser {
 
                 let error =
                     format!("Word was not declared on the program: `{}`", word.as_str(prog));
-                return error_loc(&error, tok.loc).into();
+                return error_loc(error, tok.loc).into();
             }
         });
 
@@ -269,7 +269,7 @@ impl Parser {
             KeywordType::Mem |
             KeywordType::Struct => {
                 let error = format!("Keyword type is not valid here: `{:?}`", key);
-                return error_loc(&error, loc).into();
+                return error_loc(error, loc).into();
             }
         };
 
@@ -290,7 +290,7 @@ impl Parser {
     fn pop_block(&mut self, closing_type: KeywordType, loc: Loc) -> LazyResult<Op> {
         self.name_scopes.pop().with_err_ctx(move || {
             let error = format!("There are no open blocks to close with `{:?}`", closing_type);
-            error_loc(&error, loc)
+            error_loc(error, loc)
         })
     }
 
@@ -510,7 +510,7 @@ impl Parser {
                     "Missing body or contract necessary to infer the type of the word: `{}`",
                     word.as_str(prog)
                 );
-                return error_loc(&error, word.loc).into();
+                return error_loc(error, word.loc).into();
             }
 
             _ => OptionErr::default(),
@@ -938,7 +938,7 @@ impl Program {
             let Some((diff, pos)) = get_field_pos(root.members(), field_name) else {
                 let error = format!("The variable `{}` does not contain the field `{}`",
                     var.name(), field_name);
-                return error_loc(&error, loc).into();
+                return error_loc(error, loc).into();
             };
 
             offset += diff;

@@ -48,12 +48,12 @@ impl Parser {
     }
 }
 
-pub fn error_loc(error: &str, loc: Loc) -> LazyError {
+pub fn error_loc<S: ToString>(error: S, loc: Loc) -> LazyError {
     let error = error.to_string();
     LazyError::new(move |f| format!("{}{error}", f.format(Fmt::Loc(loc))))
 }
 
-pub fn invalid_option(tok: Option<IRToken>, desc: &str, loc: Loc) -> LazyError {
+pub fn invalid_option<S: ToString>(tok: Option<IRToken>, desc: S, loc: Loc) -> LazyError {
     let desc = desc.to_string();
     match tok {
         Some(tok) => LazyError::new(move |f| {
@@ -70,7 +70,7 @@ pub fn invalid_option(tok: Option<IRToken>, desc: &str, loc: Loc) -> LazyError {
     }
 }
 
-pub fn invalid_token(tok: IRToken, error: &str) -> LazyError {
+pub fn invalid_token<S: ToString>(tok: IRToken, error: S) -> LazyError {
     let error = error.to_string();
     LazyError::new(move |f| {
         format!(
@@ -82,7 +82,7 @@ pub fn invalid_token(tok: IRToken, error: &str) -> LazyError {
     })
 }
 
-pub fn format_block(error: &str, op: Op, loc: Loc) -> LazyError {
+pub fn format_block<S: ToString>(error: S, op: Op, loc: Loc) -> LazyError {
     let error = error.to_string();
     LazyError::new(move |f| {
         format!(
@@ -98,8 +98,8 @@ pub fn format_block(error: &str, op: Op, loc: Loc) -> LazyError {
     })
 }
 
-pub fn expect_token_by(
-    value: Option<IRToken>, pred: impl FnOnce(&IRToken) -> bool, desc: &str, loc: Loc,
+pub fn expect_token_by<S: ToString>(
+    value: Option<IRToken>, pred: impl FnOnce(&IRToken) -> bool, desc: S, loc: Loc,
 ) -> LazyResult<IRToken> {
     match value {
         Some(tok) if pred(&tok) => Ok(tok),
@@ -109,5 +109,5 @@ pub fn expect_token_by(
 
 #[track_caller]
 pub fn todo(loc: Loc) -> LazyResult<()> {
-    Err(error_loc(&format!("\n[HERE]  {}", std::panic::Location::caller()), loc))
+    Err(error_loc(format!("\n[HERE]  {}", std::panic::Location::caller()), loc))
 }
