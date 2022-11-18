@@ -4,6 +4,10 @@ use firelib::{lazy, lexer::Loc};
 
 use super::types::*;
 
+pub type OptionErr<T, E = Fmt> = ashlib::OptionErr<T, E>;
+pub type LazyResult<T, E = Fmt> = lazy::LazyResult<T, E>;
+pub type LazyError<E = Fmt> = lazy::LazyError<E>;
+
 #[derive(Default)]
 pub struct Program {
     pub ops: Vec<Op>,
@@ -19,10 +23,6 @@ pub struct Program {
     data_size: usize,
     data: Vec<OffsetData>,
 }
-
-pub type OptionErr<T, E = Fmt> = ashlib::OptionErr<T, E>;
-pub type LazyResult<T, E = Fmt> = lazy::LazyResult<T, E>;
-pub type LazyError<E = Fmt> = lazy::LazyError<E>;
 
 impl Program {
     pub fn new() -> Self {

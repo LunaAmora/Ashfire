@@ -3,10 +3,7 @@ use std::{
     ops::Deref,
 };
 
-use firelib::{
-    anyhow::Result,
-    lexer::{Loc, Token},
-};
+use firelib::{anyhow::Result, lexer::Loc};
 use num::FromPrimitive;
 
 pub trait Typed {
@@ -32,12 +29,6 @@ impl<T: Location> Location for &T {
 impl Location for Loc {
     fn loc(&self) -> Loc {
         self.to_owned()
-    }
-}
-
-impl Location for &Token {
-    fn loc(&self) -> Loc {
-        self.loc.to_owned()
     }
 }
 

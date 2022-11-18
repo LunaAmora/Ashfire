@@ -51,7 +51,7 @@ impl Program {
             .or_return(OptionErr::default)?
             .strip_suffix('\"')
             .with_err_ctx(move || error_loc("Missing closing `\"` in string literal", loc))
-            .map(|name| self.push_data(name, name.len() - escaped_len(&name)))
+            .map(|name| self.push_data(name, escaped_len(&name)))
             .map(|operand| IRToken::new(TokenType::Str, operand, loc))
             .map(OptionErr::new)?
     }
@@ -94,7 +94,7 @@ fn parse_char(word: String, loc: Loc) -> OptionErr<i32> {
 }
 
 fn parse_scaped(escaped: String, loc: Loc) -> OptionErr<i32> {
-    Some(match escaped.as_str() {
+    OptionErr::new(match escaped.as_str() {
         "t" => '\t' as i32,
         "n" => '\n' as i32,
         "r" => '\r' as i32,
@@ -108,11 +108,10 @@ fn parse_scaped(escaped: String, loc: Loc) -> OptionErr<i32> {
             f.format(Fmt::Loc(loc))
         ),
     })
-    .into()
 }
 
 fn escaped_len(name: &str) -> usize {
-    name.chars().filter(|&c| c == '\\').count()
+    name.chars().filter(|&c| c != '\\').count()
 }
 
 fn parse_as_keyword(tok: &Token) -> Option<IRToken> {
