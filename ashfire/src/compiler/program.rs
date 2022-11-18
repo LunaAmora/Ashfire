@@ -152,30 +152,12 @@ impl Program {
     }
 
     pub fn get_intrinsic_type(&self, word: &str) -> Option<IntrinsicType> {
-        Some(match word {
-            "+" => IntrinsicType::Plus,
-            "-" => IntrinsicType::Minus,
-            "*" => IntrinsicType::Times,
-            "%" => IntrinsicType::Div,
-            ">" => IntrinsicType::Greater,
-            ">=" => IntrinsicType::GreaterE,
-            "<" => IntrinsicType::Lesser,
-            "<=" => IntrinsicType::LesserE,
-            "or" => IntrinsicType::Or,
-            "and" => IntrinsicType::And,
-            "xor" => IntrinsicType::Xor,
-            "@8" => IntrinsicType::Load8,
-            "!8" => IntrinsicType::Store8,
-            "@16" => IntrinsicType::Load16,
-            "!16" => IntrinsicType::Store16,
-            "@32" => IntrinsicType::Load32,
-            "!32" => IntrinsicType::Store32,
-            "fd_write" => IntrinsicType::FdWrite,
-            _ => match word.as_bytes() {
+        IntrinsicType::from_str(word).or_else(|| {
+            Some(match word.as_bytes() {
                 [b'#', b'*', rest @ ..] => IntrinsicType::Cast(-self.get_cast_type(rest)?),
                 [b'#', rest @ ..] => IntrinsicType::Cast(self.get_cast_type(rest)?),
                 _ => return None,
-            },
+            })
         })
     }
 

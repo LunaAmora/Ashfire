@@ -829,6 +829,32 @@ pub enum IntrinsicType {
     Cast(i32),
 }
 
+impl IntrinsicType {
+    pub fn from_str(value: &str) -> Option<Self> {
+        Some(match value {
+            "+" => IntrinsicType::Plus,
+            "-" => IntrinsicType::Minus,
+            "*" => IntrinsicType::Times,
+            "%" => IntrinsicType::Div,
+            ">" => IntrinsicType::Greater,
+            ">=" => IntrinsicType::GreaterE,
+            "<" => IntrinsicType::Lesser,
+            "<=" => IntrinsicType::LesserE,
+            "or" => IntrinsicType::Or,
+            "and" => IntrinsicType::And,
+            "xor" => IntrinsicType::Xor,
+            "@8" => IntrinsicType::Load8,
+            "!8" => IntrinsicType::Store8,
+            "@16" => IntrinsicType::Load16,
+            "!16" => IntrinsicType::Store16,
+            "@32" => IntrinsicType::Load32,
+            "!32" => IntrinsicType::Store32,
+            "fd_write" => IntrinsicType::FdWrite,
+            _ => return None,
+        })
+    }
+}
+
 impl const From<i32> for IntrinsicType {
     fn from(value: i32) -> Self {
         match value {
@@ -909,6 +935,37 @@ pub enum KeywordType {
     Inline,
     Include,
     Case,
+}
+
+impl KeywordType {
+    pub fn from_str(value: &str) -> Option<Self> {
+        Some(match value {
+            "dup" => KeywordType::Dup,
+            "swap" => KeywordType::Swap,
+            "drop" => KeywordType::Drop,
+            "over" => KeywordType::Over,
+            "rot" => KeywordType::Rot,
+            "if" => KeywordType::If,
+            "else" => KeywordType::Else,
+            "end" => KeywordType::End,
+            "proc" => KeywordType::Proc,
+            "->" => KeywordType::Arrow,
+            "mem" => KeywordType::Mem,
+            ":" => KeywordType::Colon,
+            "=" => KeywordType::Equal,
+            "let" => KeywordType::Let,
+            "do" => KeywordType::Do,
+            "@" => KeywordType::At,
+            "." => KeywordType::Dot,
+            "*" => KeywordType::Ref,
+            "case" => KeywordType::Case,
+            "while" => KeywordType::While,
+            "struct" => KeywordType::Struct,
+            "inline" => KeywordType::Inline,
+            "include" => KeywordType::Include,
+            _ => return None,
+        })
+    }
 }
 
 #[allow(dead_code)]

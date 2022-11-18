@@ -116,33 +116,8 @@ fn escaped_len(name: &str) -> usize {
 }
 
 fn parse_as_keyword(tok: &Token) -> Option<IRToken> {
-    let operand = match tok.name.as_str() {
-        "dup" => KeywordType::Dup,
-        "swap" => KeywordType::Swap,
-        "drop" => KeywordType::Drop,
-        "over" => KeywordType::Over,
-        "rot" => KeywordType::Rot,
-        "if" => KeywordType::If,
-        "else" => KeywordType::Else,
-        "end" => KeywordType::End,
-        "proc" => KeywordType::Proc,
-        "->" => KeywordType::Arrow,
-        "mem" => KeywordType::Mem,
-        ":" => KeywordType::Colon,
-        "=" => KeywordType::Equal,
-        "let" => KeywordType::Let,
-        "do" => KeywordType::Do,
-        "@" => KeywordType::At,
-        "." => KeywordType::Dot,
-        "*" => KeywordType::Ref,
-        "case" => KeywordType::Case,
-        "while" => KeywordType::While,
-        "struct" => KeywordType::Struct,
-        "inline" => KeywordType::Inline,
-        "include" => KeywordType::Include,
-        _ => return None,
-    } as i32;
-    Some(IRToken::new(TokenType::Keyword, operand, tok.loc))
+    KeywordType::from_str(tok.name.as_str())
+        .map(|k| IRToken::new(TokenType::Keyword, k as i32, tok.loc))
 }
 
 fn parse_as_number(tok: &Token) -> Option<IRToken> {
