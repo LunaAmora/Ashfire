@@ -82,40 +82,37 @@ impl Evaluator for EvalStack<IRToken> {
                 _ => Err(Either::Left(IRToken::new(TokenType::Keyword, &tok, tok.loc)))?,
             },
 
-            TokenType::Word => {
-                let word = prog.get_word(&tok);
-                match prog.get_intrinsic_type(word) {
-                    Some(intrinsic) => match intrinsic {
-                        IntrinsicType::Plus => self.pop_push_arity(
-                            |[a, b]| IRToken::new(a.token_type, *a + *b, tok.loc),
-                            ArityType::Same,
-                            tok.loc,
-                        )?,
+            TokenType::Word => match prog.get_intrinsic_type(prog.get_word(&tok)) {
+                Some(intrinsic) => match intrinsic {
+                    IntrinsicType::Plus => self.pop_push_arity(
+                        |[a, b]| IRToken::new(a.token_type, *a + *b, tok.loc),
+                        ArityType::Same,
+                        tok.loc,
+                    )?,
 
-                        IntrinsicType::Minus => self.pop_push_arity(
-                            |[a, b]| IRToken::new(a.token_type, *a - *b, tok.loc),
-                            ArityType::Same,
-                            tok.loc,
-                        )?,
+                    IntrinsicType::Minus => self.pop_push_arity(
+                        |[a, b]| IRToken::new(a.token_type, *a - *b, tok.loc),
+                        ArityType::Same,
+                        tok.loc,
+                    )?,
 
-                        IntrinsicType::Cast(n) => self.pop_push_arity(
-                            |[a]| IRToken::new(Data::from(n).get_type(), a, tok.loc),
-                            ArityType::Any,
-                            tok.loc,
-                        )?,
+                    IntrinsicType::Cast(n) => self.pop_push_arity(
+                        |[a]| IRToken::new(Data::from(n).get_type(), a, tok.loc),
+                        ArityType::Any,
+                        tok.loc,
+                    )?,
 
-                        _ => Err(Either::Left(IRToken::new(TokenType::Word, &tok, tok.loc)))?,
-                    },
+                    _ => Err(Either::Left(IRToken::new(TokenType::Word, &tok, tok.loc)))?,
+                },
 
-                    None => match prog.get_const_by_name(word) {
-                        Some(constant) => self.push((constant, tok.loc).into()),
-                        None => Err(Either::Left(tok))?,
-                    },
-                }
-            }
+                None => match prog.get_const_by_name(&tok.str_key()) {
+                    Some(constant) => self.push((constant, tok.loc).into()),
+                    None => Err(Either::Left(tok))?,
+                },
+            },
 
             TokenType::Str => {
-                let (size, offset) = prog.get_string(&tok).data();
+                let (size, offset) = prog.get_data(&tok).data();
 
                 self.extend([
                     IRToken::new(INT, size, tok.loc),

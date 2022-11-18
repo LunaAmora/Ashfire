@@ -72,8 +72,8 @@ impl Generator {
 
         wasm.add_export("_start", Bind::Func("start".into()));
 
-        for data in program.get_data() {
-            wasm.add_data(data.to_string())
+        for data in program.get_all_data() {
+            wasm.add_data(data.as_string(program))
         }
 
         if !program.global_vars.is_empty() {
@@ -99,7 +99,7 @@ impl FuncGen {
             OpType::PushData(_) => self.push(Const(op.operand)),
 
             OpType::PushStr => {
-                let (size, offset) = prog.get_string(op).data();
+                let (size, offset) = prog.get_data(op).data();
                 self.extend([Const(size), Const(offset)])
             }
 
@@ -160,7 +160,7 @@ impl FuncGen {
             OpType::Rot => self.push(Call("rot".into())),
 
             OpType::Call => {
-                let label = prog.get_proc(op).get_label();
+                let label = prog.get_proc(op).name.as_str(prog);
                 self.push(Call(label.into()));
             }
 

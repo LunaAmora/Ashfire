@@ -303,11 +303,11 @@ impl TypeChecker {
         match self.data_stack.expect_pop(loc)?.get_type() {
             TokenType::Data(Data::Ptr(value)) => {
                 let stk = &prog.structs_types[usize::from(value)];
-                let word = prog.get_word(op);
+                let word = &op.str_key();
 
                 let Some((offset, index)) = get_field_pos(stk.members(), word) else {
                     let error = format!("The struct {} does not contain a member with name: `{}`",
-                        stk.name(), word);
+                        stk.as_str(prog), word.as_str(prog));
                     Err(err_loc(error, loc))?
                 };
 

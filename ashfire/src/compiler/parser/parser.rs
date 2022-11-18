@@ -133,8 +133,11 @@ impl Parser {
         let (rest, var_typ) = match word.as_str(prog).split_at(1) {
             ("!", rest) => (rest, VarWordType::Store),
             (".", rest) => {
-                let op = Op::new(OpType::OffsetLoad, prog.words.len() as i32, word.loc);
-                prog.words.push(rest.to_owned());
+                let Some(key) = prog.get_key(rest) else {
+                    Err(todo(word.loc))?
+                };
+
+                let op = Op::new(OpType::OffsetLoad, key.operand(), word.loc);
 
                 return OptionErr::new(vec![op]);
             }
@@ -147,8 +150,11 @@ impl Parser {
             _ => return OptionErr::default(),
         };
 
-        let word = LocWord::new(prog.words.len(), word.loc);
-        prog.words.push(rest.to_owned());
+        let Some(key) = prog.get_key(rest) else {
+            Err(todo(word.loc))?
+        };
+
+        let word = LocWord::new(key, word.loc);
 
         if local {
             self.get_local_var(&word, Some(var_typ), prog)
@@ -299,7 +305,7 @@ impl Parser {
             .and_then(|proc| {
                 proc.bindings
                     .iter()
-                    .position(|bind| word.as_str(prog) == bind)
+                    .position(|bind| word.eq(bind))
                     .map(|index| (proc.bindings.len() - 1 - index) as i32)
             })
             .map(|index| Op::new(OpType::PushBind, index, word.loc).into())
@@ -309,11 +315,7 @@ impl Parser {
     /// on the current [`Proc`].
     fn get_local_mem(&self, word: &LocWord, prog: &Program) -> Option<Vec<Op>> {
         self.current_proc_data(prog)
-            .and_then(|proc| {
-                proc.local_mem_names
-                    .iter()
-                    .find(|mem| word.as_str(prog) == mem.as_str())
-            })
+            .and_then(|proc| proc.local_mems.iter().find(|mem| word.eq(mem)))
             .map(|local| Op::new(OpType::PushLocalMem, local.offset(), word.loc).into())
     }
 
@@ -344,33 +346,32 @@ impl Parser {
             _ => Default::default(),
         };
 
-        let word_str = word.as_str(prog);
-        if word_str.contains(".") {
+        if word.as_str(prog).contains(".") {
             return prog.try_get_var_field(word, vars, push_type, store, pointer);
         }
 
         let struct_type = vars
             .iter()
-            .any(|val| val.name() == word_str)
-            .then(|| self.try_get_struct_type(word_str, prog))
+            .any(|val| word.eq(val))
+            .then(|| self.try_get_struct_type(word, prog))
             .flatten()
             .or_return(OptionErr::default)?;
 
         OptionErr::new(match pointer {
             true => {
-                let stk_id = prog.get_data_type_id(struct_type.name()).unwrap() as i32;
+                let stk_id = prog.get_data_type_id(struct_type).unwrap() as i32;
                 prog.get_var_pointer(word, vars, push_type, stk_id)
             }
             _ => prog.get_var_fields(word, vars, push_type, struct_type, store),
         })
     }
 
-    /// Searches for a `struct` that matches the given `&str`,
+    /// Searches for a `struct` that matches the given [`StrKey`],
     /// returning its type.
-    fn try_get_struct_type<'a>(&self, word: &str, prog: &'a Program) -> Option<&'a StructDef> {
+    fn try_get_struct_type<'a>(&self, word: &StrKey, prog: &'a Program) -> Option<&'a StructDef> {
         self.structs
             .iter()
-            .find(|stk| word == stk.as_str())
+            .find(|stk| word.eq(stk))
             .and_then(|stk| prog.get_type_name(stk))
     }
 
@@ -464,14 +465,14 @@ impl Parser {
                 };
 
                 let name = format!("*{}", ref_word.as_str(prog));
+                let word_id = prog.get_or_intern(&name);
 
-                let value = ValueType::new(String::new(), data);
-                let stk = StructDef::new(name.to_string(), vec![StructType::Unit(value)]);
+                let value = ValueType::new(&StrKey::default(), data);
+                let stk = StructDef::new(&word_id, vec![StructType::Unit(value)]);
 
                 prog.structs_types.push(stk.clone()); //Todo: Check if the `*` type is already registered
-                prog.words.push(name);
 
-                self.parse_const_or_var(word, prog.words.len() - 1, stk, prog)
+                self.parse_const_or_var(word, word_id, stk, prog)
                     .try_success()?;
             }
 
@@ -534,7 +535,7 @@ impl Parser {
         if let Ok((eval, skip)) = self.compile_eval(prog).value {
             if &eval != Value::Any {
                 self.skip(skip);
-                let value = ValueType::new(word.as_string(prog), &eval).into();
+                let value = ValueType::new(word, &eval).into();
                 prog.consts.push(value);
 
                 let name = word.as_str(prog);
@@ -568,7 +569,7 @@ impl Parser {
         };
 
         let inline_ip = fold_bool!(inline, Some(prog.ops.len()), None);
-        let proc = Proc::new(name.as_str(prog), contract, inline_ip);
+        let proc = Proc::new(name, contract, inline_ip);
 
         let operand = prog.procs.len();
         self.enter_proc(operand);
@@ -639,7 +640,7 @@ impl Parser {
         self.expect_keyword(KeywordType::End, "`end` after memory size", loc)?;
 
         let size = ((value.index() + 3) / 4) * 4;
-        let ctx = prog.push_mem_by_context(self.get_index(), &word.as_string(prog), size)?;
+        let ctx = prog.push_mem_by_context(self.get_index(), word, size)?;
         self.name_scopes.register(word.as_str(prog), ctx);
 
         Ok(())
@@ -654,20 +655,17 @@ impl Parser {
         while let Some(tok) = self.ir_tokens.get(0) {
             if tok.token_type == TokenType::Keyword {
                 self.expect_keyword(KeywordType::End, "`end` after struct declaration", loc)?;
-                prog.structs_types
-                    .push(StructDef::new(word.as_string(prog), members));
+                prog.structs_types.push(StructDef::new(word, members));
                 success!();
             }
 
-            let next = self.expect_word("struct member name", loc)?;
+            let member_name = self.expect_word("struct member name", loc)?;
             let name_type = self.expect_word("struct member type", loc)?;
             let as_ref = false; // Todo: Add pointers support
 
             let Some(type_kind) = prog.get_type_kind(&name_type, as_ref) else {
                 Err(invalid_option(Some(name_type.into()), "struct member type", loc))?
             };
-
-            let found_word = next.as_string(prog);
 
             match type_kind {
                 Either::Left(stk_typ) => {
@@ -678,15 +676,15 @@ impl Parser {
                             Err(todo(loc))?
                         };
 
-                        members.push(StructType::Unit((found_word, typ).into()));
+                        members.push(StructType::Unit((member_name.str_key(), typ).into()));
                     } else {
                         let value = prog.get_struct_value_id(stk_typ).unwrap();
-                        let root = StructRef::new(found_word, ref_members.to_vec(), value);
+                        let root = StructRef::new(&member_name, ref_members.to_vec(), value);
                         members.push(StructType::Root(root));
                     }
                 }
                 Either::Right(typ_ptr) => {
-                    members.push(StructType::Unit((found_word, typ_ptr).into()))
+                    members.push(StructType::Unit((member_name.str_key(), typ_ptr).into()))
                 }
             }
         }
@@ -732,7 +730,7 @@ impl Parser {
             if &eval == Value::Any {
                 let members: Vec<StructType> = members.cloned().collect();
                 let value = prog.get_struct_value_id(&stk).unwrap();
-                let struct_word = StructRef::new(word.as_string(prog), members, value);
+                let struct_word = StructRef::new(word, members, value);
                 self.register_const_or_var(&assign, StructType::Root(struct_word), prog);
             } else {
                 let member_type = match members.last().unwrap() {
@@ -752,7 +750,7 @@ impl Parser {
                     )
                 }
 
-                let struct_word = ValueType::new(word.as_string(prog), &eval);
+                let struct_word = ValueType::new(word, &eval);
                 self.register_const_or_var(&assign, StructType::Unit(struct_word), prog);
             }
         } else {
@@ -776,8 +774,8 @@ impl Parser {
 
             for member in members {
                 match member {
-                    StructType::Unit(u) => {
-                        let value = ValueType::new(u.name().to_owned(), &item.next().unwrap());
+                    StructType::Unit(unit) => {
+                        let value = ValueType::new(unit, &item.next().unwrap());
                         def_members.push(StructType::Unit(value));
                     }
                     StructType::Root(root) => {
@@ -794,19 +792,18 @@ impl Parser {
                                 Err(todo(word.loc))?
                             };
 
-                            let value =
-                                ValueType::new(typ.name().to_owned(), &item.next().unwrap());
+                            let value = ValueType::new(typ, &item.next().unwrap());
                             new.push(StructType::Unit(value));
                         }
 
-                        let root = StructRef::new(root.name().to_owned(), new, root.get_ref_type());
+                        let root = StructRef::new(root, new, root.get_ref_type());
                         def_members.push(StructType::Root(root));
                     }
                 }
             }
 
             let value = prog.get_struct_value_id(&stk).unwrap();
-            let struct_ref = StructRef::new(word.as_string(prog), def_members, value);
+            let struct_ref = StructRef::new(word, def_members, value);
             self.register_const_or_var(&assign, StructType::Root(struct_ref), prog);
         }
 
@@ -819,7 +816,7 @@ impl Parser {
 
         let name = word.as_str(prog);
         self.name_scopes.register(name, ctx);
-        self.structs.push(IndexWord::new(name, word_id));
+        self.structs.push(IndexWord::new(word, word_id));
 
         Ok(())
     }
@@ -843,7 +840,7 @@ impl Parser {
                 token.loc,
             )?;
 
-            let include_path = prog.get_string(tok).as_str();
+            let include_path = prog.get_data_str(tok);
 
             let include = get_dir(path)
                 .with_ctx(|_| format!("failed to get file directory path"))?
@@ -861,9 +858,9 @@ impl Program {
         &self, word: &LocWord, vars: &[StructType], push_type: OpType, stk_id: i32,
     ) -> Vec<Op> {
         let index = if push_type == OpType::PushLocal {
-            get_field_pos_local(vars, word.as_str(self)).unwrap().0
+            get_field_pos_local(vars, word).unwrap().0
         } else {
-            get_field_pos(vars, word.as_str(self)).unwrap().0
+            get_field_pos(vars, word).unwrap().0
         };
 
         vec![
@@ -878,7 +875,7 @@ impl Program {
     ) -> Vec<Op> {
         let mut result = Vec::new();
         let loc = word.loc;
-        let index = get_field_pos(vars, word.as_str(self)).unwrap().0 as i32;
+        let index = get_field_pos(vars, word).unwrap().0 as i32;
 
         let is_local = push_type == OpType::PushLocal;
         let id_range = if store == is_local {
@@ -920,21 +917,30 @@ impl Program {
         &self, word: &LocWord, vars: &[StructType], push_type: OpType, store: bool, pointer: bool,
     ) -> OptionErr<Vec<Op>> {
         let fields: Vec<_> = word.as_str(self).split(".").collect();
-        let (index, i) = get_field_pos(vars, fields[0]).or_return(OptionErr::default)?;
+        let loc = word.loc;
+
+        let Some(first) = self.get_key(fields[0]) else {
+            Err(todo(loc))?
+        };
+
+        let (index, i) = get_field_pos(vars, &first).or_return(OptionErr::default)?;
 
         let mut fields = fields.into_iter().skip(1);
         let mut offset = index;
         let mut var = &vars[i];
-        let loc = word.loc;
 
         while let Some(field_name) = fields.next() {
             let StructType::Root(root) = var else {
                 Err(todo(loc))?
             };
 
-            let Some((diff, pos)) = get_field_pos(root.members(), field_name) else {
+            let Some(field_key) = self.get_key(field_name) else {
+                Err(todo(loc))?
+            };
+
+            let Some((diff, pos)) = get_field_pos(root.members(), &field_key) else {
                 let error = format!("The variable `{}` does not contain the field `{}`",
-                    var.name(), field_name);
+                    var.as_str(self), field_name);
                 Err(err_loc(error, loc))?
             };
 
@@ -996,22 +1002,21 @@ impl Program {
     fn get_global_mem(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.get_memory()
             .iter()
-            .find(|mem| mem.as_str() == word.as_str(self))
+            .find(|mem| word.eq(mem))
             .map(|global| Op::new(OpType::PushGlobalMem, global.offset(), word.loc).into())
     }
 
     /// Searches for a `const` that matches the given[`word`][LocWord]
     /// and parses it to an [`Op`].
     fn get_const_struct(&self, word: &LocWord) -> Option<Vec<Op>> {
-        self.get_const_by_name(word.as_str(self))
-            .map(|tword| match tword {
-                StructType::Root(root) => root
-                    .units()
-                    .iter()
-                    .map(|&value| Op::from((value, word.loc)))
-                    .collect(),
-                _ => vec![Op::from((tword, word.loc))],
-            })
+        self.get_const_by_name(word).map(|tword| match tword {
+            StructType::Root(root) => root
+                .units()
+                .iter()
+                .map(|&value| Op::from((value, word.loc)))
+                .collect(),
+            _ => vec![Op::from((tword, word.loc))],
+        })
     }
 
     fn get_intrinsic(&self, word: &LocWord) -> Option<Vec<Op>> {
@@ -1023,7 +1028,7 @@ impl Program {
         self.procs
             .iter()
             .enumerate()
-            .find(|(_, proc)| word.as_str(self) == proc.name)
+            .find(|(_, proc)| word.eq(&proc.name))
             .map(|(index, proc)| {
                 let call = match &proc.data {
                     ProcType::Inline(..) => OpType::CallInline,
@@ -1043,13 +1048,13 @@ impl Program {
     fn get_type_name<O: Operand>(&self, word_id: O) -> Option<&StructDef> {
         self.structs_types
             .iter()
-            .find(|s| s.name() == self.get_word(&word_id))
+            .find(|def| word_id.str_key().eq(def))
     }
 
     fn get_data_ptr(&self, word: &LocWord) -> Option<Data> {
         self.structs_types
             .iter()
-            .position(|s| s.name() == word.as_str(self))
+            .position(|def| word.eq(def))
             .map(|i| Data::Ptr(Value::from(i)))
     }
 
@@ -1058,7 +1063,7 @@ impl Program {
     }
 
     fn push_mem_by_context(
-        &mut self, proc_index: Option<usize>, word: &str, size: usize,
+        &mut self, proc_index: Option<usize>, word: &StrKey, size: usize,
     ) -> LazyResult<ParseContext> {
         match proc_index.and_then(|i| self.procs.get_mut(i)) {
             Some(proc) => {

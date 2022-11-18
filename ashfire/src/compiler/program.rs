@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use firelib::{lazy, lexer::Loc};
+use lasso::Rodeo;
 
 use super::types::*;
 
@@ -8,16 +9,31 @@ pub type OptionErr<T, E = Fmt> = ashlib::OptionErr<T, E>;
 pub type LazyResult<T, E = Fmt> = lazy::LazyResult<T, E>;
 pub type LazyError<E = Fmt> = lazy::LazyError<E>;
 
+pub trait InternalString {
+    fn as_str<'a>(&self, prog: &'a Program) -> &'a str;
+    fn as_string(&self, prog: &Program) -> String;
+}
+
+impl InternalString for StrKey {
+    fn as_str<'a>(&self, prog: &'a Program) -> &'a str {
+        prog.interner.resolve(self)
+    }
+
+    fn as_string(&self, prog: &Program) -> String {
+        prog.interner.resolve(self).to_string()
+    }
+}
+
 #[derive(Default)]
 pub struct Program {
     pub ops: Vec<Op>,
     pub procs: Vec<Proc>,
-    pub words: Vec<String>,
     pub consts: Vec<StructType>,
     pub global_vars: Vec<StructType>,
     pub structs_types: Vec<StructDef>,
     pub block_contracts: HashMap<usize, (usize, usize)>,
     pub included_files: Vec<String>,
+    interner: Rodeo,
     mem_size: usize,
     memory: Vec<OffsetWord>,
     data_size: usize,
@@ -26,26 +42,33 @@ pub struct Program {
 
 impl Program {
     pub fn new() -> Self {
+        let mut words = Rodeo::default();
+        words.get_or_intern(String::new());
+
+        let structs_types = vec![
+            (words.get_or_intern("int"), Value::Int).into(),
+            (words.get_or_intern("bool"), Value::Bool).into(),
+            (words.get_or_intern("ptr"), Value::Ptr).into(),
+            (words.get_or_intern("any"), Value::Any).into(),
+        ];
+
         Self {
-            structs_types: vec![
-                ("int", Value::Int).into(),
-                ("bool", Value::Bool).into(),
-                ("ptr", Value::Ptr).into(),
-                ("any", Value::Any).into(),
-            ],
+            structs_types,
+            interner: words,
             ..Default::default()
         }
     }
 
-    pub fn push_mem(&mut self, word: &str, size: usize) {
-        self.memory
-            .push(OffsetWord::new(word, self.mem_size as i32));
+    pub fn push_mem(&mut self, word: &StrKey, size: usize) {
+        let value = OffsetWord::new(word.to_owned(), self.mem_size as i32);
+        self.memory.push(value);
         self.mem_size += size;
     }
 
     pub fn push_data(&mut self, word: &str, size: usize) -> usize {
-        self.data
-            .push(OffsetData::new(word, size as i32, self.data_size as i32));
+        let name = self.get_or_intern(word);
+        let value = OffsetData::new(name, size as i32, self.data_size as i32);
+        self.data.push(value);
         self.data_size += size;
         self.data.len() - 1
     }
@@ -70,12 +93,24 @@ impl Program {
         self.global_vars_start() + self.global_vars_size()
     }
 
-    pub fn get_word<O: Operand>(&self, index: O) -> &str {
-        &self.words[index.index()]
+    pub fn get_or_intern(&mut self, word: &str) -> StrKey {
+        self.interner.get_or_intern(word)
     }
 
-    pub fn get_string<O: Operand>(&self, index: O) -> &OffsetData {
+    pub fn get_key(&self, word: &str) -> Option<StrKey> {
+        self.interner.get(word)
+    }
+
+    pub fn get_word<O: Operand>(&self, index: O) -> &str {
+        self.interner.resolve(&index.str_key())
+    }
+
+    pub fn get_data<O: Operand>(&self, index: O) -> &OffsetData {
         &self.data[index.index()]
+    }
+
+    pub fn get_data_str<O: Operand>(&self, index: O) -> &str {
+        self.get_data(index).as_str(self)
     }
 
     pub fn get_proc<O: Operand>(&self, index: O) -> &Proc {
@@ -86,7 +121,7 @@ impl Program {
         self.block_contracts[&(index.index())]
     }
 
-    pub fn get_data(&self) -> &[OffsetData] {
+    pub fn get_all_data(&self) -> &[OffsetData] {
         &self.data
     }
 
@@ -100,7 +135,7 @@ impl Program {
             Value::Bool => "Boolean",
             Value::Ptr => "Pointer",
             Value::Any => "Any",
-            Value::Type(n) => self.structs_types[n].name(),
+            Value::Type(n) => self.structs_types[n].as_str(self),
         }
         .to_owned()
     }
@@ -130,8 +165,8 @@ impl Program {
     pub fn type_display(&self, tok: IRToken) -> String {
         match tok.token_type {
             TokenType::Keyword => format!("{:?}", tok.as_keyword()),
-            TokenType::Word => self.get_word(tok).to_string(),
-            TokenType::Str => self.get_string(tok).to_string(),
+            TokenType::Word => self.get_word(tok).to_owned(),
+            TokenType::Str => self.get_data_str(tok).to_owned(),
             TokenType::Data(data) => self.data_display(data.get_value(), tok),
         }
     }
@@ -162,27 +197,29 @@ impl Program {
     }
 
     fn get_cast_type(&self, rest: &[u8]) -> Option<i32> {
-        self.get_data_type_id(std::str::from_utf8(rest).ok()?)
+        self.get_key(std::str::from_utf8(rest).ok()?)
+            .as_ref()
+            .map(|key| self.get_data_type_id(key))?
             .map(|u| u as i32)
     }
 
-    pub fn get_data_type_id(&self, word: &str) -> Option<usize> {
+    pub fn get_data_type_id(&self, word: &StrKey) -> Option<usize> {
         self.structs_types
             .iter()
-            .position(|s| s.name() == word)
+            .position(|def| word.eq(def))
             .map(|u| u + 1)
     }
 
     pub fn get_struct_value_id(&self, def: &StructDef) -> Option<Value> {
         self.structs_types
             .iter()
-            .position(|s| s.name() == def.name())
+            .position(|id| id.eq(def))
             .map(|u| Value::from(u))
     }
 
     /// Searches for a `const` that matches the given `&str`.
-    pub fn get_const_by_name(&self, word: &str) -> Option<&StructType> {
-        self.consts.iter().find(|cnst| word == cnst.name())
+    pub fn get_const_by_name(&self, word: &StrKey) -> Option<&StructType> {
+        self.consts.iter().find(|cnst| word.eq(cnst))
     }
 }
 

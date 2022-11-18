@@ -57,9 +57,7 @@ impl Program {
     }
 
     fn define_word(&mut self, tok: Token) -> OptionErr<IRToken> {
-        self.words.push(tok.name);
-        let operand = self.words.len() - 1;
-
+        let operand = self.get_or_intern(&tok.name);
         OptionErr::new(IRToken::new(TokenType::Word, operand, tok.loc))
     }
 }

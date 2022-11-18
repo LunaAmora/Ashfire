@@ -1,23 +1,27 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Deref};
 
 use firelib::lexer::Loc;
 
-use crate::compiler::{expect::Compare, program::Program, types::*};
+use crate::compiler::{expect::Compare, types::*};
 
 impl Compare<IRToken> for Vec<IRToken> {}
 
 pub struct LocWord {
-    index: usize,
+    word: StrKey,
     pub loc: Loc,
 }
 
 impl Operand for LocWord {
     fn operand(&self) -> i32 {
-        self.index as i32
+        self.word.operand()
     }
 
     fn index(&self) -> usize {
-        self.index
+        self.word.index()
+    }
+
+    fn str_key(&self) -> StrKey {
+        self.word.to_owned()
     }
 }
 
@@ -29,15 +33,15 @@ impl Location for LocWord {
 
 impl LocWord {
     pub fn new<O: Operand>(index: O, loc: Loc) -> Self {
-        Self { index: index.index(), loc }
+        Self { word: index.str_key().to_owned(), loc }
     }
+}
 
-    pub fn as_str<'a>(&self, prog: &'a Program) -> &'a str {
-        &prog.words[self.index]
-    }
+impl Deref for LocWord {
+    type Target = StrKey;
 
-    pub fn as_string(&self, prog: &Program) -> String {
-        prog.words[self.index].to_owned()
+    fn deref(&self) -> &Self::Target {
+        &self.word
     }
 }
 

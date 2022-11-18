@@ -8,7 +8,7 @@ use NumMethod::*;
 use Scope::*;
 
 use crate::compiler::{
-    program::{Program, ProgramVisitor},
+    program::{InternalString, Program, ProgramVisitor},
     types::{Contract, Op, Operand, StructDef, StructType},
 };
 
@@ -47,7 +47,7 @@ impl Generator {
             return Ok(true);
         };
 
-        self.current_func = Some(FuncGen::new(&proc.name, &proc.contract));
+        self.current_func = Some(FuncGen::new(proc.name.as_string(program), &proc.contract));
         let func = self.current_fn()?;
 
         let proc_size = data.total_size();
@@ -108,9 +108,9 @@ pub struct FuncGen {
 }
 
 impl FuncGen {
-    pub fn new(label: &String, contract: &Contract) -> Self {
+    pub fn new(label: String, contract: &Contract) -> Self {
         Self {
-            label: label.to_owned(),
+            label,
             contract: contract.into(),
             code: Vec::new(),
             bind_count: 0,

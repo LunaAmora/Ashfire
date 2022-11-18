@@ -4,7 +4,10 @@ use std::{
 };
 
 use firelib::{anyhow::Result, lexer::Loc};
+use lasso::Key;
 use num::FromPrimitive;
+
+pub type StrKey = lasso::Spur;
 
 pub trait Typed {
     fn get_type(&self) -> TokenType;
@@ -38,6 +41,11 @@ pub trait Operand {
     fn index(&self) -> usize {
         self.operand() as usize
     }
+
+    #[track_caller]
+    fn str_key(&self) -> StrKey {
+        StrKey::try_from_usize(self.index()).unwrap()
+    }
 }
 
 impl<T: Operand> Operand for &T {
@@ -58,19 +66,33 @@ impl Operand for usize {
     }
 }
 
+impl Operand for StrKey {
+    fn index(&self) -> usize {
+        self.into_usize()
+    }
+
+    fn operand(&self) -> i32 {
+        self.index() as i32
+    }
+
+    fn str_key(&self) -> StrKey {
+        self.to_owned()
+    }
+}
+
 #[derive(Default)]
 pub struct ProcData {
-    pub bindings: Vec<String>,
+    pub bindings: Vec<StrKey>,
     pub local_vars: Vec<StructType>,
-    pub local_mem_names: Vec<OffsetWord>,
+    pub local_mems: Vec<OffsetWord>,
     mem_size: usize,
 }
 
 impl ProcData {
-    pub fn push_mem(&mut self, word: &str, size: usize) {
+    pub fn push_mem(&mut self, word: &StrKey, size: usize) {
         self.mem_size += size;
-        self.local_mem_names
-            .push(OffsetWord::new(word, self.mem_size as i32));
+        self.local_mems
+            .push(OffsetWord::new(word.to_owned(), self.mem_size as i32));
     }
 
     pub fn total_size(&self) -> i32 {
@@ -95,23 +117,19 @@ impl Default for ProcType {
 
 #[derive(Default)]
 pub struct Proc {
-    pub name: String,
+    pub name: StrKey,
     pub contract: Contract,
     pub data: ProcType,
 }
 
 impl Proc {
-    pub fn new(name: &str, contract: Contract, inline: Option<usize>) -> Self {
+    pub fn new(name: &StrKey, contract: Contract, inline: Option<usize>) -> Self {
         let data = match inline {
             Some(start) => ProcType::Inline(start, 0),
             _ => ProcType::default(),
         };
 
         Self { name: name.to_owned(), contract, data }
-    }
-
-    pub fn get_label(&self) -> &str {
-        &self.name
     }
 
     pub fn get_data(&self) -> Option<&ProcData> {
@@ -339,13 +357,6 @@ pub enum StructType {
 }
 
 impl StructType {
-    pub fn name(&self) -> &str {
-        match self {
-            StructType::Unit(val) => &val.name,
-            StructType::Root(stk) => &stk.name,
-        }
-    }
-
     pub fn units(&self) -> Vec<&ValueType> {
         match self {
             StructType::Root(s) => s.units(),
@@ -368,14 +379,25 @@ impl StructType {
     }
 }
 
+impl Deref for StructType {
+    type Target = StrKey;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            StructType::Unit(val) => &val.name,
+            StructType::Root(stk) => &stk.name,
+        }
+    }
+}
+
 impl From<ValueType> for StructType {
     fn from(value: ValueType) -> Self {
         StructType::Unit(value)
     }
 }
 
-pub fn get_field_pos(vars: &[StructType], word: &str) -> Option<(usize, usize)> {
-    let Some(i) = vars.iter().position(|v| v.name() == word) else {
+pub fn get_field_pos(vars: &[StructType], word: &StrKey) -> Option<(usize, usize)> {
+    let Some(i) = vars.iter().position(|stk| word.eq(stk)) else {
         return None;
     };
 
@@ -387,8 +409,8 @@ pub fn get_field_pos(vars: &[StructType], word: &str) -> Option<(usize, usize)> 
     Some((offset, i))
 }
 
-pub fn get_field_pos_local(vars: &[StructType], word: &str) -> Option<(usize, usize)> {
-    let Some(i) = vars.iter().position(|v| v.name() == word) else {
+pub fn get_field_pos_local(vars: &[StructType], word: &StrKey) -> Option<(usize, usize)> {
+    let Some(i) = vars.iter().position(|stk| word.eq(stk)) else {
         return None;
     };
 
@@ -402,17 +424,13 @@ pub fn get_field_pos_local(vars: &[StructType], word: &str) -> Option<(usize, us
 
 #[derive(Clone)]
 pub struct StructDef {
-    name: String,
+    name: StrKey,
     members: Vec<StructType>,
 }
 
 impl StructDef {
-    pub fn new(name: String, members: Vec<StructType>) -> Self {
-        Self { name, members }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn new(name: &StrKey, members: Vec<StructType>) -> Self {
+        Self { name: name.to_owned(), members }
     }
 
     pub fn members(&self) -> &[StructType] {
@@ -436,11 +454,19 @@ impl StructDef {
     }
 }
 
-impl From<(&str, Value)> for StructDef {
-    fn from(tuple: (&str, Value)) -> Self {
+impl Deref for StructDef {
+    type Target = StrKey;
+
+    fn deref(&self) -> &Self::Target {
+        &self.name
+    }
+}
+
+impl From<(StrKey, Value)> for StructDef {
+    fn from(tuple: (StrKey, Value)) -> Self {
         Self {
-            name: tuple.0.to_string(),
-            members: vec![StructType::Unit((String::new(), tuple.1).into())],
+            name: tuple.0,
+            members: vec![StructType::Unit((StrKey::default(), tuple.1).into())],
         }
     }
 }
@@ -460,7 +486,7 @@ impl Deref for StructRef {
 }
 
 impl StructRef {
-    pub fn new(name: String, members: Vec<StructType>, reftype: Value) -> Self {
+    pub fn new(name: &StrKey, members: Vec<StructType>, reftype: Value) -> Self {
         Self { data: StructDef::new(name, members), reftype }
     }
 
@@ -477,22 +503,22 @@ impl Typed for StructRef {
 
 #[derive(Clone)]
 pub struct ValueType {
-    name: String,
+    name: StrKey,
     value: i32,
     data_type: Data,
 }
 
 impl ValueType {
-    pub fn new<T: Typed + Operand>(name: String, typed: T) -> Self {
+    pub fn new<T: Typed + Operand>(name: &StrKey, typed: T) -> Self {
         let TokenType::Data(data_type) =  typed.get_type() else {
             unimplemented!()
         };
 
-        Self { name, value: typed.operand(), data_type }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
+        Self {
+            name: name.to_owned(),
+            value: typed.operand(),
+            data_type,
+        }
     }
 
     pub fn value(&self) -> i32 {
@@ -510,8 +536,8 @@ impl Typed for ValueType {
     }
 }
 
-impl<T: Typed> From<(String, T)> for ValueType {
-    fn from(tuple: (String, T)) -> Self {
+impl<T: Typed> From<(StrKey, T)> for ValueType {
+    fn from(tuple: (StrKey, T)) -> Self {
         let TokenType::Data(data_type) = tuple.1.get_type() else {
             unimplemented!()
         };
@@ -521,14 +547,14 @@ impl<T: Typed> From<(String, T)> for ValueType {
 }
 
 impl Deref for ValueType {
-    type Target = String;
+    type Target = StrKey;
 
     fn deref(&self) -> &Self::Target {
         &self.name
     }
 }
 
-pub struct Offset<T, O = i32>(T, O);
+pub struct Offset<T, O = i32>(pub T, pub O);
 
 impl<T, O: Copy> Offset<T, O> {
     pub fn offset(&self) -> O {
@@ -547,7 +573,7 @@ impl<T, O> Deref for Offset<T, O> {
 pub type OffsetData = Offset<OffsetWord>;
 
 impl OffsetData {
-    pub fn new(name: &str, size: i32, offset: i32) -> Self {
+    pub fn new(name: StrKey, size: i32, offset: i32) -> Self {
         Self(OffsetWord::new(name, size), offset)
     }
 
@@ -560,15 +586,15 @@ impl OffsetData {
     }
 }
 
-pub type OffsetWord = Offset<String>;
+pub type OffsetWord = Offset<StrKey>;
 
 impl OffsetWord {
-    pub fn new(name: &str, offset: i32) -> Self {
-        Self(name.to_owned(), offset)
+    pub fn new(name: StrKey, offset: i32) -> Self {
+        Self(name, offset)
     }
 }
 
-pub type IndexWord = Offset<String, usize>;
+pub type IndexWord = Offset<StrKey, usize>;
 
 impl Operand for IndexWord {
     fn operand(&self) -> i32 {
@@ -581,7 +607,7 @@ impl Operand for IndexWord {
 }
 
 impl IndexWord {
-    pub fn new<O: Operand>(name: &str, index: O) -> Self {
+    pub fn new<O: Operand>(name: &StrKey, index: O) -> Self {
         Self(name.to_owned(), index.index())
     }
 }
