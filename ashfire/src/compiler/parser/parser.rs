@@ -105,7 +105,7 @@ impl Parser {
 
                 let error =
                     format!("Word was not declared on the program: `{}`", word.as_str(prog));
-                return error_loc(error, tok.loc).into();
+                Err(err_loc(error, tok.loc))?
             }
         });
 
@@ -172,7 +172,7 @@ impl Parser {
 
             KeywordType::Dot => {
                 let Some(next_token) = self.next() else {
-                    todo!();
+                    Err(todo(loc))?
                 };
 
                 match next_token.token_type {
@@ -187,7 +187,7 @@ impl Parser {
                         (OpType::Offset, word, loc).into()
                     }
                     TokenType::Word => (OpType::OffsetLoad, next_token, loc).into(),
-                    _ => todo!(),
+                    _ => Err(todo(loc))?,
                 }
             }
             KeywordType::Ref => {
@@ -201,7 +201,7 @@ impl Parser {
                     Some(ParseContext::GlobalVar) => {
                         self.get_global_var(&ref_word, Some(VarWordType::Pointer), prog)
                     }
-                    _ => todo!(),
+                    _ => Err(todo(loc))?,
                 };
             }
 
@@ -219,11 +219,11 @@ impl Parser {
                 ))?,
             },
 
-            KeywordType::Let => todo!(),
-            KeywordType::Case => todo!(),
+            KeywordType::Let => Err(todo(loc))?,
+            KeywordType::Case => Err(todo(loc))?,
 
             KeywordType::Colon => match self.pop_block(key, loc)? {
-                Op { op_type: OpType::CaseStart, .. } => todo!(),
+                Op { op_type: OpType::CaseStart, .. } => Err(todo(loc))?,
                 block => Err(format_block(
                     "`:` can only be used on word or `case` block definition",
                     block,
@@ -235,7 +235,7 @@ impl Parser {
 
             KeywordType::Else => match self.pop_block(key, loc)? {
                 Op { op_type: OpType::IfStart, .. } => self.push_block((OpType::Else, loc).into()),
-                Op { op_type: OpType::CaseOption, .. } => todo!(),
+                Op { op_type: OpType::CaseOption, .. } => Err(todo(loc))?,
                 block => {
                     Err(format_block("`else` can only come in a `if` or `case` block", block, loc))?
                 }
@@ -246,8 +246,8 @@ impl Parser {
                 Op { op_type: OpType::Else, .. } => (OpType::EndElse, loc).into(),
                 Op { op_type: OpType::Do, .. } => (OpType::EndWhile, loc).into(),
 
-                Op { op_type: OpType::BindStack, .. } => todo!(),
-                Op { op_type: OpType::CaseOption, .. } => todo!(),
+                Op { op_type: OpType::BindStack, .. } => Err(todo(loc))?,
+                Op { op_type: OpType::CaseOption, .. } => Err(todo(loc))?,
 
                 Op { op_type: OpType::PrepProc, operand, .. } => {
                     self.exit_proc();
@@ -268,8 +268,7 @@ impl Parser {
             KeywordType::Proc |
             KeywordType::Mem |
             KeywordType::Struct => {
-                let error = format!("Keyword type is not valid here: `{:?}`", key);
-                return error_loc(error, loc).into();
+                Err(err_loc(format!("Keyword type is not valid here: `{:?}`", key), loc))?
             }
         };
 
@@ -289,8 +288,7 @@ impl Parser {
     /// This function will return an error if no block is open.
     fn pop_block(&mut self, closing_type: KeywordType, loc: Loc) -> LazyResult<Op> {
         self.name_scopes.pop().with_err_ctx(move || {
-            let error = format!("There are no open blocks to close with `{:?}`", closing_type);
-            error_loc(error, loc)
+            err_loc(format!("There are no open blocks to close with `{:?}`", closing_type), loc)
         })
     }
 
@@ -462,7 +460,7 @@ impl Parser {
                 let ref_word = self.expect_word("type after `*`", word.loc)?;
 
                 let Some(data) = prog.get_data_ptr(&ref_word) else {
-                    return invalid_option(Some(ref_word.into()), "struct type", word.loc).into()
+                    Err(invalid_option(Some(ref_word.into()), "struct type", word.loc))?
                 };
 
                 let name = format!("*{}", ref_word.as_str(prog));
@@ -481,7 +479,7 @@ impl Parser {
                 self.skip(2);
                 match self.compile_eval(prog).value {
                     Ok((_, _)) => {
-                        todo(word.loc)?; //Refactor broke stuff
+                        Err(todo(word.loc))?; //Refactor broke stuff
 
                         // if &result == Value::Any {
                         //     Err(error_loc("Undefined variable value is not allowed", word.loc))?;
@@ -510,7 +508,7 @@ impl Parser {
                     "Missing body or contract necessary to infer the type of the word: `{}`",
                     word.as_str(prog)
                 );
-                return error_loc(error, word.loc).into();
+                Err(err_loc(error, word.loc))?
             }
 
             _ => OptionErr::default(),
@@ -566,7 +564,7 @@ impl Parser {
         let loc = name.loc;
 
         if self.inside_proc() {
-            Err(error_loc("Cannot define a procedure inside of another procedure", loc))?;
+            Err(err_loc("Cannot define a procedure inside of another procedure", loc))?;
         };
 
         let inline_ip = fold_bool!(inline, Some(prog.ops.len()), None);
@@ -599,8 +597,7 @@ impl Parser {
                 match key {
                     KeywordType::Arrow => {
                         if arrow {
-                            let error = "Duplicated `->` found on procedure definition";
-                            return error_loc(error, loc).into();
+                            Err(err_loc("Duplicated `->` found on procedure definition", loc))?;
                         }
                         arrow = true;
                     }
@@ -613,17 +610,17 @@ impl Parser {
                         let typ = self.expect_word("type after `*`", loc)?;
 
                         let Some(data_ptr) = prog.get_data_ptr(&typ) else {
-                            return invalid_option(Some(typ.into()), tok_err, loc).into();
+                            Err(invalid_option(Some(typ.into()), tok_err, loc))?
                         };
 
                         push_by_condition(arrow, data_ptr.get_type(), &mut outs, &mut ins);
                     }
 
-                    _ => return invalid_option(Some(tok), tok_err, loc).into(),
+                    _ => Err(invalid_option(Some(tok), tok_err, loc))?,
                 }
             } else if &tok == TokenType::Word {
                 let Some(stk) = prog.get_type_name(&tok) else {
-                    return invalid_option(Some(tok), tok_err, loc).into();
+                    Err(invalid_option(Some(tok), tok_err, loc))?
                 };
 
                 for typ in stk.units().iter().map(Typed::get_type) {
@@ -667,7 +664,7 @@ impl Parser {
             let as_ref = false; // Todo: Add pointers support
 
             let Some(type_kind) = prog.get_type_kind(&name_type, as_ref) else {
-                return invalid_option(Some(name_type.into()), "struct member type", loc).into()
+                Err(invalid_option(Some(name_type.into()), "struct member type", loc))?
             };
 
             let found_word = next.as_string(prog);
@@ -678,7 +675,7 @@ impl Parser {
 
                     if ref_members.len() == 1 {
                         let StructType::Unit(typ) = &ref_members[0] else {
-                            todo!();
+                            Err(todo(loc))?
                         };
 
                         members.push(StructType::Unit((found_word, typ).into()));
@@ -694,7 +691,7 @@ impl Parser {
             }
         }
 
-        error_loc("Expected struct members or `end` after struct declaration", loc).into()
+        err_loc("Expected struct members or `end` after struct declaration", loc).into()
     }
 
     fn parse_const_or_var<O: Operand>(
@@ -715,7 +712,7 @@ impl Parser {
             Ok(value) => value,
             Err(either) => match either {
                 Either::Right(err) => Err(err)?,
-                Either::Left(tok) => Err(error_loc(
+                Either::Left(tok) => Err(err_loc(
                     "Failed to parse an valid struct value at compile-time evaluation",
                     tok.loc,
                 ))?,
@@ -739,7 +736,7 @@ impl Parser {
                 self.register_const_or_var(&assign, StructType::Root(struct_word), prog);
             } else {
                 let member_type = match members.last().unwrap() {
-                    StructType::Root(_) => todo!(),
+                    StructType::Root(_) => Err(todo(word.loc))?,
                     StructType::Unit(typ) => typ.get_type(),
                 };
 
@@ -794,7 +791,7 @@ impl Parser {
 
                         for member in root_members {
                             let StructType::Unit(typ) = member else {
-                                todo!();
+                                Err(todo(word.loc))?
                             };
 
                             let value =
@@ -932,13 +929,13 @@ impl Program {
 
         while let Some(field_name) = fields.next() {
             let StructType::Root(root) = var else {
-                return todo(loc).unwrap_err().into();
+                Err(todo(loc))?
             };
 
             let Some((diff, pos)) = get_field_pos(root.members(), field_name) else {
                 let error = format!("The variable `{}` does not contain the field `{}`",
                     var.name(), field_name);
-                return error_loc(error, loc).into();
+                Err(err_loc(error, loc))?
             };
 
             offset += diff;
@@ -951,7 +948,7 @@ impl Program {
             StructType::Unit(unit) => unit,
             StructType::Root(root) => {
                 if store {
-                    todo!()
+                    Err(todo(loc))?
                 }
 
                 if push_type == OpType::PushLocal {

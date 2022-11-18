@@ -10,7 +10,7 @@ use firelib::{
 use super::{
     program::{Fmt, OptionErr, Program},
     types::*,
-    utils::error_loc,
+    utils::err_loc,
 };
 
 impl Program {
@@ -50,7 +50,7 @@ impl Program {
             .strip_prefix('\"')
             .or_return(OptionErr::default)?
             .strip_suffix('\"')
-            .with_err_ctx(move || error_loc("Missing closing `\"` in string literal", loc))
+            .with_err_ctx(move || err_loc("Missing closing `\"` in string literal", loc))
             .map(|name| self.push_data(name, escaped_len(&name)))
             .map(|operand| IRToken::new(TokenType::Str, operand, loc))
             .map(OptionErr::new)?
@@ -71,7 +71,7 @@ fn parse_as_char(tok: &Token) -> OptionErr<IRToken> {
         .strip_prefix('\'')
         .or_return(OptionErr::default)?
         .strip_suffix('\'')
-        .with_err_ctx(move || error_loc("Missing closing `\'` in char literal", loc))?;
+        .with_err_ctx(move || err_loc("Missing closing `\'` in char literal", loc))?;
 
     parse_char(word.to_string(), loc)
         .value?
@@ -83,11 +83,11 @@ fn parse_char(word: String, loc: Loc) -> OptionErr<i32> {
     match word.strip_prefix('\\') {
         Some(escaped) => parse_scaped(escaped.to_owned(), loc),
         None => match word.len() {
-            0 => Err(error_loc("Char literals have to contain at leat on char", loc))?,
-            2.. => lazybail!(
-                |f| "{}Char literals cannot contain more than one char: `{word}`",
-                f.format(Fmt::Loc(loc))
-            ),
+            0 => Err(err_loc("Char literals have to contain at leat on char", loc))?,
+            2.. => Err(err_loc(
+                format!("Char literals cannot contain more than one char: `{word}`"),
+                loc,
+            ))?,
             _ => OptionErr::new(word.chars().next().unwrap() as i32),
         },
     }
@@ -101,7 +101,7 @@ fn parse_scaped(escaped: String, loc: Loc) -> OptionErr<i32> {
         "\'" => '\'' as i32,
         "\\" => '\\' as i32,
         _ if escaped.len() == 2 => try_parse_hex(&escaped).with_err_ctx(move || {
-            error_loc(format!("Invalid characters found on char literal: `\\{escaped}`"), loc)
+            err_loc(format!("Invalid characters found on char literal: `\\{escaped}`"), loc)
         })?,
         _ => lazybail!(
             |f| "{}Invalid escaped character sequence found on char literal: `{escaped}`",
