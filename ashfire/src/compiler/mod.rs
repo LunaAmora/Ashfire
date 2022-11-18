@@ -1,7 +1,8 @@
-pub mod expect;
-pub mod generator;
-pub mod lexer;
-pub mod parser;
+mod expect;
+mod generator;
+mod lexer;
+mod parser;
 pub mod program;
-pub mod typechecker;
-pub mod types;
+mod typechecker;
+mod types;
+mod utils;

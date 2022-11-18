@@ -5,7 +5,7 @@ use firelib::{lazy::LazyCtx, lexer::Loc, utils::*, ShortCircuit, TrySuccess};
 use num::iter::range_step_from;
 
 use super::{types::*, utils::*};
-use crate::compiler::{expect::*, program::*, types::*};
+use crate::compiler::{expect::*, program::*, types::*, utils::*};
 
 #[derive(Default)]
 pub struct Parser {

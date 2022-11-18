@@ -8,9 +8,9 @@ use firelib::{
 };
 
 use super::{
-    parser::utils::error_loc,
     program::{Fmt, OptionErr, Program},
     types::*,
+    utils::error_loc,
 };
 
 impl Program {

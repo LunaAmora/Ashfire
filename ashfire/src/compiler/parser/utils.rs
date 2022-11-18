@@ -48,11 +48,6 @@ impl Parser {
     }
 }
 
-pub fn error_loc<S: ToString>(error: S, loc: Loc) -> LazyError {
-    let error = error.to_string();
-    LazyError::new(move |f| format!("{}{error}", f.format(Fmt::Loc(loc))))
-}
-
 pub fn invalid_option<S: ToString>(tok: Option<IRToken>, desc: S, loc: Loc) -> LazyError {
     let desc = desc.to_string();
     match tok {
@@ -105,9 +100,4 @@ pub fn expect_token_by<S: ToString>(
         Some(tok) if pred(&tok) => Ok(tok),
         invalid => Err(invalid_option(invalid, desc, loc)),
     }
-}
-
-#[track_caller]
-pub fn todo(loc: Loc) -> LazyResult<()> {
-    Err(error_loc(format!("\n[HERE]  {}", std::panic::Location::caller()), loc))
 }
