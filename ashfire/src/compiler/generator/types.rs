@@ -56,7 +56,7 @@ impl Generator {
             func.extend(vec![Const(proc_size), Call("aloc_local".into())]);
         }
 
-        let mut index = (0..).into_iter();
+        let mut index = 0..;
         for var in data.local_vars.iter().flat_map(StructType::units) {
             let i = index.next().unwrap();
 

@@ -126,8 +126,8 @@ mod tests {
     fn choice4() -> OptionErr<i32, ()> {
         let val = choice!(OptionErr, choice3(), choice2())
             .value
-            .with_ctx(|_| format!("[Error] choice4 (lazy_ctx)"))?
-            .with_context(|| format!("[Error] choice4 (anyhow)"))?;
+            .with_ctx(|_| "[Error] choice4 (lazy_ctx)".to_string())?
+            .with_context(|| "[Error] choice4 (anyhow)".to_string())?;
 
         OptionErr::new(val)
     }

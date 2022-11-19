@@ -345,7 +345,7 @@ impl Parser {
             _ => Default::default(),
         };
 
-        if word.as_str(prog).contains(".") {
+        if word.as_str(prog).contains('.') {
             return prog.try_get_var_field(word, vars, push_type, store, pointer);
         }
 
@@ -772,7 +772,7 @@ impl Parser {
             for member in members {
                 match member {
                     StructType::Unit(unit) => {
-                        let value = ValueType::new(unit, &item.next().unwrap());
+                        let value = ValueType::new(unit, item.next().unwrap());
                         def_members.push(StructType::Unit(value));
                     }
                     StructType::Root(root) => {
@@ -789,7 +789,7 @@ impl Parser {
                                 Err(todo(word.loc))?
                             };
 
-                            let value = ValueType::new(typ, &item.next().unwrap());
+                            let value = ValueType::new(typ, item.next().unwrap());
                             new.push(StructType::Unit(value));
                         }
 
@@ -839,7 +839,7 @@ impl Parser {
             let include_path = prog.get_data_str(tok);
 
             let include = get_dir(path)
-                .with_ctx(|_| format!("failed to get file directory path"))?
+                .with_ctx(|_| "failed to get file directory path".to_string())?
                 .join(include_path);
 
             info!("Including file: {:?}", include);
@@ -912,7 +912,7 @@ impl Program {
     fn try_get_var_field(
         &self, word: &LocWord, vars: &[StructType], push_type: OpType, store: bool, pointer: bool,
     ) -> OptionErr<Vec<Op>> {
-        let fields: Vec<_> = word.as_str(self).split(".").collect();
+        let fields: Vec<_> = word.as_str(self).split('.').collect();
         let loc = word.loc;
 
         let Some(first) = self.get_key(fields[0]) else {
@@ -921,10 +921,10 @@ impl Program {
 
         let (mut offset, i) = vars.get_offset(&first).or_return(OptionErr::default)?;
 
-        let mut fields = fields.into_iter().skip(1);
+        let fields = fields.into_iter().skip(1);
         let mut var = &vars[i];
 
-        while let Some(field_name) = fields.next() {
+        for field_name in fields {
             let StructType::Root(root) = var else {
                 Err(todo(loc))?
             };
@@ -1035,8 +1035,8 @@ impl Program {
 
     fn get_type_kind(&self, word: &LocWord, as_ref: bool) -> Option<Either<&StructDef, Data>> {
         match as_ref {
-            false => self.get_type_name(word).map(|stk| Either::Left(stk)),
-            true => self.get_data_ptr(word).map(|ptr| Either::Right(ptr)),
+            false => self.get_type_name(word).map(Either::Left),
+            true => self.get_data_ptr(word).map(Either::Right),
         }
     }
 

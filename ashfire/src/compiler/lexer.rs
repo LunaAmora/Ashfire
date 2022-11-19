@@ -52,7 +52,7 @@ impl Program {
             .or_return(OptionErr::default)?
             .strip_suffix('\"')
             .with_err_ctx(move || err_loc("Missing closing `\"` in string literal", loc))
-            .map(|name| self.push_data(name, escaped_len(&name)))
+            .map(|name| self.push_data(name, escaped_len(name)))
             .map(|operand| IRToken::new(TokenType::Str, operand, loc))
             .map(OptionErr::new)?
     }

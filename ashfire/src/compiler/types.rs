@@ -107,7 +107,7 @@ impl ProcData {
     }
 
     pub fn var_mem_offset(&self, index: i32) -> i32 {
-        self.mem_size as i32 + (index + 1) * WORD_SIZE as i32
+        self.mem_size as i32 + (index + 1) * WORD_SIZE
     }
 }
 
@@ -729,7 +729,7 @@ impl From<IRToken> for TokenType {
 
 impl From<TypeFrame> for TokenType {
     fn from(frame: TypeFrame) -> Self {
-        (&frame).get_type()
+        frame.get_type()
     }
 }
 

@@ -210,7 +210,7 @@ impl Program {
         self.structs_types
             .iter()
             .position(|id| id.eq(def))
-            .map(|u| Value::from(u))
+            .map(Value::from)
     }
 
     /// Searches for a `const` that matches the given [`StrKey`].

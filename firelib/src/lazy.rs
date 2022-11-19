@@ -62,7 +62,7 @@ impl<E> From<Error> for LazyError<E> {
     fn from(value: Error) -> Self {
         let err = value.chain().map(|err| format!("{}", err)).join("\n");
 
-        LazyError::new(move |_| format!("{err}"))
+        LazyError::new(move |_| err.to_string())
     }
 }
 
@@ -209,7 +209,7 @@ mod tests {
     }
 
     fn with_ctx_error(option: Option<bool>, err_val: i32) -> LazyResult<bool, i32> {
-        let unwraped_option: bool = option.with_ctx(move |f| format!("{}", f.format(err_val)))?;
+        let unwraped_option: bool = option.with_ctx(move |f| f.format(err_val).to_string())?;
 
         Ok(unwraped_option)
     }
