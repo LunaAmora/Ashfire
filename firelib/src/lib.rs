@@ -6,7 +6,7 @@ use std::{
     ops::{ControlFlow, FromResidual, Try},
 };
 
-pub use anyhow::{self, bail as anybail, ensure as any_ensure};
+pub use anyhow::{self, bail};
 #[cfg(feature = "derive")]
 pub use firelib_macro::{alternative, FlowControl};
 use lazy::private::Sealed;
@@ -101,22 +101,6 @@ pub trait TrySuccess: Sized {
 }
 
 impl<T> TrySuccess for T {}
-
-/// Emulates [`anyhow::ensure`] for returning types that implements [`FlowControl`].
-#[macro_export]
-macro_rules! ensure {
-    ($expr:expr, $( $fmt:expr ),*) => {
-        $crate::FlowControl::ensure($expr, || Err($crate::anyhow::anyhow!( $( $fmt ),* ))?)?
-    };
-}
-
-/// Emulates [`anyhow::bail`] for returning types that implements [`FlowControl`].
-#[macro_export]
-macro_rules! bail {
-    ($( $fmt:expr ),*) => {
-        return Err($crate::anyhow::anyhow!( $( $fmt ),* ))?;
-    };
-}
 
 /// Returns early with the [`Success`][Success::success_value] impl of the returning type.
 #[macro_export]

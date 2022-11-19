@@ -105,7 +105,7 @@ impl Parser {
 
                 let error =
                     format!("Word was not declared on the program: `{}`", word.as_str(prog));
-                Err(err_loc(error, tok.loc))?
+                return err_loc(error, tok.loc).into();
             }
         });
 
@@ -134,7 +134,7 @@ impl Parser {
             ("!", rest) => (rest, VarWordType::Store),
             (".", rest) => {
                 let Some(key) = prog.get_key(rest) else {
-                    Err(todo(word.loc))?
+                    todo!()
                 };
 
                 let op = Op::new(OpType::OffsetLoad, key.operand(), word.loc);
@@ -145,7 +145,7 @@ impl Parser {
         };
 
         let Some(key) = prog.get_key(rest) else {
-            Err(todo(word.loc))?
+            todo!()
         };
 
         let local = match self.name_scopes.lookup(&key, prog) {
@@ -178,7 +178,7 @@ impl Parser {
 
             KeywordType::Dot => {
                 let Some(next_token) = self.next() else {
-                    Err(todo(loc))?
+                    todo!()
                 };
 
                 match next_token.token_type {
@@ -193,7 +193,7 @@ impl Parser {
                         (OpType::Offset, word, loc).into()
                     }
                     TokenType::Word => (OpType::OffsetLoad, next_token, loc).into(),
-                    _ => Err(todo(loc))?,
+                    _ => todo!(),
                 }
             }
             KeywordType::Ref => {
@@ -206,7 +206,7 @@ impl Parser {
                     Some(ParseContext::GlobalVar) => {
                         self.get_global_var(&ref_word, Some(VarWordType::Pointer), prog)
                     }
-                    _ => Err(todo(loc))?,
+                    _ => todo!(),
                 };
             }
 
@@ -224,11 +224,11 @@ impl Parser {
                 ))?,
             },
 
-            KeywordType::Let => Err(todo(loc))?,
-            KeywordType::Case => Err(todo(loc))?,
+            KeywordType::Let => todo!(),
+            KeywordType::Case => todo!(),
 
             KeywordType::Colon => match self.pop_block(key, loc)? {
-                Op { op_type: OpType::CaseStart, .. } => Err(todo(loc))?,
+                Op { op_type: OpType::CaseStart, .. } => todo!(),
                 block => Err(format_block(
                     "`:` can only be used on word or `case` block definition",
                     block,
@@ -240,7 +240,7 @@ impl Parser {
 
             KeywordType::Else => match self.pop_block(key, loc)? {
                 Op { op_type: OpType::IfStart, .. } => self.push_block((OpType::Else, loc).into()),
-                Op { op_type: OpType::CaseOption, .. } => Err(todo(loc))?,
+                Op { op_type: OpType::CaseOption, .. } => todo!(),
                 block => {
                     Err(format_block("`else` can only come in a `if` or `case` block", block, loc))?
                 }
@@ -251,8 +251,8 @@ impl Parser {
                 Op { op_type: OpType::Else, .. } => (OpType::EndElse, loc).into(),
                 Op { op_type: OpType::Do, .. } => (OpType::EndWhile, loc).into(),
 
-                Op { op_type: OpType::BindStack, .. } => Err(todo(loc))?,
-                Op { op_type: OpType::CaseOption, .. } => Err(todo(loc))?,
+                Op { op_type: OpType::BindStack, .. } => todo!(),
+                Op { op_type: OpType::CaseOption, .. } => todo!(),
 
                 Op { op_type: OpType::PrepProc, operand, .. } => {
                     self.exit_proc();
@@ -273,7 +273,8 @@ impl Parser {
             KeywordType::Proc |
             KeywordType::Mem |
             KeywordType::Struct => {
-                Err(err_loc(format!("Keyword type is not valid here: `{key:?}`"), loc))?
+                let error = format!("Keyword type is not valid here: `{key:?}`");
+                return err_loc(error, loc).into();
             }
         };
 
@@ -459,7 +460,7 @@ impl Parser {
                 let ref_word = self.expect_word("type after `*`", word.loc)?;
 
                 let Some(data) = prog.get_data_ptr(&ref_word) else {
-                    Err(invalid_option(Some(ref_word.into()), "struct type", word.loc))?
+                    return invalid_option(Some(ref_word.into()), "struct type", word.loc).into();
                 };
 
                 let name = format!("*{}", ref_word.as_str(prog));
@@ -478,7 +479,7 @@ impl Parser {
                 self.skip(2);
                 match self.compile_eval(prog).value {
                     Ok((_, _)) => {
-                        Err(todo(word.loc))?; //Refactor broke stuff
+                        todo!("Refactor broke stuff");
 
                         // if &result == Value::Any {
                         //     Err(error_loc("Undefined variable value is not allowed", word.loc))?;
@@ -487,12 +488,11 @@ impl Parser {
                         // self.skip(eval);
                         // let struct_word = ValueType::new(word.to_string(), &result);
                         // self.register_var(struct_word, prog);
-
-                        success!();
+                        // success!();
                     }
                     Err(either) => match either {
-                        Either::Left(tok) => Err(invalid_token(tok, "context declaration"))?,
-                        Either::Right(err) => Err(err)?,
+                        Either::Left(tok) => invalid_token(tok, "context declaration").into(),
+                        Either::Right(err) => err.into(),
                     },
                 }
             }
@@ -507,7 +507,7 @@ impl Parser {
                     "Missing body or contract necessary to infer the type of the word: `{}`",
                     word.as_str(prog)
                 );
-                Err(err_loc(error, word.loc))?
+                err_loc(error, word.loc).into()
             }
 
             _ => OptionErr::default(),
@@ -562,7 +562,8 @@ impl Parser {
         let loc = name.loc;
 
         if self.inside_proc() {
-            Err(err_loc("Cannot define a procedure inside of another procedure", loc))?;
+            let error = "Cannot define a procedure inside of another procedure";
+            return Err(err_loc(error, loc));
         };
 
         let inline_ip = fold_bool!(inline, Some(prog.ops.len()), None);
@@ -594,7 +595,8 @@ impl Parser {
                 match key {
                     KeywordType::Arrow => {
                         if arrow {
-                            Err(err_loc("Duplicated `->` found on procedure definition", loc))?;
+                            let error = "Duplicated `->` found on procedure definition";
+                            return err_loc(error, loc).into();
                         }
                         arrow = true;
                     }
@@ -607,17 +609,17 @@ impl Parser {
                         let typ = self.expect_word("type after `*`", loc)?;
 
                         let Some(data_ptr) = prog.get_data_ptr(&typ) else {
-                            Err(invalid_option(Some(typ.into()), tok_err, loc))?
+                            return invalid_option(Some(typ.into()), tok_err, loc).into();
                         };
 
                         push_by_condition(arrow, data_ptr.get_type(), &mut outs, &mut ins);
                     }
 
-                    _ => Err(invalid_option(Some(tok), tok_err, loc))?,
+                    _ => return invalid_option(Some(tok), tok_err, loc).into(),
                 }
             } else if &tok == TokenType::Word {
                 let Some(stk) = prog.get_type_name(&tok) else {
-                    Err(invalid_option(Some(tok), tok_err, loc))?
+                    return invalid_option(Some(tok), tok_err, loc).into();
                 };
 
                 for typ in stk.units().iter().map(Typed::get_type) {
@@ -660,7 +662,7 @@ impl Parser {
             let as_ref = false; // Todo: Add pointers support
 
             let Some(type_kind) = prog.get_type_kind(&name_type, as_ref) else {
-                Err(invalid_option(Some(name_type.into()), "struct member type", loc))?
+                return invalid_option(Some(name_type.into()), "struct member type", loc).into()
             };
 
             match type_kind {
@@ -669,7 +671,7 @@ impl Parser {
 
                     if ref_members.len() == 1 {
                         let StructType::Unit(typ) = &ref_members[0] else {
-                            Err(todo(loc))?
+                            todo!()
                         };
 
                         members.push(StructType::Unit((member_name.str_key(), typ).into()));
@@ -704,13 +706,15 @@ impl Parser {
 
         let (mut result, eval) = match self.compile_eval_n(stk.units().len(), prog).value {
             Ok(value) => value,
-            Err(either) => match either {
-                Either::Right(err) => Err(err)?,
-                Either::Left(tok) => Err(err_loc(
-                    "Failed to parse an valid struct value at compile-time evaluation",
-                    tok.loc,
-                ))?,
-            },
+            Err(either) => {
+                return match either {
+                    Either::Right(err) => Err(err),
+                    Either::Left(tok) => Err(err_loc(
+                        "Failed to parse an valid struct value at compile-time evaluation",
+                        tok.loc,
+                    )),
+                }
+            }
         };
 
         let end_token = self.skip(eval).unwrap();
@@ -730,7 +734,7 @@ impl Parser {
                 self.register_const_or_var(&assign, StructType::Root(struct_word), prog);
             } else {
                 let member_type = match members.last().unwrap() {
-                    StructType::Root(_) => Err(todo(word.loc))?,
+                    StructType::Root(_) => todo!(),
                     StructType::Unit(typ) => typ.get_type(),
                 };
 
@@ -785,7 +789,7 @@ impl Parser {
 
                         for member in root_members {
                             let StructType::Unit(typ) = member else {
-                                Err(todo(word.loc))?
+                                todo!()
                             };
 
                             let value = ValueType::new(typ, item.next().unwrap());
@@ -915,7 +919,7 @@ impl Program {
         let loc = word.loc;
 
         let Some(first) = self.get_key(fields[0]) else {
-            Err(todo(loc))?
+            todo!()
         };
 
         let (mut offset, i) = vars.get_offset(&first).or_return(OptionErr::default)?;
@@ -925,17 +929,17 @@ impl Program {
 
         for field_name in fields {
             let StructType::Root(root) = var else {
-                Err(todo(loc))?
+                todo!()
             };
 
             let Some(field_key) = self.get_key(field_name) else {
-                Err(todo(loc))?
+                todo!()
             };
 
             let Some((diff, pos)) = root.members().get_offset(&field_key) else {
                 let error = format!("The variable `{}` does not contain the field `{field_name}`",
                     var.as_str(self));
-                Err(err_loc(error, loc))?
+                return err_loc(error, loc).into();
             };
 
             offset += diff;
@@ -948,7 +952,7 @@ impl Program {
             StructType::Unit(unit) => unit,
             StructType::Root(root) => {
                 if store {
-                    Err(todo(loc))?;
+                    todo!();
                 }
 
                 if push_type == OpType::PushLocal {
@@ -1060,17 +1064,17 @@ impl Program {
     fn push_mem_by_context(
         &mut self, proc_index: Option<usize>, word: &StrKey, size: usize,
     ) -> ParseContext {
-        if let Some(proc) = proc_index.and_then(|i| self.procs.get_mut(i)) {
-            let Some(data) = proc.get_data_mut() else {
-                todo!();
-            };
-
-            data.push_mem(word, size);
-            ParseContext::LocalMem
-        } else {
+        let Some(proc) = proc_index.and_then(|i| self.procs.get_mut(i)) else {
             self.push_mem(word, size);
-            ParseContext::GlobalMem
-        }
+            return ParseContext::GlobalMem;
+        };
+
+        let Some(data) = proc.get_data_mut() else {
+            todo!();
+        };
+
+        data.push_mem(word, size);
+        ParseContext::LocalMem
     }
 
     pub fn compile_file(&mut self, path: &PathBuf) -> firelib::anyhow::Result<&mut Self> {

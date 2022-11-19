@@ -78,14 +78,14 @@ impl TypeChecker {
                     self.push_frame(Data::Ptr(typ).get_type(), loc);
                     program.ops.insert(ip + 1, Op::new(OpType::Unpack, 0, loc));
                 }
-                _ => Err(todo(loc))?,
+                _ => todo!(),
             },
 
             OpType::Offset => match self.expect_struct_pointer(program, ip)? {
                 TokenType::Data(Data::Typ(offset_type)) => {
                     self.push_frame(Data::Ptr(offset_type).get_type(), loc);
                 }
-                _ => Err(todo(loc))?,
+                _ => todo!(),
             },
 
             OpType::Intrinsic => match IntrinsicType::from(op.operand) {
@@ -95,13 +95,13 @@ impl TypeChecker {
                     loc,
                 )?,
 
-                IntrinsicType::Times => Err(todo(loc))?,
-                IntrinsicType::Div => Err(todo(loc))?,
+                IntrinsicType::Times => todo!(),
+                IntrinsicType::Div => todo!(),
 
                 IntrinsicType::Greater |
                 IntrinsicType::GreaterE |
                 IntrinsicType::Lesser |
-                IntrinsicType::LesserE => Err(todo(loc))?,
+                IntrinsicType::LesserE => todo!(),
 
                 IntrinsicType::And | IntrinsicType::Or | IntrinsicType::Xor => {
                     self.pop_push([INT, INT], INT, loc)?;
@@ -242,12 +242,12 @@ impl TypeChecker {
                 self.exit_proc();
             }
 
-            OpType::BindStack => Err(todo(loc))?,
-            OpType::PushBind => Err(todo(loc))?,
-            OpType::PopBind => Err(todo(loc))?,
-            OpType::While => Err(todo(loc))?,
-            OpType::Do => Err(todo(loc))?,
-            OpType::EndWhile => Err(todo(loc))?,
+            OpType::BindStack => todo!(),
+            OpType::PushBind => todo!(),
+            OpType::PopBind => todo!(),
+            OpType::While => todo!(),
+            OpType::Do => todo!(),
+            OpType::EndWhile => todo!(),
 
             OpType::Unpack => match self.data_stack.expect_pop(op.loc)?.get_type() {
                 TokenType::Data(Data::Ptr(n)) => {
@@ -274,10 +274,10 @@ impl TypeChecker {
                 self.data_stack.expect_peek(ArityType::Type(typ), loc)?;
             }
 
-            OpType::CaseStart => Err(todo(loc))?,
-            OpType::CaseMatch => Err(todo(loc))?,
-            OpType::CaseOption => Err(todo(loc))?,
-            OpType::EndCase => Err(todo(loc))?,
+            OpType::CaseStart => todo!(),
+            OpType::CaseMatch => todo!(),
+            OpType::CaseOption => todo!(),
+            OpType::EndCase => todo!(),
         };
         Ok(())
     }
@@ -311,7 +311,7 @@ impl TypeChecker {
                 let Some((offset, index)) = stk.members().get_offset(word) else {
                     let error = format!("The struct {} does not contain a member with name: `{}`",
                         stk.as_str(prog), word.as_str(prog));
-                    Err(err_loc(error, loc))?
+                    return Err(err_loc(error, loc));
                 };
 
                 let result = match &stk.members()[index] {

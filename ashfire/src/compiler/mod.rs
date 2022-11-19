@@ -5,4 +5,4 @@ mod parsing;
 pub mod program;
 mod typechecker;
 mod types;
-mod utils;
+#[allow(dead_code)] mod utils;

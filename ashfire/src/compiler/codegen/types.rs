@@ -39,7 +39,7 @@ impl Generator {
 
     pub fn prep_proc(&mut self, program: &Program, op: &Op) -> Result<bool> {
         if self.current_func.is_some() {
-            anybail!("Cannot start an Wasm function block without closing the current one");
+            bail!("Cannot start an Wasm function block without closing the current one");
         }
 
         let proc = self.visit_proc(program, op.index());

@@ -79,17 +79,17 @@ fn parse_as_char(tok: &Token) -> OptionErr<IRToken> {
 }
 
 fn parse_char(word: String, loc: Loc) -> OptionErr<i32> {
-    match word.strip_prefix('\\') {
-        Some(escaped) => parse_scaped(escaped.to_owned(), loc),
-        None => match word.len() {
-            0 => Err(err_loc("Char literals have to contain at leat on char", loc))?,
-            2.. => Err(err_loc(
-                format!("Char literals cannot contain more than one char: `{word}`"),
-                loc,
-            ))?,
+    word.strip_prefix('\\').map_or_else(
+        || match word.len() {
+            0 => err_loc("Char literals have to contain at leat on char", loc).into(),
+            2.. => {
+                err_loc(format!("Char literals cannot contain more than one char: `{word}`"), loc)
+                    .into()
+            }
             _ => OptionErr::new(word.chars().next().unwrap() as i32),
         },
-    }
+        |escaped| parse_scaped(escaped.to_owned(), loc),
+    )
 }
 
 fn parse_scaped(escaped: String, loc: Loc) -> OptionErr<i32> {
