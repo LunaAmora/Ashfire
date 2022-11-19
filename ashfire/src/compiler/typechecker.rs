@@ -305,7 +305,7 @@ impl TypeChecker {
                 let stk = &prog.structs_types[usize::from(value)];
                 let word = &op.str_key();
 
-                let Some((offset, index)) = get_field_pos(stk.members(), word) else {
+                let Some((offset, index)) = stk.members().get_offset(word) else {
                     let error = format!("The struct {} does not contain a member with name: `{}`",
                         stk.as_str(prog), word.as_str(prog));
                     Err(err_loc(error, loc))?
@@ -316,7 +316,7 @@ impl TypeChecker {
                     StructType::Unit(typ) => typ.get_type(),
                 };
 
-                prog.set_operand(ip, offset * 4);
+                prog.set_operand(ip, offset * UWORD_SIZE);
                 Ok(result)
             }
             typ => lazybail!(

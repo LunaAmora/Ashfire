@@ -9,6 +9,13 @@ use num::FromPrimitive;
 
 pub type StrKey = lasso::Spur;
 
+pub const WORD_SIZE: i32 = 4;
+pub const UWORD_SIZE: usize = 4;
+
+pub fn aligned<O: Operand>(value: O) -> impl Operand {
+    ((value.operand() + WORD_SIZE - 1) / WORD_SIZE) * WORD_SIZE
+}
+
 pub trait Typed {
     fn get_type(&self) -> TokenType;
 }
@@ -100,7 +107,7 @@ impl ProcData {
     }
 
     pub fn var_mem_offset(&self, index: i32) -> i32 {
-        self.mem_size as i32 + (index + 1) * 4
+        self.mem_size as i32 + (index + 1) * WORD_SIZE as i32
     }
 }
 
@@ -396,30 +403,37 @@ impl From<ValueType> for StructType {
     }
 }
 
-pub fn get_field_pos(vars: &[StructType], word: &StrKey) -> Option<(usize, usize)> {
-    let Some(i) = vars.iter().position(|stk| word.eq(stk)) else {
-        return None;
-    };
-
-    let mut offset = 0;
-    for (var, _) in vars.iter().zip(0..i) {
-        offset += var.size() / 4;
-    }
-
-    Some((offset, i))
+pub trait OffsetByKey {
+    fn get_offset(&self, word: &StrKey) -> Option<(usize, usize)>;
+    fn get_offset_local(&self, word: &StrKey) -> Option<(usize, usize)>;
 }
 
-pub fn get_field_pos_local(vars: &[StructType], word: &StrKey) -> Option<(usize, usize)> {
-    let Some(i) = vars.iter().position(|stk| word.eq(stk)) else {
-        return None;
-    };
+impl OffsetByKey for [StructType] {
+    fn get_offset(&self, word: &StrKey) -> Option<(usize, usize)> {
+        let Some(i) = self.iter().position(|stk| word.eq(stk)) else {
+            return None;
+        };
 
-    let mut offset = 0;
-    for (var, _) in vars.iter().zip(0..=i) {
-        offset += var.size() / 4;
+        let mut offset = 0;
+        for (var, _) in self.iter().zip(0..i) {
+            offset += var.size() / UWORD_SIZE;
+        }
+
+        Some((offset, i))
     }
 
-    Some((offset - 1, i))
+    fn get_offset_local(&self, word: &StrKey) -> Option<(usize, usize)> {
+        let Some(i) = self.iter().position(|stk| word.eq(stk)) else {
+            return None;
+        };
+
+        let mut offset = 0;
+        for (var, _) in self.iter().zip(0..=i) {
+            offset += var.size() / UWORD_SIZE;
+        }
+
+        Some((offset - 1, i))
+    }
 }
 
 #[derive(Clone)]

@@ -74,7 +74,7 @@ impl Program {
     }
 
     pub fn mem_start(&self) -> i32 {
-        ((self.data_size as i32 + 3) / 4) * 4
+        aligned(self.data_size).operand()
     }
 
     pub fn global_vars_start(&self) -> i32 {

@@ -636,7 +636,7 @@ impl Parser {
         let value = self.expect_by(|tok| tok == Value::Int, "memory size after `:`", loc)?;
         self.expect_keyword(KeywordType::End, "`end` after memory size", loc)?;
 
-        let size = ((value.index() + 3) / 4) * 4;
+        let size = aligned(value).index();
         let ctx = prog.push_mem_by_context(self.get_index(), word, size)?;
         self.name_scopes.register(word, ctx);
 
@@ -854,9 +854,9 @@ impl Program {
         &self, word: &LocWord, vars: &[StructType], push_type: OpType, stk_id: i32,
     ) -> Vec<Op> {
         let index = if push_type == OpType::PushLocal {
-            get_field_pos_local(vars, word).unwrap().0
+            vars.get_offset_local(word).unwrap().0
         } else {
-            get_field_pos(vars, word).unwrap().0
+            vars.get_offset(word).unwrap().0
         };
 
         vec![
@@ -871,7 +871,7 @@ impl Program {
     ) -> Vec<Op> {
         let mut result = Vec::new();
         let loc = word.loc;
-        let index = get_field_pos(vars, word).unwrap().0 as i32;
+        let index = vars.get_offset(word).unwrap().0 as i32;
 
         let is_local = push_type == OpType::PushLocal;
         let id_range = if store == is_local {
@@ -919,10 +919,9 @@ impl Program {
             Err(todo(loc))?
         };
 
-        let (index, i) = get_field_pos(vars, &first).or_return(OptionErr::default)?;
+        let (mut offset, i) = vars.get_offset(&first).or_return(OptionErr::default)?;
 
         let mut fields = fields.into_iter().skip(1);
-        let mut offset = index;
         let mut var = &vars[i];
 
         while let Some(field_name) = fields.next() {
@@ -934,7 +933,7 @@ impl Program {
                 Err(todo(loc))?
             };
 
-            let Some((diff, pos)) = get_field_pos(root.members(), &field_key) else {
+            let Some((diff, pos)) = root.members().get_offset(&field_key) else {
                 let error = format!("The variable `{}` does not contain the field `{}`",
                     var.as_str(self), field_name);
                 Err(err_loc(error, loc))?

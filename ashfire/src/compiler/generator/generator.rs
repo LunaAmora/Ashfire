@@ -104,7 +104,7 @@ impl FuncGen {
             }
 
             OpType::PushLocalMem => {
-                let ptr = self.bind_count * 4 + op.operand;
+                let ptr = self.bind_count * WORD_SIZE + op.operand;
                 self.extend([Const(ptr), Call("push_local".into())]);
             }
 
@@ -122,7 +122,7 @@ impl FuncGen {
             }
 
             OpType::PushGlobal => {
-                let ptr = prog.mem_start() + op.operand * 4;
+                let ptr = prog.mem_start() + op.operand * WORD_SIZE;
                 self.push(Const(ptr))
             }
 
