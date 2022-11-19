@@ -314,11 +314,7 @@ impl TypeChecker {
                     return Err(err_loc(error, loc));
                 };
 
-                let result = match &stk.members()[index] {
-                    StructType::Root(stk) => stk.get_type(),
-                    StructType::Unit(typ) => typ.get_type(),
-                };
-
+                let result = stk.members()[index].get_type();
                 prog.set_operand(ip, offset * WORD_USIZE);
                 Ok(result)
             }

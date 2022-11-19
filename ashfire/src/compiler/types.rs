@@ -393,6 +393,15 @@ impl Deref for StructType {
     }
 }
 
+impl Typed for StructType {
+    fn get_type(&self) -> TokenType {
+        match self {
+            Self::Root(stk) => stk.get_type(),
+            Self::Unit(typ) => typ.get_type(),
+        }
+    }
+}
+
 impl From<ValueType> for StructType {
     fn from(value: ValueType) -> Self {
         Self::Unit(value)
