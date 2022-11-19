@@ -41,7 +41,7 @@ impl Parser {
                     todo!();
                 };
 
-                data.local_vars.push(struct_word)
+                data.local_vars.push(struct_word);
             }
             None => prog.global_vars.push(struct_word),
         }

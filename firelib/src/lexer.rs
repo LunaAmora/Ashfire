@@ -22,18 +22,21 @@ impl LexerBuilder {
         }
     }
 
+    #[must_use]
     /// Separators are not included in other tokens, unless inside a [`Match`].
     pub fn with_separators(mut self, sep: Vec<char>) -> Self {
         self.separators.extend(sep);
         self
     }
 
+    #[must_use]
     /// Captures everything betwen a pair of chars or until the end of the line.
     pub fn with_matches(mut self, matches: Vec<Match>) -> Self {
         self.matches.extend(matches);
         self
     }
 
+    #[must_use]
     /// Makes the rest of the line be ignored by the lexer.
     pub fn with_comments(mut self, comment: &str) -> Self {
         self.comments = Some(comment.to_owned());

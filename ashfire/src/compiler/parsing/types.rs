@@ -25,7 +25,7 @@ impl Operand for LocWord {
     }
 
     fn str_key(&self) -> StrKey {
-        self.word.to_owned()
+        self.word
     }
 }
 
@@ -37,7 +37,7 @@ impl Location for LocWord {
 
 impl LocWord {
     pub fn new<O: Operand>(index: O, loc: Loc) -> Self {
-        Self { word: index.str_key().to_owned(), loc }
+        Self { word: index.str_key(), loc }
     }
 }
 
@@ -112,14 +112,14 @@ impl NameScopes {
 
     pub fn register(&mut self, name: &StrKey, ctx: ParseContext) {
         if let Some(scope) = self.scopes.last_mut() {
-            scope.names.insert(name.to_owned(), ctx);
+            scope.names.insert(*name, ctx);
         } else {
-            self.names.insert(name.to_owned(), ctx);
+            self.names.insert(*name, ctx);
         }
     }
 
     pub fn push(&mut self, op: Op) {
-        self.scopes.push(Scope::new(op))
+        self.scopes.push(Scope::new(op));
     }
 
     pub fn pop(&mut self) -> Option<Op> {

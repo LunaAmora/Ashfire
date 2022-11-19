@@ -188,9 +188,9 @@ mod tests {
     impl<T: Display, E> Display for OptionErr<T, E> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match &self.value {
-                Ok(Some(value)) => write!(f, "Some: {}", value),
+                Ok(Some(value)) => write!(f, "Some: {value}"),
                 Ok(None) => write!(f, "None"),
-                Err(err) => write!(f, "{}", err),
+                Err(err) => write!(f, "{err}"),
             }
         }
     }

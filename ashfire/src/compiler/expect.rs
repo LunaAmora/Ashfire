@@ -92,7 +92,7 @@ pub trait Expect<T: Clone + Typed + Location + 'static>: UncheckedStack<T> {
                 f.format(Fmt::Loc(loc)),
                 n,
                 len
-            )
+            );
         };
         Ok(())
     }

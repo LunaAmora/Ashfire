@@ -56,7 +56,7 @@ impl Program {
     }
 
     pub fn push_mem(&mut self, word: &StrKey, size: usize) {
-        let value = OffsetWord::new(word.to_owned(), self.mem_size as i32);
+        let value = OffsetWord::new(*word, self.mem_size as i32);
         self.memory.push(value);
         self.mem_size += size;
     }
@@ -149,11 +149,11 @@ impl Program {
         .to_owned()
     }
 
-    fn data_display<O: Operand>(&self, value: Value, operand: O) -> String {
+    fn data_display<O: Operand>(value: Value, operand: O) -> String {
         let operand = operand.operand();
         match value {
             Value::Bool => fold_bool!(operand != 0, "True", "False").to_owned(),
-            Value::Ptr => format!("*{}", operand),
+            Value::Ptr => format!("*{operand}"),
             Value::Any | Value::Int | Value::Type(_) => operand.to_string(),
         }
     }
@@ -163,7 +163,7 @@ impl Program {
             TokenType::Keyword => format!("{:?}", tok.as_keyword()),
             TokenType::Word => self.get_word(tok).to_owned(),
             TokenType::Str => self.get_data_str(tok).to_owned(),
-            TokenType::Data(data) => self.data_display(data.get_value(), tok),
+            TokenType::Data(data) => Self::data_display(data.get_value(), tok),
         }
     }
 
@@ -228,11 +228,7 @@ pub trait ProgramVisitor {
     }
 
     fn current_proc<'a>(&self, program: &'a Program) -> Option<&'a Proc> {
-        if let Some(i) = self.get_index() {
-            program.procs.get(i)
-        } else {
-            None
-        }
+        self.get_index().and_then(|i| program.procs.get(i))
     }
 
     fn current_proc_data<'a>(&self, program: &'a Program) -> Option<&'a ProcData> {
@@ -254,11 +250,11 @@ pub trait ProgramVisitor {
     }
 
     fn enter_proc(&mut self, i: usize) {
-        self.set_index(Some(i))
+        self.set_index(Some(i));
     }
 
     fn exit_proc(&mut self) {
-        self.set_index(None)
+        self.set_index(None);
     }
 }
 

@@ -56,7 +56,7 @@ impl Generator {
         wasm.add_fn("push_local", i1, i1, vec![Get(global, Id(stk)), Get(local, Id(0)), I32(sub)]);
 
         let mut skip = false;
-        for op in program.ops.iter() {
+        for op in &program.ops {
             skip = match op.op_type {
                 OpType::PrepProc | OpType::PrepInline => self.prep_proc(program, op)?,
                 OpType::EndProc => self.end_proc(program, &mut wasm)?,
@@ -73,7 +73,7 @@ impl Generator {
         wasm.add_export("_start", Bind::Func("start".into()));
 
         for data in program.get_all_data() {
-            wasm.add_data(data.as_string(program))
+            wasm.add_data(data.as_string(program));
         }
 
         if !program.global_vars.is_empty() {
@@ -100,7 +100,7 @@ impl FuncGen {
 
             OpType::PushStr => {
                 let (size, offset) = prog.get_data(op).data();
-                self.extend([Const(size), Const(offset)])
+                self.extend([Const(size), Const(offset)]);
             }
 
             OpType::PushLocalMem => {
@@ -110,7 +110,7 @@ impl FuncGen {
 
             OpType::PushGlobalMem => {
                 let ptr = prog.global_vars_start() + op.operand;
-                self.push(Const(ptr))
+                self.push(Const(ptr));
             }
 
             OpType::PushLocal => {
@@ -123,7 +123,7 @@ impl FuncGen {
 
             OpType::PushGlobal => {
                 let ptr = prog.mem_start() + op.operand * WORD_SIZE;
-                self.push(Const(ptr))
+                self.push(Const(ptr));
             }
 
             OpType::Offset | OpType::OffsetLoad => self.extend([Const(op.operand), I32(add)]),
@@ -171,7 +171,7 @@ impl FuncGen {
                 let contract =
                     module.new_contract(&vec![WasmType::I32; ins], &vec![WasmType::I32; outs]);
 
-                self.push(Block(BlockType::If, Some(Id(contract))))
+                self.push(Block(BlockType::If, Some(Id(contract))));
             }
 
             OpType::Else => self.push(Else),

@@ -43,7 +43,7 @@ impl Parser {
     pub fn skip(&mut self, n: usize) -> Option<IRToken> {
         let mut result = None;
         for _ in 0..n {
-            result = self.ir_tokens.pop_front()
+            result = self.ir_tokens.pop_front();
         }
         result
     }
@@ -57,7 +57,7 @@ impl Parser {
     pub fn parse_tokens(&mut self, prog: &mut Program) -> LazyResult<()> {
         while let Some(token) = self.next() {
             if let Some(mut op) = self.define_op(token, prog).value? {
-                prog.ops.append(&mut op)
+                prog.ops.append(&mut op);
             }
         }
         Ok(())
@@ -69,7 +69,7 @@ impl Parser {
                 |f| "{}Token type cannot be used outside of a procedure: `{}`",
                 f.format(Fmt::Loc(tok.loc)),
                 f.format(Fmt::Typ(tok.token_type))
-            )
+            );
         };
 
         let op = Op::from(match tok.token_type {
@@ -273,7 +273,7 @@ impl Parser {
             KeywordType::Proc |
             KeywordType::Mem |
             KeywordType::Struct => {
-                Err(err_loc(format!("Keyword type is not valid here: `{:?}`", key), loc))?
+                Err(err_loc(format!("Keyword type is not valid here: `{key:?}`"), loc))?
             }
         };
 
@@ -293,7 +293,7 @@ impl Parser {
     /// This function will return an error if no block is open.
     fn pop_block(&mut self, closing_type: KeywordType, loc: Loc) -> LazyResult<Op> {
         self.name_scopes.pop().with_err_ctx(move || {
-            err_loc(format!("There are no open blocks to close with `{:?}`", closing_type), loc)
+            err_loc(format!("There are no open blocks to close with `{closing_type:?}`"), loc)
         })
     }
 
@@ -356,12 +356,11 @@ impl Parser {
             .flatten()
             .or_return(OptionErr::default)?;
 
-        OptionErr::new(match pointer {
-            true => {
-                let stk_id = prog.get_data_type_id(struct_type).unwrap() as i32;
-                prog.get_var_pointer(word, vars, push_type, stk_id)
-            }
-            _ => prog.get_var_fields(word, vars, push_type, struct_type, store),
+        OptionErr::new(if pointer {
+            let stk_id = prog.get_data_type_id(struct_type).unwrap() as i32;
+            Program::get_var_pointer(word, vars, push_type, stk_id)
+        } else {
+            Program::get_var_fields(word, vars, push_type, struct_type, store)
         })
     }
 
@@ -382,7 +381,7 @@ impl Parser {
         while let Some(tok) = self.ir_tokens.get(i).cloned() {
             match (colons, &tok.token_type) {
                 (1, TokenType::Data(Data::Typ(Value::Int))) => {
-                    self.parse_memory(word, prog).try_success()?
+                    self.parse_memory(word, prog).try_success()?;
                 }
 
                 (1, TokenType::Word) => {
@@ -637,7 +636,7 @@ impl Parser {
         self.expect_keyword(KeywordType::End, "`end` after memory size", loc)?;
 
         let size = aligned(value).index();
-        let ctx = prog.push_mem_by_context(self.get_index(), word, size)?;
+        let ctx = prog.push_mem_by_context(self.get_index(), word, size);
         self.name_scopes.register(word, ctx);
 
         Ok(())
@@ -681,7 +680,7 @@ impl Parser {
                     }
                 }
                 Either::Right(typ_ptr) => {
-                    members.push(StructType::Unit((member_name.str_key(), typ_ptr).into()))
+                    members.push(StructType::Unit((member_name.str_key(), typ_ptr).into()));
                 }
             }
         }
@@ -744,7 +743,7 @@ impl Parser {
                         f.format(Fmt::Loc(end_token.loc)),
                         f.format(Fmt::Typ(member_type)),
                         f.format(Fmt::Typ(eval.token_type))
-                    )
+                    );
                 }
 
                 let struct_word = ValueType::new(word, &eval);
@@ -763,7 +762,7 @@ impl Parser {
             result.expect_exact(&contract, end_token.loc)?;
 
             if self.inside_proc() && assign == KeywordType::Equal {
-                result.reverse()
+                result.reverse();
             }
 
             let mut def_members = vec![];
@@ -851,7 +850,7 @@ impl Parser {
 
 impl Program {
     fn get_var_pointer(
-        &self, word: &LocWord, vars: &[StructType], push_type: OpType, stk_id: i32,
+        word: &LocWord, vars: &[StructType], push_type: OpType, stk_id: i32,
     ) -> Vec<Op> {
         let index = if push_type == OpType::PushLocal {
             vars.get_offset_local(word).unwrap().0
@@ -866,7 +865,7 @@ impl Program {
     }
 
     fn get_var_fields(
-        &self, word: &LocWord, vars: &[StructType], push_type: OpType, struct_type: &StructDef,
+        word: &LocWord, vars: &[StructType], push_type: OpType, struct_type: &StructDef,
         store: bool,
     ) -> Vec<Op> {
         let mut result = Vec::new();
@@ -891,13 +890,13 @@ impl Program {
 
         for (operand, type_id) in id_range.zip(members) {
             if store {
-                result.push(Op::new(OpType::ExpectType, type_id, loc))
+                result.push(Op::new(OpType::ExpectType, type_id, loc));
             }
 
             result.push(Op::new(push_type, operand, loc));
 
             if store {
-                result.push(Op::from((IntrinsicType::Store32, loc)))
+                result.push(Op::from((IntrinsicType::Store32, loc)));
             } else {
                 result.extend([
                     Op::from((IntrinsicType::Load32, loc)),
@@ -934,8 +933,8 @@ impl Program {
             };
 
             let Some((diff, pos)) = root.members().get_offset(&field_key) else {
-                let error = format!("The variable `{}` does not contain the field `{}`",
-                    var.as_str(self), field_name);
+                let error = format!("The variable `{}` does not contain the field `{field_name}`",
+                    var.as_str(self));
                 Err(err_loc(error, loc))?
             };
 
@@ -949,7 +948,7 @@ impl Program {
             StructType::Unit(unit) => unit,
             StructType::Root(root) => {
                 if store {
-                    Err(todo(loc))?
+                    Err(todo(loc))?;
                 }
 
                 if push_type == OpType::PushLocal {
@@ -974,13 +973,13 @@ impl Program {
         let type_id = typ.data().operand();
 
         if store {
-            result.push(Op::new(OpType::ExpectType, type_id, loc))
+            result.push(Op::new(OpType::ExpectType, type_id, loc));
         }
 
         result.push(Op::new(push_type, offset as i32, loc));
 
         if store {
-            result.push(Op::from((IntrinsicType::Store32, loc)))
+            result.push(Op::from((IntrinsicType::Store32, loc)));
         } else if pointer {
             result.push(Op::from((IntrinsicType::Cast(-type_id), loc)));
         } else {
@@ -1010,7 +1009,7 @@ impl Program {
                 .iter()
                 .map(|&value| Op::from((value, word.loc)))
                 .collect(),
-            _ => vec![Op::from((tword, word.loc))],
+            StructType::Unit(_) => vec![Op::from((tword, word.loc))],
         })
     }
 
@@ -1034,9 +1033,10 @@ impl Program {
     }
 
     fn get_type_kind(&self, word: &LocWord, as_ref: bool) -> Option<Either<&StructDef, Data>> {
-        match as_ref {
-            false => self.get_type_name(word).map(Either::Left),
-            true => self.get_data_ptr(word).map(Either::Right),
+        if as_ref {
+            self.get_data_ptr(word).map(Either::Right)
+        } else {
+            self.get_type_name(word).map(Either::Left)
         }
     }
 
@@ -1059,20 +1059,17 @@ impl Program {
 
     fn push_mem_by_context(
         &mut self, proc_index: Option<usize>, word: &StrKey, size: usize,
-    ) -> LazyResult<ParseContext> {
-        match proc_index.and_then(|i| self.procs.get_mut(i)) {
-            Some(proc) => {
-                let Some(data) = proc.get_data_mut() else {
-                    todo!();
-                };
+    ) -> ParseContext {
+        if let Some(proc) = proc_index.and_then(|i| self.procs.get_mut(i)) {
+            let Some(data) = proc.get_data_mut() else {
+                todo!();
+            };
 
-                data.push_mem(word, size);
-                Ok(ParseContext::LocalMem)
-            }
-            None => {
-                self.push_mem(word, size);
-                Ok(ParseContext::GlobalMem)
-            }
+            data.push_mem(word, size);
+            ParseContext::LocalMem
+        } else {
+            self.push_mem(word, size);
+            ParseContext::GlobalMem
         }
     }
 

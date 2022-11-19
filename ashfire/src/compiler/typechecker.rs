@@ -76,14 +76,14 @@ impl TypeChecker {
             OpType::OffsetLoad => match self.expect_struct_pointer(program, ip)? {
                 TokenType::Data(Data::Typ(typ)) => {
                     self.push_frame(Data::Ptr(typ).get_type(), loc);
-                    program.ops.insert(ip + 1, Op::new(OpType::Unpack, 0, loc))
+                    program.ops.insert(ip + 1, Op::new(OpType::Unpack, 0, loc));
                 }
                 _ => Err(todo(loc))?,
             },
 
             OpType::Offset => match self.expect_struct_pointer(program, ip)? {
                 TokenType::Data(Data::Typ(offset_type)) => {
-                    self.push_frame(Data::Ptr(offset_type).get_type(), loc)
+                    self.push_frame(Data::Ptr(offset_type).get_type(), loc);
                 }
                 _ => Err(todo(loc))?,
             },
@@ -109,7 +109,7 @@ impl TypeChecker {
 
                 IntrinsicType::Load8 | IntrinsicType::Load16 | IntrinsicType::Load32 => {
                     self.data_stack.expect_pop_type(PTR, loc)?;
-                    self.push_frame(ANY, loc)
+                    self.push_frame(ANY, loc);
                 }
 
                 IntrinsicType::Store8 | IntrinsicType::Store16 | IntrinsicType::Store32 => {
@@ -146,8 +146,11 @@ impl TypeChecker {
             }
 
             OpType::Equal => {
-                self.data_stack
-                    .pop_push_arity(|[_, _]| (BOOL, loc).into(), ArityType::Same, loc)?
+                self.data_stack.pop_push_arity(
+                    |[_, _]| (BOOL, loc).into(),
+                    ArityType::Same,
+                    loc,
+                )?;
             }
 
             OpType::PrepProc | OpType::PrepInline => {
@@ -219,7 +222,7 @@ impl TypeChecker {
             }
 
             OpType::EndProc | OpType::EndInline => {
-                let proc = &mut self.current_proc_mut(program).unwrap();
+                let proc = self.current_proc_mut(program).unwrap();
                 let outs = proc.contract.outs();
 
                 if outs.is_empty() {
@@ -230,10 +233,10 @@ impl TypeChecker {
                     self.data_stack.expect_exact_pop(&outs, loc)?;
                 }
 
-                self.data_stack = Default::default();
+                self.data_stack = EvalStack::default();
 
                 if let ProcType::Inline(start, _) = proc.data {
-                    proc.data = ProcType::Inline(start, ip)
+                    proc.data = ProcType::Inline(start, ip);
                 }
 
                 self.exit_proc();
@@ -286,15 +289,15 @@ impl TypeChecker {
     }
 
     fn extend_value<const N: usize>(&mut self, value: [Value; N], loc: Loc) {
-        self.data_stack.extend(value.map(|v| (v, loc).into()))
+        self.data_stack.extend(value.map(|v| (v, loc).into()));
     }
 
     fn push_value(&mut self, value: Value, loc: Loc) {
-        self.data_stack.push((value, loc).into())
+        self.data_stack.push((value, loc).into());
     }
 
     fn push_frame(&mut self, typ: TokenType, loc: Loc) {
-        self.data_stack.push((typ, loc).into())
+        self.data_stack.push((typ, loc).into());
     }
 
     fn expect_struct_pointer(&mut self, prog: &mut Program, ip: usize) -> LazyResult<TokenType> {

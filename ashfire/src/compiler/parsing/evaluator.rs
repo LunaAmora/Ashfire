@@ -125,7 +125,7 @@ impl Evaluator for EvalStack<IRToken> {
                 _ => Err(Either::Left(tok))?,
             },
 
-            _ => Err(Either::Left(tok))?,
+            TokenType::Data(_) => Err(Either::Left(tok))?,
         }
 
         DoubleResult::new(())

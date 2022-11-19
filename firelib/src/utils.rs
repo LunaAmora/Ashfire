@@ -25,9 +25,10 @@ impl<T> EmptySome for Vec<T> {
 
 /// Push a value `T` to different [`Vec<T>`] based on the given condition.
 pub fn push_by_condition<T>(cond: bool, value: T, if_true: &mut Vec<T>, if_false: &mut Vec<T>) {
-    match cond {
-        true => if_true.push(value),
-        _ => if_false.push(value),
+    if cond {
+        if_true.push(value);
+    } else {
+        if_false.push(value);
     }
 }
 
@@ -46,10 +47,9 @@ pub fn get_range_ref<T, const N: usize>(deque: &VecDeque<T>, index: usize) -> Re
     if deque.len() > (index + N + 1) {
         let range: Vec<&T> = deque.range(index..(index + N)).collect();
 
-        match range.try_into() {
-            Ok(t) => Ok(t),
-            _ => unreachable!("Failed to collect into an correctly sized array"),
-        }
+        range
+            .try_into()
+            .map_or_else(|_| unreachable!("Failed to collect into an correctly sized array"), Ok)
     } else {
         bail!(
             "Invalid range of elements to get from the deque: `{}`..`{}` of `{}`",

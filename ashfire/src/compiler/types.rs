@@ -38,7 +38,7 @@ impl<T: Location> Location for &T {
 
 impl Location for Loc {
     fn loc(&self) -> Loc {
-        self.to_owned()
+        *self
     }
 }
 
@@ -83,7 +83,7 @@ impl Operand for StrKey {
     }
 
     fn str_key(&self) -> StrKey {
-        self.to_owned()
+        *self
     }
 }
 
@@ -99,7 +99,7 @@ impl ProcData {
     pub fn push_mem(&mut self, word: &StrKey, size: usize) {
         self.mem_size += size;
         self.local_mems
-            .push(OffsetWord::new(word.to_owned(), self.mem_size as i32));
+            .push(OffsetWord::new(*word, self.mem_size as i32));
     }
 
     pub fn total_size(&self) -> i32 {
@@ -131,12 +131,8 @@ pub struct Proc {
 
 impl Proc {
     pub fn new(name: &StrKey, contract: Contract, inline: Option<usize>) -> Self {
-        let data = match inline {
-            Some(start) => ProcType::Inline(start, 0),
-            _ => ProcType::default(),
-        };
-
-        Self { name: name.to_owned(), contract, data }
+        let data = inline.map_or_else(ProcType::default, |start| ProcType::Inline(start, 0));
+        Self { name: *name, contract, data }
     }
 
     pub fn get_data(&self) -> Option<&ProcData> {
@@ -249,13 +245,13 @@ impl From<(&ValueType, Loc)> for Op {
             unimplemented!("Conversion supported only for DataTypes")
         };
 
-        Op::new(OpType::PushData(typ), tuple.0.value, tuple.1)
+        Self::new(OpType::PushData(typ), tuple.0.value, tuple.1)
     }
 }
 
 impl From<(IntrinsicType, Loc)> for Op {
     fn from(value: (IntrinsicType, Loc)) -> Self {
-        Op::new(OpType::Intrinsic, value.0.into(), value.1)
+        Self::new(OpType::Intrinsic, value.0.into(), value.1)
     }
 }
 
@@ -353,7 +349,7 @@ impl From<(&StructType, Loc)> for IRToken {
 
 impl From<(&ValueType, Loc)> for IRToken {
     fn from(tuple: (&ValueType, Loc)) -> Self {
-        IRToken::new(tuple.0.data_type.get_type(), tuple.0.value, tuple.1)
+        Self::new(tuple.0.data_type.get_type(), tuple.0.value, tuple.1)
     }
 }
 
@@ -366,22 +362,22 @@ pub enum StructType {
 impl StructType {
     pub fn units(&self) -> Vec<&ValueType> {
         match self {
-            StructType::Root(s) => s.units(),
-            StructType::Unit(v) => vec![v],
+            Self::Root(s) => s.units(),
+            Self::Unit(v) => vec![v],
         }
     }
 
     pub fn count(&self) -> usize {
         match self {
-            StructType::Root(s) => s.count(),
-            StructType::Unit(_) => 1,
+            Self::Root(s) => s.count(),
+            Self::Unit(_) => 1,
         }
     }
 
     pub fn size(&self) -> usize {
         match self {
-            StructType::Root(s) => s.size(),
-            StructType::Unit(_) => 4,
+            Self::Root(s) => s.size(),
+            Self::Unit(_) => 4,
         }
     }
 }
@@ -391,15 +387,15 @@ impl Deref for StructType {
 
     fn deref(&self) -> &Self::Target {
         match self {
-            StructType::Unit(val) => &val.name,
-            StructType::Root(stk) => &stk.name,
+            Self::Unit(val) => &val.name,
+            Self::Root(stk) => &stk.name,
         }
     }
 }
 
 impl From<ValueType> for StructType {
     fn from(value: ValueType) -> Self {
-        StructType::Unit(value)
+        Self::Unit(value)
     }
 }
 
@@ -444,7 +440,7 @@ pub struct StructDef {
 
 impl StructDef {
     pub fn new(name: &StrKey, members: Vec<StructType>) -> Self {
-        Self { name: name.to_owned(), members }
+        Self { name: *name, members }
     }
 
     pub fn members(&self) -> &[StructType] {
@@ -528,11 +524,7 @@ impl ValueType {
             unimplemented!()
         };
 
-        Self {
-            name: name.to_owned(),
-            value: typed.operand(),
-            data_type,
-        }
+        Self { name: *name, value: typed.operand(), data_type }
     }
 
     pub fn value(&self) -> i32 {
@@ -622,7 +614,7 @@ impl Operand for IndexWord {
 
 impl IndexWord {
     pub fn new<O: Operand>(name: &StrKey, index: O) -> Self {
-        Self(name.to_owned(), index.index())
+        Self(*name, index.index())
     }
 }
 
@@ -631,7 +623,7 @@ pub struct TypeFrame(TokenType, Loc);
 
 impl TypeFrame {
     pub fn new<T: Typed + Location>(tok: T) -> Self {
-        Self(tok.get_type(), tok.loc().to_owned())
+        Self(tok.get_type(), tok.loc())
     }
 }
 
@@ -649,7 +641,7 @@ impl Location for TypeFrame {
 
 impl<T: Typed, L: Location> From<(T, L)> for TypeFrame {
     fn from(tuple: (T, L)) -> Self {
-        Self(tuple.0.get_type(), tuple.1.loc().to_owned())
+        Self(tuple.0.get_type(), tuple.1.loc())
     }
 }
 
@@ -673,7 +665,7 @@ pub enum Data {
 impl Data {
     pub fn get_value(self) -> Value {
         match self {
-            Data::Typ(val) | Data::Ptr(val) => val,
+            Self::Typ(val) | Self::Ptr(val) => val,
         }
     }
 }
@@ -687,8 +679,8 @@ impl Typed for Data {
 impl Operand for Data {
     fn operand(&self) -> i32 {
         match self {
-            Data::Typ(value) => 1 + usize::from(*value) as i32,
-            Data::Ptr(value) => -(1 + usize::from(*value) as i32),
+            Self::Typ(value) => 1 + usize::from(*value) as i32,
+            Self::Ptr(value) => -(1 + usize::from(*value) as i32),
         }
     }
 
@@ -701,8 +693,8 @@ impl From<i32> for Data {
     fn from(value: i32) -> Self {
         match value {
             0 => unimplemented!("Not a valid value"),
-            1.. => Data::Typ(Value::from((value - 1) as usize)),
-            _ => Data::Ptr(Value::from((-value - 1) as usize)),
+            1.. => Self::Typ(Value::from((value - 1) as usize)),
+            _ => Self::Ptr(Value::from((-value - 1) as usize)),
         }
     }
 }
@@ -775,11 +767,11 @@ impl Operand for Value {
 impl From<usize> for Value {
     fn from(value: usize) -> Self {
         match value {
-            0 => Value::Int,
-            1 => Value::Bool,
-            2 => Value::Ptr,
-            3 => Value::Any,
-            i => Value::Type(i),
+            0 => Self::Int,
+            1 => Self::Bool,
+            2 => Self::Ptr,
+            3 => Self::Any,
+            i => Self::Type(i),
         }
     }
 }
@@ -796,7 +788,7 @@ impl From<Value> for usize {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpType {
     PushData(Value),
     PushStr,
@@ -863,24 +855,24 @@ pub enum IntrinsicType {
 impl IntrinsicType {
     pub fn from_str(value: &str) -> Option<Self> {
         Some(match value {
-            "+" => IntrinsicType::Plus,
-            "-" => IntrinsicType::Minus,
-            "*" => IntrinsicType::Times,
-            "%" => IntrinsicType::Div,
-            ">" => IntrinsicType::Greater,
-            ">=" => IntrinsicType::GreaterE,
-            "<" => IntrinsicType::Lesser,
-            "<=" => IntrinsicType::LesserE,
-            "or" => IntrinsicType::Or,
-            "and" => IntrinsicType::And,
-            "xor" => IntrinsicType::Xor,
-            "@8" => IntrinsicType::Load8,
-            "!8" => IntrinsicType::Store8,
-            "@16" => IntrinsicType::Load16,
-            "!16" => IntrinsicType::Store16,
-            "@32" => IntrinsicType::Load32,
-            "!32" => IntrinsicType::Store32,
-            "fd_write" => IntrinsicType::FdWrite,
+            "+" => Self::Plus,
+            "-" => Self::Minus,
+            "*" => Self::Times,
+            "%" => Self::Div,
+            ">" => Self::Greater,
+            ">=" => Self::GreaterE,
+            "<" => Self::Lesser,
+            "<=" => Self::LesserE,
+            "or" => Self::Or,
+            "and" => Self::And,
+            "xor" => Self::Xor,
+            "@8" => Self::Load8,
+            "!8" => Self::Store8,
+            "@16" => Self::Load16,
+            "!16" => Self::Store16,
+            "@32" => Self::Load32,
+            "!32" => Self::Store32,
+            "fd_write" => Self::FdWrite,
             _ => return None,
         })
     }
@@ -889,26 +881,26 @@ impl IntrinsicType {
 impl const From<i32> for IntrinsicType {
     fn from(value: i32) -> Self {
         match value {
-            0 => IntrinsicType::Plus,
-            1 => IntrinsicType::Minus,
-            2 => IntrinsicType::Times,
-            3 => IntrinsicType::Div,
-            4 => IntrinsicType::Greater,
-            5 => IntrinsicType::GreaterE,
-            6 => IntrinsicType::Lesser,
-            7 => IntrinsicType::LesserE,
-            8 => IntrinsicType::And,
-            9 => IntrinsicType::Or,
-            10 => IntrinsicType::Xor,
-            11 => IntrinsicType::Load8,
-            12 => IntrinsicType::Store8,
-            13 => IntrinsicType::Load16,
-            14 => IntrinsicType::Store16,
-            15 => IntrinsicType::Load32,
-            16 => IntrinsicType::Store32,
-            17 => IntrinsicType::FdWrite,
-            n if n.abs() <= CAST_BASE => IntrinsicType::Cast(0), // invalid cast
-            n => IntrinsicType::Cast(fold_bool!(n.is_positive(), -CAST_BASE, CAST_BASE) + n),
+            0 => Self::Plus,
+            1 => Self::Minus,
+            2 => Self::Times,
+            3 => Self::Div,
+            4 => Self::Greater,
+            5 => Self::GreaterE,
+            6 => Self::Lesser,
+            7 => Self::LesserE,
+            8 => Self::And,
+            9 => Self::Or,
+            10 => Self::Xor,
+            11 => Self::Load8,
+            12 => Self::Store8,
+            13 => Self::Load16,
+            14 => Self::Store16,
+            15 => Self::Load32,
+            16 => Self::Store32,
+            17 => Self::FdWrite,
+            n if n.abs() <= CAST_BASE => Self::Cast(0), // invalid cast
+            n => Self::Cast(fold_bool!(n.is_positive(), -CAST_BASE, CAST_BASE) + n),
         }
     }
 }
@@ -971,29 +963,29 @@ pub enum KeywordType {
 impl KeywordType {
     pub fn from_str(value: &str) -> Option<Self> {
         Some(match value {
-            "dup" => KeywordType::Dup,
-            "swap" => KeywordType::Swap,
-            "drop" => KeywordType::Drop,
-            "over" => KeywordType::Over,
-            "rot" => KeywordType::Rot,
-            "if" => KeywordType::If,
-            "else" => KeywordType::Else,
-            "end" => KeywordType::End,
-            "proc" => KeywordType::Proc,
-            "->" => KeywordType::Arrow,
-            "mem" => KeywordType::Mem,
-            ":" => KeywordType::Colon,
-            "=" => KeywordType::Equal,
-            "let" => KeywordType::Let,
-            "do" => KeywordType::Do,
-            "@" => KeywordType::At,
-            "." => KeywordType::Dot,
-            "*" => KeywordType::Ref,
-            "case" => KeywordType::Case,
-            "while" => KeywordType::While,
-            "struct" => KeywordType::Struct,
-            "inline" => KeywordType::Inline,
-            "include" => KeywordType::Include,
+            "dup" => Self::Dup,
+            "swap" => Self::Swap,
+            "drop" => Self::Drop,
+            "over" => Self::Over,
+            "rot" => Self::Rot,
+            "if" => Self::If,
+            "else" => Self::Else,
+            "end" => Self::End,
+            "proc" => Self::Proc,
+            "->" => Self::Arrow,
+            "mem" => Self::Mem,
+            ":" => Self::Colon,
+            "=" => Self::Equal,
+            "let" => Self::Let,
+            "do" => Self::Do,
+            "@" => Self::At,
+            "." => Self::Dot,
+            "*" => Self::Ref,
+            "case" => Self::Case,
+            "while" => Self::While,
+            "struct" => Self::Struct,
+            "inline" => Self::Inline,
+            "include" => Self::Include,
             _ => return None,
         })
     }

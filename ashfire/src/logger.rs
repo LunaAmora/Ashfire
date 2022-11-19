@@ -13,7 +13,7 @@ pub fn formatted_builder() -> Builder {
         let mut style = f.style();
         let level = colored_level(&mut style, record.level());
 
-        writeln!(f, "[{}] {}", level, record.args(),)
+        writeln!(f, "[{level}] {}", record.args(),)
     });
 
     builder

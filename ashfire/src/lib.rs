@@ -80,7 +80,7 @@ impl<T, E> From<Option<T>> for OptionErr<T, E> {
 
 impl<T, E> Success for OptionErr<Vec<T>, E> {
     fn success_value() -> Self {
-        OptionErr { value: Ok(Some(vec![])) }
+        Self { value: Ok(Some(vec![])) }
     }
 }
 
@@ -88,7 +88,7 @@ impl<T, E> SuccessFrom for OptionErr<Vec<T>, E> {
     type From = T;
 
     fn success_from(from: Self::From) -> Self {
-        OptionErr { value: Ok(Some(vec![from])) }
+        Self { value: Ok(Some(vec![from])) }
     }
 }
 
@@ -188,9 +188,9 @@ impl<T> Default for EvalStack<T> {
 }
 
 impl<T: Clone> EvalStack<T> {
-    pub fn new(other: &EvalStack<T>) -> Self {
+    pub fn new(other: &Self) -> Self {
         Self {
-            frames: other.frames.to_vec(),
+            frames: other.frames.clone(),
             min_count: other.min_count,
             stack_count: 0,
         }
@@ -205,7 +205,7 @@ impl<T> EvalStack<T> {
     fn stack_minus(&mut self, n: usize) {
         self.stack_count -= n as i32;
         if self.stack_count < self.min_count {
-            self.min_count = self.stack_count
+            self.min_count = self.stack_count;
         }
     }
 }
@@ -213,12 +213,12 @@ impl<T> EvalStack<T> {
 impl<T> UncheckedStack<T> for EvalStack<T> {
     fn push(&mut self, item: T) {
         self.stack_count += 1;
-        self.frames.push(item)
+        self.frames.push(item);
     }
 
     fn extend<const N: usize>(&mut self, items: [T; N]) {
         self.stack_count += N as i32;
-        self.frames.extend(items)
+        self.frames.extend(items);
     }
 
     unsafe fn pop(&mut self) -> T {

@@ -34,7 +34,7 @@ pub struct LazyError<T>(Box<dyn for<'a> Formatter<&'a dyn Formatter<T>>>);
 
 impl<T> LazyError<T> {
     pub fn new(lazy_error: impl Fn(&dyn Formatter<T>) -> String + 'static) -> Self {
-        LazyError(Box::new(lazy_error))
+        Self(Box::new(lazy_error))
     }
 
     pub fn apply(&self, formatter: &dyn Formatter<T>) -> Error {
@@ -60,9 +60,9 @@ impl<T> Debug for LazyError<T> {
 
 impl<E> From<Error> for LazyError<E> {
     fn from(value: Error) -> Self {
-        let err = value.chain().map(|err| format!("{}", err)).join("\n");
+        let err = value.chain().map(|err| format!("{err}")).join("\n");
 
-        LazyError::new(move |_| err.to_string())
+        Self::new(move |_| err.to_string())
     }
 }
 
@@ -151,7 +151,7 @@ pub(crate) mod private {
     impl<T> Sealed for Result<T> {
         type Internal = T;
 
-        fn value(self) -> Result<T> {
+        fn value(self) -> Self {
             self
         }
     }
@@ -173,9 +173,9 @@ pub(crate) mod private {
     }
 
     impl Sealed for bool {
-        type Internal = bool;
+        type Internal = Self;
 
-        fn value(self) -> Result<bool> {
+        fn value(self) -> Result<Self> {
             self.then_some(true).with_context(String::new)
         }
     }
@@ -219,7 +219,7 @@ mod tests {
     }
 
     fn int_error_fmt(i: i32) -> String {
-        format!("Error: `{}`", i)
+        format!("Error: `{i}`")
     }
 
     #[test]

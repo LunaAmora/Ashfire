@@ -9,6 +9,7 @@ use std::{
 pub use anyhow::{self, bail as anybail, ensure as any_ensure};
 #[cfg(feature = "derive")]
 pub use firelib_macro::{alternative, FlowControl};
+use lazy::private::Sealed;
 
 pub mod choice;
 pub mod lazy;
@@ -39,9 +40,10 @@ pub trait FlowControl:
     + FromResidual<Result<Infallible, anyhow::Error>>
 {
     fn ensure(condition: bool, f: impl FnOnce() -> Self) -> ControlFlow<Self, ()> {
-        match condition {
-            true => ControlFlow::Continue(()),
-            false => ControlFlow::Break(f()),
+        if condition {
+            ControlFlow::Continue(())
+        } else {
+            ControlFlow::Break(f())
         }
     }
 
@@ -56,7 +58,7 @@ pub trait FlowControl:
     fn __from_residual(residual: ControlFlow<Self, Infallible>) -> Self {
         match residual {
             ControlFlow::Break(value) => value,
-            _ => unreachable!(),
+            ControlFlow::Continue(_) => unreachable!(),
         }
     }
 
@@ -76,8 +78,7 @@ pub trait TrySuccess: Sized {
     fn try_success<T, R>(self) -> ControlFlow<T, !>
     where
         Self: Try<Residual = R>,
-        T: Success,
-        T: FromResidual<R>,
+        T: Success + FromResidual<R>,
     {
         match self.branch() {
             ControlFlow::Continue(_) => ControlFlow::Break(<T as Success>::success_value()),
@@ -87,10 +88,8 @@ pub trait TrySuccess: Sized {
 
     fn into_success<T, R>(self) -> ControlFlow<T, !>
     where
-        Self: lazy::private::Sealed,
-        Self: Try<Residual = R, Output = Self::Internal>,
-        T: SuccessFrom<From = Self::Internal>,
-        T: FromResidual<R>,
+        Self: Try<Residual = R, Output = Self::Internal> + Sealed,
+        T: SuccessFrom<From = Self::Internal> + FromResidual<R>,
     {
         match self.branch() {
             ControlFlow::Continue(output) => {
@@ -173,7 +172,7 @@ macro_rules! cmd_wait {
     };
 }
 
-pub trait ShortCircuit<T>: lazy::private::Sealed
+pub trait ShortCircuit<T>: Sealed
 where
     T: FromResidual<ControlFlow<T, Infallible>>,
 {
@@ -184,14 +183,12 @@ where
     fn or_return(self, f: impl FnOnce() -> T) -> ControlFlow<T, Self::Internal>;
 }
 
-impl<A: lazy::private::Sealed, T> ShortCircuit<T> for A
+impl<A: Sealed, T> ShortCircuit<T> for A
 where
     T: FromResidual<ControlFlow<T, Infallible>>,
 {
     fn or_return(self, f: impl FnOnce() -> T) -> ControlFlow<T, Self::Internal> {
-        match self.value() {
-            Ok(v) => ControlFlow::Continue(v),
-            Err(_) => ControlFlow::Break(f()),
-        }
+        self.value()
+            .map_or_else(|_| ControlFlow::Break(f()), |v| ControlFlow::Continue(v))
     }
 }
