@@ -232,10 +232,10 @@ impl TypeChecker {
 
                 self.data_stack = Default::default();
 
-                match proc.data {
-                    ProcType::Inline(start, _) => proc.data = ProcType::Inline(start, ip),
-                    _ => {}
+                if let ProcType::Inline(start, _) = proc.data {
+                    proc.data = ProcType::Inline(start, ip)
                 }
+
                 self.exit_proc();
             }
 

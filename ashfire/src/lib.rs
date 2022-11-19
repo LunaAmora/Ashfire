@@ -152,9 +152,17 @@ pub trait UncheckedStack<T>: Deref<Target = [T]> {
     fn push(&mut self, item: T);
     fn extend<const N: usize>(&mut self, items: [T; N]);
     fn truncate(&mut self, n: usize);
+    /// # Safety
+    /// Check inner stack lengh before using.
     unsafe fn pop(&mut self) -> T;
+    /// # Safety
+    /// Check inner stack lengh before using.
     unsafe fn pop_array<const N: usize>(&mut self) -> [T; N];
+    /// # Safety
+    /// Check inner stack lengh before using.
     unsafe fn peek(&mut self) -> &T;
+    /// # Safety
+    /// Check inner stack lengh before using.
     unsafe fn get_from_top(&self, n: usize) -> &T;
 }
 

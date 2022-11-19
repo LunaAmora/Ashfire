@@ -209,7 +209,7 @@ mod tests {
     }
 
     fn with_ctx_error(option: Option<bool>, err_val: i32) -> LazyResult<bool, i32> {
-        let unwraped_option: bool = option.with_ctx(move |f| f.format(err_val).to_string())?;
+        let unwraped_option: bool = option.with_ctx(move |f| f.format(err_val))?;
 
         Ok(unwraped_option)
     }

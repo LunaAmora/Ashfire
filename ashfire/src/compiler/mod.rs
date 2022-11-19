@@ -1,7 +1,7 @@
+mod codegen;
 mod expect;
-mod generator;
 mod lexer;
-mod parser;
+mod parsing;
 pub mod program;
 mod typechecker;
 mod types;
