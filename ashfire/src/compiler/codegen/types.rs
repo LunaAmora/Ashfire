@@ -156,7 +156,7 @@ impl StructDef {
                 Call("dup".into()),
                 I32(load),
                 Call("swap".into()),
-                Const(4),
+                Const(WORD_SIZE),
                 I32(add),
                 I32(load),
             ]),
@@ -165,16 +165,16 @@ impl StructDef {
 
                 for offset in 0..count {
                     instructions.extend(vec![
-                        Const(4),
+                        Const(WORD_SIZE),
                         Call("push_local".into()),
                         I32(load),
-                        Const(4 * offset),
+                        Const(WORD_SIZE * offset),
                         I32(add),
                         I32(load),
                     ]);
                 }
 
-                instructions.extend(vec![Const(4), Call("free_local".into())]);
+                instructions.extend(vec![Const(WORD_SIZE), Call("free_local".into())]);
             }
         };
         instructions

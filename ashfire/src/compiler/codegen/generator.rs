@@ -49,7 +49,7 @@ impl Generator {
             Get(global, Id(stk)),
             Get(local, Id(0)),
             I32(store),
-            Const(4),
+            Const(WORD_SIZE),
             Call(Id(aloc_local)),
         ]);
 
@@ -77,8 +77,8 @@ impl Generator {
         }
 
         if !program.global_vars.is_empty() {
-            let padding = 4 - program.data_size() % 4;
-            if padding < 4 {
+            let padding = WORD_USIZE - program.data_size() % WORD_USIZE;
+            if padding < WORD_USIZE {
                 wasm.add_data((0..padding).map(|_| "\\00").collect());
             }
 

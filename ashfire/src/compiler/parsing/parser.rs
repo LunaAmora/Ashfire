@@ -637,7 +637,7 @@ impl Parser {
         let value = self.expect_by(|tok| tok == Value::Int, "memory size after `:`", loc)?;
         self.expect_keyword(KeywordType::End, "`end` after memory size", loc)?;
 
-        let size = aligned(value).index();
+        let size = word_aligned(value) as usize;
         let ctx = prog.push_mem_by_context(self.get_index(), word, size);
         self.name_scopes.register(word, ctx);
 

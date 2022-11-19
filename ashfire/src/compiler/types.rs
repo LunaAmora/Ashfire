@@ -10,9 +10,9 @@ use num::FromPrimitive;
 pub type StrKey = lasso::Spur;
 
 pub const WORD_SIZE: i32 = 4;
-pub const UWORD_SIZE: usize = 4;
+pub const WORD_USIZE: usize = 4;
 
-pub fn aligned<O: Operand>(value: O) -> impl Operand {
+pub fn word_aligned<O: Operand>(value: O) -> i32 {
     ((value.operand() + WORD_SIZE - 1) / WORD_SIZE) * WORD_SIZE
 }
 
@@ -377,7 +377,7 @@ impl StructType {
     pub fn size(&self) -> usize {
         match self {
             Self::Root(s) => s.size(),
-            Self::Unit(_) => 4,
+            Self::Unit(_) => WORD_USIZE,
         }
     }
 }
@@ -412,7 +412,7 @@ impl OffsetByKey for [StructType] {
 
         let mut offset = 0;
         for (var, _) in self.iter().zip(0..i) {
-            offset += var.size() / UWORD_SIZE;
+            offset += var.size() / WORD_USIZE;
         }
 
         Some((offset, i))
@@ -425,7 +425,7 @@ impl OffsetByKey for [StructType] {
 
         let mut offset = 0;
         for (var, _) in self.iter().zip(0..=i) {
-            offset += var.size() / UWORD_SIZE;
+            offset += var.size() / WORD_USIZE;
         }
 
         Some((offset - 1, i))

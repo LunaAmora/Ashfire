@@ -319,7 +319,7 @@ impl TypeChecker {
                     StructType::Unit(typ) => typ.get_type(),
                 };
 
-                prog.set_operand(ip, offset * UWORD_SIZE);
+                prog.set_operand(ip, offset * WORD_USIZE);
                 Ok(result)
             }
             typ => lazybail!(

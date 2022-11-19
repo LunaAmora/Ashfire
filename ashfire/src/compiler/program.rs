@@ -74,7 +74,7 @@ impl Program {
     }
 
     pub fn mem_start(&self) -> i32 {
-        aligned(self.data_size).operand()
+        word_aligned(self.data_size)
     }
 
     pub fn global_vars_start(&self) -> i32 {
