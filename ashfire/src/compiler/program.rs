@@ -42,21 +42,17 @@ pub struct Program {
 
 impl Program {
     pub fn new() -> Self {
-        let mut words = Rodeo::default();
-        words.get_or_intern(String::new());
+        let mut interner = Rodeo::default();
+        interner.get_or_intern(String::new());
 
         let structs_types = vec![
-            (words.get_or_intern("int"), Value::Int).into(),
-            (words.get_or_intern("bool"), Value::Bool).into(),
-            (words.get_or_intern("ptr"), Value::Ptr).into(),
-            (words.get_or_intern("any"), Value::Any).into(),
+            (interner.get_or_intern("int"), Value::Int).into(),
+            (interner.get_or_intern("bool"), Value::Bool).into(),
+            (interner.get_or_intern("ptr"), Value::Ptr).into(),
+            (interner.get_or_intern("any"), Value::Any).into(),
         ];
 
-        Self {
-            structs_types,
-            interner: words,
-            ..Default::default()
-        }
+        Self { structs_types, interner, ..Default::default() }
     }
 
     pub fn push_mem(&mut self, word: &StrKey, size: usize) {
