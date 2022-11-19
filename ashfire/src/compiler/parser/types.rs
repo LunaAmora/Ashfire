@@ -2,7 +2,11 @@ use std::{collections::HashMap, ops::Deref};
 
 use firelib::lexer::Loc;
 
-use crate::compiler::{expect::Compare, types::*};
+use crate::compiler::{
+    expect::Compare,
+    program::{InternalString, Program},
+    types::*,
+};
 
 impl Compare<IRToken> for Vec<IRToken> {}
 
@@ -70,7 +74,7 @@ pub enum ParseContext {
 
 pub struct Scope {
     op: Op,
-    names: HashMap<String, ParseContext>,
+    names: HashMap<StrKey, ParseContext>,
 }
 
 impl Scope {
@@ -82,13 +86,19 @@ impl Scope {
 #[derive(Default)]
 pub struct NameScopes {
     scopes: Vec<Scope>,
-    names: HashMap<String, ParseContext>,
+    names: HashMap<StrKey, ParseContext>,
 }
 
 impl NameScopes {
-    pub fn lookup(&self, name: &str) -> Option<&ParseContext> {
+    pub fn lookup(&self, name: &StrKey, prog: &Program) -> Option<&ParseContext> {
         //Todo: there must be a better way to support `.` accessing structs
-        let name = name.split(".").next().unwrap();
+        let word = name.as_str(prog);
+        if word.contains(".") {
+            let name = word.split(".").next().unwrap();
+            if let Some(key) = prog.get_key(name) {
+                return self.lookup(&key, prog);
+            }
+        }
 
         for scope in self.scopes.iter().rev() {
             let ctx = scope.names.get(name);
@@ -100,11 +110,11 @@ impl NameScopes {
         self.names.get(name)
     }
 
-    pub fn register(&mut self, name: &str, ctx: ParseContext) {
+    pub fn register(&mut self, name: &StrKey, ctx: ParseContext) {
         if let Some(scope) = self.scopes.last_mut() {
-            scope.names.insert(name.to_string(), ctx);
+            scope.names.insert(name.to_owned(), ctx);
         } else {
-            self.names.insert(name.to_string(), ctx);
+            self.names.insert(name.to_owned(), ctx);
         }
     }
 

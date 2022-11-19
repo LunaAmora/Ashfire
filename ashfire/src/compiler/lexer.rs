@@ -17,7 +17,8 @@ impl Program {
     pub fn new_lexer(&mut self, path: &PathBuf) -> Result<Lexer> {
         let file = File::open(path).with_context(|| format!("Could not read file `{:?}`", path))?;
 
-        self.included_files.push(path.to_str().unwrap().to_owned());
+        let str_key = self.get_or_intern(path.to_str().unwrap());
+        self.included_files.push(str_key);
 
         Ok(Lexer::builder(file)
             .with_separators(vec![':', '=', '*'])

@@ -32,7 +32,7 @@ pub struct Program {
     pub global_vars: Vec<StructType>,
     pub structs_types: Vec<StructDef>,
     pub block_contracts: HashMap<usize, (usize, usize)>,
-    pub included_files: Vec<String>,
+    pub included_files: Vec<StrKey>,
     interner: Rodeo,
     mem_size: usize,
     memory: Vec<OffsetWord>,
@@ -175,7 +175,7 @@ impl Program {
         let loc = loc.loc();
         self.included_files
             .get(loc.file_index)
-            .map_or_else(String::new, |l| format!("{l}:{}:{} ", loc.line, loc.col))
+            .map_or_else(String::new, |l| format!("{}:{}:{} ", l.as_str(self), loc.line, loc.col))
     }
 
     pub fn format(&self, fmt: Fmt) -> String {
@@ -217,7 +217,7 @@ impl Program {
             .map(|u| Value::from(u))
     }
 
-    /// Searches for a `const` that matches the given `&str`.
+    /// Searches for a `const` that matches the given [`StrKey`].
     pub fn get_const_by_name(&self, word: &StrKey) -> Option<&StructType> {
         self.consts.iter().find(|cnst| word.eq(cnst))
     }

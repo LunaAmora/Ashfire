@@ -113,7 +113,7 @@ impl Parser {
     }
 
     fn lookup_context(&self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        let Some(ctx) = self.name_scopes.lookup(word.as_str(prog)) else {
+        let Some(ctx) = self.name_scopes.lookup(word, prog) else {
             return self.lookup_modfied_var(word, prog);
         };
 
@@ -144,14 +144,14 @@ impl Parser {
             _ => return OptionErr::default(),
         };
 
-        let local = match self.name_scopes.lookup(rest) {
+        let Some(key) = prog.get_key(rest) else {
+            Err(todo(word.loc))?
+        };
+
+        let local = match self.name_scopes.lookup(&key, prog) {
             Some(ParseContext::LocalVar) => true,
             Some(ParseContext::GlobalVar) => false,
             _ => return OptionErr::default(),
-        };
-
-        let Some(key) = prog.get_key(rest) else {
-            Err(todo(word.loc))?
         };
 
         let word = LocWord::new(key, word.loc);
@@ -198,9 +198,8 @@ impl Parser {
             }
             KeywordType::Ref => {
                 let ref_word = self.expect_word("type after `*`", loc)?;
-                let name = ref_word.as_str(prog);
 
-                return match self.name_scopes.lookup(name) {
+                return match self.name_scopes.lookup(&ref_word, prog) {
                     Some(ParseContext::LocalVar) => {
                         self.get_local_var(&ref_word, Some(VarWordType::Pointer), prog)
                     }
@@ -538,8 +537,7 @@ impl Parser {
                 let value = ValueType::new(word, &eval).into();
                 prog.consts.push(value);
 
-                let name = word.as_str(prog);
-                self.name_scopes.register(name, ParseContext::ConstStruct);
+                self.name_scopes.register(word, ParseContext::ConstStruct);
                 success!();
             }
         }
@@ -575,7 +573,6 @@ impl Parser {
         self.enter_proc(operand);
         prog.procs.push(proc);
 
-        let name = name.as_str(prog);
         self.name_scopes.register(name, ParseContext::ProcName);
 
         let prep = fold_bool!(inline, OpType::PrepInline, OpType::PrepProc);
@@ -641,7 +638,7 @@ impl Parser {
 
         let size = ((value.index() + 3) / 4) * 4;
         let ctx = prog.push_mem_by_context(self.get_index(), word, size)?;
-        self.name_scopes.register(word.as_str(prog), ctx);
+        self.name_scopes.register(word, ctx);
 
         Ok(())
     }
@@ -814,8 +811,7 @@ impl Parser {
             _ => unreachable!(),
         };
 
-        let name = word.as_str(prog);
-        self.name_scopes.register(name, ctx);
+        self.name_scopes.register(word, ctx);
         self.structs.push(IndexWord::new(word, word_id));
 
         Ok(())
