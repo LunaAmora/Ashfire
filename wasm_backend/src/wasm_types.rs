@@ -10,7 +10,7 @@ pub enum WasmType {
 impl Display for WasmType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            WasmType::I32 => write!(f, "i32"),
+            Self::I32 => write!(f, "i32"),
         }
     }
 }
@@ -35,7 +35,7 @@ impl Display for FuncType {
         }
 
         if !self.result.is_empty() {
-            res += &format!(" (result {})", self.result.iter().join(" "))
+            res += &format!(" (result {})", self.result.iter().join(" "));
         }
 
         write!(f, "{res}")
@@ -77,15 +77,15 @@ pub enum Ident {
 impl Display for Ident {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Ident::Id(id) => write!(f, "{id}"),
-            Ident::Label(label) => write!(f, "${label}"),
+            Self::Id(id) => write!(f, "{id}"),
+            Self::Label(label) => write!(f, "${label}"),
         }
     }
 }
 
 impl From<&str> for Ident {
     fn from(label: &str) -> Self {
-        Ident::Label(label.to_owned())
+        Self::Label(label.to_owned())
     }
 }
 
@@ -128,17 +128,17 @@ pub enum Instruction {
 impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let text = match self {
-            Instruction::Block(_, _) => unimplemented!("Not possible to format"),
-            Instruction::Get(scope, ident) => format!("{scope:?}.get {ident}"),
-            Instruction::Set(scope, ident) => format!("{scope:?}.set {ident}"),
-            Instruction::I32(num_method) => format!("i32.{:?}", num_method),
-            Instruction::Const(value) => format!("i32.const {value}"),
-            Instruction::Call(ident) => format!("call {ident}"),
-            Instruction::BrIf(_) => todo!(),
-            Instruction::Br(_) => todo!(),
-            Instruction::Else => "else".to_string(),
-            Instruction::Drop => "drop".to_string(),
-            Instruction::End => "end".to_string(),
+            Self::Block(_, _) => unimplemented!("Not possible to format"),
+            Self::Get(scope, ident) => format!("{scope:?}.get {ident}"),
+            Self::Set(scope, ident) => format!("{scope:?}.set {ident}"),
+            Self::I32(num_method) => format!("i32.{num_method:?}"),
+            Self::Const(value) => format!("i32.const {value}"),
+            Self::Call(ident) => format!("call {ident}"),
+            Self::BrIf(_) => todo!(),
+            Self::Br(_) => todo!(),
+            Self::Else => "else".to_string(),
+            Self::Drop => "drop".to_string(),
+            Self::End => "end".to_string(),
         };
         write!(f, "{text}")
     }
@@ -153,9 +153,9 @@ pub enum BlockType {
 impl Display for BlockType {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let text = match self {
-            BlockType::If => "if".to_string(),
-            BlockType::Loop(_) => todo!(),
-            BlockType::Block(_) => todo!(),
+            Self::If => "if".to_string(),
+            Self::Loop(_) => todo!(),
+            Self::Block(_) => todo!(),
         };
         write!(f, "{text}")
     }

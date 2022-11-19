@@ -46,7 +46,7 @@ impl Module {
 
     pub fn add_export(&mut self, label: &str, export: Bind) {
         self.exports
-            .push(Export { label: label.to_owned(), bind: export })
+            .push(Export { label: label.to_owned(), bind: export });
     }
 
     pub fn add_global(
@@ -93,8 +93,8 @@ impl Module {
                 .find(|pair| pair.1 == index)
                 .unwrap()
                 .0
-                .to_owned(),
-            Ident::Label(label) => label.to_owned(),
+                .clone(),
+            Ident::Label(label) => label.clone(),
         }
     }
 
@@ -116,8 +116,8 @@ impl Module {
 
                     writer.write_all(
                         format!(
-                            "(import \"{}\" \"{}\" (func ${} {}))\n",
-                            import.module, import.label, label, contr
+                            "(import \"{}\" \"{}\" (func ${label} {contr}))\n",
+                            import.module, import.label
                         )
                         .as_bytes(),
                     )?;
@@ -176,21 +176,19 @@ impl Module {
     }
 
     fn format_instruction(&self, instruction: &Instruction) -> String {
-        match instruction {
-            Instruction::Block(block, ident) => match ident {
-                Some(id) => {
-                    let Ident::Id(id) = id else {unreachable!()};
-                    let contr = &self.types[*id];
-                    format!("{}{}", block, contr)
-                }
-                None => todo!(),
-            },
-            _ => format!("{instruction}"),
-        }
+        let Instruction::Block(block, ident) = instruction else {
+            return format!("{instruction}");
+        };
+
+        let Some(Ident::Id(id)) = ident else {
+            unreachable!();
+        };
+
+        format!("{block}{}", &self.types[*id])
     }
 
-    fn write_data(&self, _writer: &mut impl Write) -> Result<&Self> {
-        _writer.write_all(
+    fn write_data(&self, writer: &mut impl Write) -> Result<&Self> {
+        writer.write_all(
             format!(
                 "(data (i32.const 0)\n{}\n)\n",
                 self.data.iter().map(|d| format!("  \"{d}\"")).join("\n")
@@ -244,7 +242,7 @@ fn inverse_hex_representation(data: i32) -> String {
 }
 
 fn bytes_from_value(data: i32) -> Vec<u8> {
-    LowerHexString::new(format!("{:08x}", data)).unwrap().into()
+    LowerHexString::new(format!("{data:08x}")).unwrap().into()
 }
 
 fn u8_to_hex_representation(b: &u8) -> [char; 3] {
