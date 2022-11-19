@@ -9,13 +9,13 @@ use Scope::*;
 
 use crate::compiler::{
     program::{InternalString, Program, ProgramVisitor},
-    types::{Contract, Op, Operand, StructDef, StructType},
+    types::{Contract, Op, Operand, StrKey, StructDef, StructType, WORD_SIZE},
 };
 
 pub struct Generator {
     current_proc: Option<usize>,
-    _block_map: HashMap<i32, i32>,
     current_func: Option<FuncGen>,
+    _block_map: HashMap<i32, i32>,
 }
 
 impl ProgramVisitor for Generator {
@@ -32,8 +32,8 @@ impl Generator {
     pub fn new() -> Self {
         Self {
             current_proc: None,
-            _block_map: HashMap::new(),
             current_func: None,
+            _block_map: HashMap::new(),
         }
     }
 
@@ -47,7 +47,7 @@ impl Generator {
             return Ok(true);
         };
 
-        self.current_func = Some(FuncGen::new(proc.name.as_string(program), &proc.contract));
+        self.current_func = Some(FuncGen::new(proc.name, &proc.contract));
         let func = self.current_fn()?;
 
         let proc_size = data.total_size();
@@ -89,7 +89,7 @@ impl Generator {
             func.extend(vec![Const(mem_to_free), Call("free_local".into())]);
         }
 
-        wasm.add_fn(&func.label, &func.contract.0, &func.contract.1, func.code);
+        wasm.add_fn(func.label.as_str(program), &func.contract.0, &func.contract.1, func.code);
         Ok(false)
     }
 
@@ -101,14 +101,14 @@ impl Generator {
 }
 
 pub struct FuncGen {
-    label: String,
+    label: StrKey,
     contract: (Vec<WasmType>, Vec<WasmType>),
     code: Vec<Instruction>,
     pub bind_count: i32,
 }
 
 impl FuncGen {
-    pub fn new(label: String, contract: &Contract) -> Self {
+    pub fn new(label: StrKey, contract: &Contract) -> Self {
         Self {
             label,
             contract: contract.into(),
