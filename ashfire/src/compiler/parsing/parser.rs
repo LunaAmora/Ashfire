@@ -30,8 +30,16 @@ impl Parser {
         Self { ..Default::default() }
     }
 
-    pub fn tokens(&self) -> &VecDeque<IRToken> {
-        &self.ir_tokens
+    pub fn peek(&self) -> Option<&IRToken> {
+        self.ir_tokens.get(0)
+    }
+
+    pub fn get(&self, index: usize) -> Option<&IRToken> {
+        self.ir_tokens.get(index)
+    }
+
+    pub fn get_cloned(&self, index: usize) -> Option<IRToken> {
+        self.ir_tokens.get(index).cloned()
     }
 
     /// Pops and returns the next [`IRToken`] of this [`Parser`].
@@ -43,7 +51,7 @@ impl Parser {
     pub fn skip(&mut self, n: usize) -> Option<IRToken> {
         let mut result = None;
         for _ in 0..n {
-            result = self.ir_tokens.pop_front();
+            result = self.next();
         }
         result
     }
@@ -73,7 +81,7 @@ impl Parser {
         };
 
         let op = Op::from(match tok.token_type {
-            TokenType::Keyword => return self.define_keyword_op(tok, prog),
+            TokenType::Keyword => return self.define_keyword_op(&tok, prog),
 
             TokenType::Str => (OpType::PushStr, &tok, tok.loc),
 
@@ -163,7 +171,7 @@ impl Parser {
         }
     }
 
-    fn define_keyword_op(&mut self, tok: IRToken, prog: &Program) -> OptionErr<Vec<Op>> {
+    fn define_keyword_op(&mut self, tok: &IRToken, prog: &Program) -> OptionErr<Vec<Op>> {
         let key = tok.as_keyword();
         let loc = tok.loc;
 
@@ -379,8 +387,8 @@ impl Parser {
     fn define_context(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
         let mut i = 0;
         let mut colons = 0;
-        while let Some(tok) = self.ir_tokens.get(i).cloned() {
-            match (colons, &tok.token_type) {
+        while let Some(tok) = self.get(i) {
+            match (colons, tok.token_type) {
                 (1, TokenType::Data(Data::Typ(Value::Int))) => {
                     self.parse_memory(word, prog).try_success()?;
                 }
@@ -388,33 +396,34 @@ impl Parser {
                 (1, TokenType::Word) => {
                     return choice!(
                         OptionErr,
-                        self.parse_proc_ctx(&tok, word, prog),
+                        self.parse_proc_ctx(i, word, prog),
                         self.parse_struct_ctx(i, word, prog),
-                        invalid_token(tok, "context declaration")
+                        invalid_token(self.get_cloned(i).unwrap(), "context declaration")
                     )
                 }
 
                 (_, TokenType::Keyword) => {
                     choice!(
                         OptionErr,
-                        self.parse_keyword_ctx(&mut colons, word, tok, prog),
+                        self.parse_keyword_ctx(&mut colons, i, word, prog),
                         self.parse_end_ctx(colons, i, word, prog),
                     )?;
                 }
 
-                (0, _) => return self.parse_word_ctx(&tok, word, prog),
+                (0, TokenType::Word) => return self.parse_word_ctx(i, word, prog),
 
-                _ => Err(invalid_token(tok, "context declaration"))?,
+                _ => Err(invalid_token(tok.clone(), "context declaration"))?,
             }
             i += 1;
         }
         OptionErr::default()
     }
 
-    fn parse_proc_ctx<O: Operand>(
-        &mut self, word_id: O, word: &LocWord, prog: &mut Program,
+    fn parse_proc_ctx(
+        &mut self, index: usize, word: &LocWord, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
-        prog.get_type_name(&word_id).or_return(OptionErr::default)?;
+        let tok = self.get(index).unwrap();
+        prog.get_type_name(tok).or_return(OptionErr::default)?;
         self.parse_procedure(word, prog, false)
     }
 
@@ -432,9 +441,9 @@ impl Parser {
     }
 
     fn parse_keyword_ctx(
-        &mut self, colons: &mut i32, word: &LocWord, tok: IRToken, prog: &mut Program,
+        &mut self, colons: &mut i32, index: usize, word: &LocWord, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
-        match (*colons, tok.as_keyword()) {
+        match (*colons, self.get(index).unwrap().as_keyword()) {
             (0, KeywordType::Mem) => {
                 self.next();
                 self.parse_memory(word, prog).try_success()?;
@@ -544,16 +553,17 @@ impl Parser {
     }
 
     fn parse_word_ctx(
-        &mut self, tok: &IRToken, word: &LocWord, prog: &mut Program,
+        &mut self, index: usize, word: &LocWord, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
-        if tok == TokenType::Word {
-            if let Some(stk) = prog.get_struct_type(tok).cloned() {
-                self.next();
-                self.parse_const_or_var(word, tok, stk, prog)
-                    .try_success()?;
-            }
-        }
-        OptionErr::default()
+        let tok = self.get_cloned(index).unwrap();
+
+        let Some(stk) = prog.get_struct_type(&tok).cloned() else {
+            return invalid_option(Some(tok), "struct type", word.loc).into();
+        };
+
+        self.next();
+        self.parse_const_or_var(word, tok, stk, prog)
+            .try_success()?;
     }
 
     fn define_proc(
@@ -650,7 +660,7 @@ impl Parser {
         self.expect_keyword(KeywordType::Colon, "`:` after keyword `struct`", loc)?;
         let mut members = Vec::new();
 
-        while let Some(tok) = self.ir_tokens.get(0) {
+        while let Some(tok) = self.peek() {
             if tok.token_type == TokenType::Keyword {
                 self.expect_keyword(KeywordType::End, "`end` after struct declaration", loc)?;
                 prog.structs_types.push(StructDef::new(word, members));

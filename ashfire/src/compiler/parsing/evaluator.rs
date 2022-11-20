@@ -21,7 +21,7 @@ impl Parser {
         let mut stack = EvalStack::default();
         let mut i = 0;
 
-        while let Some(tok) = self.tokens().get(i).cloned() {
+        while let Some(tok) = self.get_cloned(i) {
             if &tok == KeywordType::End {
                 if stack.is_empty() && i == 0 {
                     stack.push(IRToken::new(Value::Any.get_type(), 0, tok.loc));
