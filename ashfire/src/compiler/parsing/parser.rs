@@ -205,15 +205,12 @@ impl Parser {
                 }
             }
             KeywordType::Ref => {
-                let ref_word = self.expect_word("type after `*`", loc)?;
+                let ref_word = &self.expect_word("type after `*`", loc)?;
+                let var_typ = Some(VarWordType::Pointer);
 
-                return match self.name_scopes.lookup(&ref_word, prog) {
-                    Some(ParseContext::LocalVar) => {
-                        self.get_local_var(&ref_word, Some(VarWordType::Pointer), prog)
-                    }
-                    Some(ParseContext::GlobalVar) => {
-                        self.get_global_var(&ref_word, Some(VarWordType::Pointer), prog)
-                    }
+                return match self.name_scopes.lookup(ref_word, prog) {
+                    Some(ParseContext::LocalVar) => self.get_local_var(ref_word, var_typ, prog),
+                    Some(ParseContext::GlobalVar) => self.get_global_var(ref_word, var_typ, prog),
                     _ => todo!(),
                 };
             }
