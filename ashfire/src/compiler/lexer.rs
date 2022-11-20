@@ -41,7 +41,7 @@ impl Program {
             parse_as_char(&tok),
             parse_as_keyword(&tok),
             parse_as_number(&tok),
-            self.define_word(tok),
+            self.define_word(&tok),
         )
     }
 
@@ -57,7 +57,7 @@ impl Program {
             .map(OptionErr::new)?
     }
 
-    fn define_word(&mut self, tok: Token) -> OptionErr<IRToken> {
+    fn define_word(&mut self, tok: &Token) -> OptionErr<IRToken> {
         let operand = self.get_or_intern(&tok.name);
         OptionErr::new(IRToken::new(TokenType::Word, operand, tok.loc))
     }
@@ -72,13 +72,13 @@ fn parse_as_char(tok: &Token) -> OptionErr<IRToken> {
         .strip_suffix('\'')
         .with_err_ctx(move || err_loc("Missing closing `\'` in char literal", loc))?;
 
-    parse_char(word.to_string(), loc)
+    parse_char(word, loc)
         .value?
         .map(|operand| IRToken::new(INT, operand, loc))
         .into()
 }
 
-fn parse_char(word: String, loc: Loc) -> OptionErr<i32> {
+fn parse_char(word: &str, loc: Loc) -> OptionErr<i32> {
     word.strip_prefix('\\').map_or_else(
         || match word.len() {
             0 => err_loc("Char literals have to contain at leat on char", loc).into(),

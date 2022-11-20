@@ -942,7 +942,7 @@ impl const From<IntrinsicType> for i32 {
     }
 }
 
-#[derive(FromPrimitive, Debug, PartialEq, Eq)]
+#[derive(FromPrimitive, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KeywordType {
     If,
     Else,

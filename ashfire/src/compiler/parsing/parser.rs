@@ -731,7 +731,7 @@ impl Parser {
                 let members: Vec<StructType> = members.cloned().collect();
                 let value = prog.get_struct_value_id(&stk).unwrap();
                 let struct_word = StructRef::new(word, members, value);
-                self.register_const_or_var(&assign, StructType::Root(struct_word), prog);
+                self.register_const_or_var(assign, StructType::Root(struct_word), prog);
             } else {
                 let member_type = match members.last().unwrap() {
                     StructType::Root(_) => todo!(),
@@ -751,7 +751,7 @@ impl Parser {
                 }
 
                 let struct_word = ValueType::new(word, &eval);
-                self.register_const_or_var(&assign, StructType::Unit(struct_word), prog);
+                self.register_const_or_var(assign, StructType::Unit(struct_word), prog);
             }
         } else {
             let contract: Vec<TokenType> = if self.inside_proc() {
@@ -804,7 +804,7 @@ impl Parser {
 
             let value = prog.get_struct_value_id(&stk).unwrap();
             let struct_ref = StructRef::new(word, def_members, value);
-            self.register_const_or_var(&assign, StructType::Root(struct_ref), prog);
+            self.register_const_or_var(assign, StructType::Root(struct_ref), prog);
         }
 
         let ctx = match (assign, self.inside_proc()) {

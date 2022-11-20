@@ -54,7 +54,7 @@ fn main() {
 
     if let Err(err) = match args.command {
         Commands::Com { path, output, run, wat, runtime } => {
-            compile_command(path, output, run, wat, runtime)
+            compile_command(&path, output, run, wat, runtime)
         }
     } {
         error!("{:#}", err);
@@ -62,12 +62,12 @@ fn main() {
 }
 
 fn compile_command(
-    path: PathBuf, output: Option<PathBuf>, run: bool, wat: bool, runtime: String,
+    path: &PathBuf, output: Option<PathBuf>, run: bool, wat: bool, runtime: String,
 ) -> Result<()> {
     let out = output.unwrap_or_else(|| path.clone()).with_extension("wat");
 
     Program::new()
-        .compile_file(&path)?
+        .compile_file(path)?
         .type_check()?
         .generate_wasm(&out)?;
 

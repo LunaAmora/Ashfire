@@ -25,7 +25,7 @@ impl Parser {
     }
 
     pub fn register_const_or_var(
-        &mut self, assign: &KeywordType, struct_word: StructType, prog: &mut Program,
+        &mut self, assign: KeywordType, struct_word: StructType, prog: &mut Program,
     ) {
         match assign {
             KeywordType::Colon => prog.consts.push(struct_word),
