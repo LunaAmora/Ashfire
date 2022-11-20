@@ -421,7 +421,7 @@ impl Parser {
     fn parse_struct_ctx(
         &mut self, top_index: usize, word: &LocWord, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
-        if let Ok([n1, n2]) = get_range_ref(&self.ir_tokens, top_index + 1) {
+        if let Ok([n1, n2]) = self.ir_tokens.get_range_ref(top_index + 1) {
             if prog.get_struct_type(n1).is_some() &&
                 equals_any!(n2, KeywordType::End, TokenType::Word)
             {

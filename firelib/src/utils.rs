@@ -43,20 +43,22 @@ pub fn expect_index<T>(vec: &[T], pred: impl FnMut(&T) -> bool) -> usize {
         .expect("no item matched the given predicate")
 }
 
-pub fn get_range_ref<T, const N: usize>(deque: &VecDeque<T>, index: usize) -> Result<[&T; N]> {
-    if deque.len() > (index + N + 1) {
-        let range: Vec<&T> = deque.range(index..(index + N)).collect();
+pub trait RangeRef<T> {
+    fn get_range_ref<const N: usize>(&self, index: usize) -> Result<[&T; N]>;
+}
 
-        range
-            .try_into()
-            .map_or_else(|_| unreachable!("Failed to collect into an correctly sized array"), Ok)
-    } else {
-        bail!(
-            "Invalid range of elements to get from the deque: `{}`..`{}` of `{}`",
-            index,
-            index + N,
-            deque.len()
-        )
+impl<T> RangeRef<T> for VecDeque<T> {
+    fn get_range_ref<const N: usize>(&self, index: usize) -> Result<[&T; N]> {
+        let end_range = index + N;
+        let len = self.len();
+        let range = index..end_range;
+
+        if len > (end_range + 1) {
+            let range: Vec<&T> = self.range(range).collect();
+            return Ok(range.try_into().ok().unwrap());
+        }
+
+        bail!("Range of elements out of bounds: `{range:?}` from length `{len}`")
     }
 }
 
