@@ -1,4 +1,5 @@
 mod evaluator;
-pub mod parser;
+mod parser;
+pub mod program;
 pub mod types;
 mod utils;
