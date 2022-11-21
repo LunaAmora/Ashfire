@@ -13,8 +13,8 @@ use crate::compiler::{
 impl Program {
     /// Searches for a `binding` that matches the given [`word`][LocWord]
     /// on the current [`Proc`].
-    pub fn get_binding(&self, word: &LocWord, visitor: &Parser) -> Option<Vec<Op>> {
-        visitor
+    pub fn get_binding(&self, word: &LocWord, parser: &Parser) -> Option<Vec<Op>> {
+        parser
             .current_proc_data(self)
             .and_then(|proc| {
                 proc.bindings
@@ -114,7 +114,7 @@ impl Program {
     /// Searches for a local `variable` that matches the given [`word`][LocWord]
     /// and parses `store` and `pointer` information.
     pub fn get_local_var(
-        &self, word: &LocWord, var_typ: Option<VarWordType>, parser: &Parser,
+        &self, word: &LocWord, var_typ: VarWordType, parser: &Parser,
     ) -> OptionErr<Vec<Op>> {
         let proc = parser
             .current_proc_data(self)
@@ -125,23 +125,21 @@ impl Program {
     /// Searches for a global `variable` that matches the given [`word`][LocWord]
     /// and parses `store` and `pointer` information.
     pub fn get_global_var(
-        &self, word: &LocWord, var_typ: Option<VarWordType>, parser: &Parser,
+        &self, word: &LocWord, var_typ: VarWordType, parser: &Parser,
     ) -> OptionErr<Vec<Op>> {
         self.try_get_var(word, &self.global_vars, OpType::PushGlobal, var_typ, parser)
     }
 
     fn try_get_var(
-        &self, word: &LocWord, vars: &[StructType], push_type: OpType,
-        var_typ: Option<VarWordType>, parser: &Parser,
+        &self, word: &LocWord, vars: &[StructType], push_type: OpType, var_typ: VarWordType,
+        parser: &Parser,
     ) -> OptionErr<Vec<Op>> {
-        let (store, pointer) = match var_typ {
-            Some(VarWordType::Store) => (true, false),
-            Some(VarWordType::Pointer) => (false, true),
-            _ => Default::default(),
-        };
-
         if word.as_str(self).contains('.') {
-            return self.try_get_var_field(word, vars, push_type, store, pointer);
+            return self
+                .try_get_field(word, vars)
+                .value?
+                .map(|(var, offset)| var.unpack_struct(push_type, offset, var_typ, word.loc))
+                .into();
         }
 
         let struct_type = vars
@@ -151,17 +149,17 @@ impl Program {
             .flatten()
             .or_return(OptionErr::default)?;
 
-        OptionErr::new(if pointer {
+        OptionErr::new(if var_typ == VarWordType::Pointer {
             let stk_id = self.get_struct_type_id(struct_type).unwrap() as i32;
             vars.get_pointer(word, push_type, stk_id)
         } else {
-            vars.get_fields(word, push_type, struct_type, store)
+            vars.get_fields(word, push_type, struct_type, var_typ == VarWordType::Store)
         })
     }
 
-    fn try_get_var_field(
-        &self, word: &LocWord, vars: &[StructType], push_type: OpType, store: bool, pointer: bool,
-    ) -> OptionErr<Vec<Op>> {
+    fn try_get_field<'a>(
+        &self, word: &LocWord, vars: &'a [StructType],
+    ) -> OptionErr<(&'a StructType, usize)> {
         let fields: Vec<_> = word.as_str(self).split('.').collect();
         let loc = word.loc;
 
@@ -183,70 +181,23 @@ impl Program {
                 todo!()
             };
 
-            let Some((diff, pos)) = root.members().get_offset(&field_key) else {
+            let Some((diff, index)) = root.members().get_offset(&field_key) else {
                 let error = format!("The variable `{}` does not contain the field `{field_name}`",
                     var.as_str(self));
                 return err_loc(error, loc).into();
             };
 
             offset += diff;
-            var = &root.members()[pos];
+            var = &root.members()[index];
         }
 
-        let mut result = Vec::new();
-
-        let typ = match var {
-            StructType::Unit(unit) => unit,
-            StructType::Root(root) => {
-                if store {
-                    todo!();
-                }
-
-                if push_type == OpType::PushLocal {
-                    offset += 1;
-                }
-
-                let type_id = root.get_ref_type().operand();
-
-                result.extend([
-                    Op::new(push_type, offset as i32, loc),
-                    Op::from((IntrinsicType::Cast(-type_id), loc)),
-                ]);
-
-                if !pointer {
-                    result.push((OpType::Unpack, loc).into());
-                }
-
-                return OptionErr::new(result);
-            }
-        };
-
-        let type_id = typ.value_type().operand();
-
-        if store {
-            result.push(Op::new(OpType::ExpectType, type_id, loc));
-        }
-
-        result.push(Op::new(push_type, offset as i32, loc));
-
-        if store {
-            result.push(Op::from((IntrinsicType::Store32, loc)));
-        } else if pointer {
-            result.push(Op::from((IntrinsicType::Cast(-type_id), loc)));
-        } else {
-            result.extend([
-                Op::from((IntrinsicType::Load32, loc)),
-                Op::from((IntrinsicType::Cast(type_id), loc)),
-            ]);
-        }
-
-        OptionErr::new(result)
+        OptionErr::new((var, offset))
     }
 
     pub fn push_mem_by_context(
-        &mut self, proc_index: Option<usize>, word: &StrKey, size: usize,
+        &mut self, parser: &Parser, word: &StrKey, size: usize,
     ) -> ParseContext {
-        let Some(proc) = proc_index.and_then(|i| self.procs.get_mut(i)) else {
+        let Some(proc) = parser.current_proc_mut(self) else {
             self.push_mem(word, size);
             return ParseContext::GlobalMem;
         };

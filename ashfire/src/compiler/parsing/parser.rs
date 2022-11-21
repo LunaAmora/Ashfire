@@ -139,8 +139,8 @@ impl Parser {
             ParseContext::Binding => prog.get_binding(word, self),
             ParseContext::LocalMem => prog.get_local_mem(word, self),
             ParseContext::ConstStruct => prog.get_const_struct(word),
-            ParseContext::LocalVar => return prog.get_local_var(word, None, self),
-            ParseContext::GlobalVar => return prog.get_global_var(word, None, self),
+            ParseContext::LocalVar => return prog.get_local_var(word, VarWordType::None, self),
+            ParseContext::GlobalVar => return prog.get_global_var(word, VarWordType::None, self),
         }
         .into()
     }
@@ -173,9 +173,9 @@ impl Parser {
         let word = LocWord::new(key, word.loc);
 
         if local {
-            prog.get_local_var(&word, Some(var_typ), self)
+            prog.get_local_var(&word, var_typ, self)
         } else {
-            prog.get_global_var(&word, Some(var_typ), self)
+            prog.get_global_var(&word, var_typ, self)
         }
     }
 
@@ -215,7 +215,7 @@ impl Parser {
 
             KeywordType::Ref => {
                 let ref_word = &self.expect_word("type after `*`", loc)?;
-                let var_typ = Some(VarWordType::Pointer);
+                let var_typ = VarWordType::Pointer;
 
                 return match self.name_scopes.lookup(ref_word, prog) {
                     Some(ParseContext::LocalVar) => prog.get_local_var(ref_word, var_typ, self),
@@ -580,7 +580,7 @@ impl Parser {
         self.expect_keyword(KeywordType::End, "`end` after memory size", loc)?;
 
         let size = word_aligned(value) as usize;
-        let ctx = prog.push_mem_by_context(self.get_index(), word, size);
+        let ctx = prog.push_mem_by_context(self, word, size);
         self.name_scopes.register(word, ctx);
 
         Ok(())

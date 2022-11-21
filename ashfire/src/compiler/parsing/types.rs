@@ -61,8 +61,9 @@ impl From<LocWord> for IRToken {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum VarWordType {
+    None,
     Store,
     Pointer,
 }
@@ -217,6 +218,54 @@ impl StructUtils for [StructType] {
             }
         }
 
+        result
+    }
+}
+
+impl StructType {
+    pub fn unpack_struct(
+        &self, push_type: OpType, mut offset: usize, var_typ: VarWordType, loc: Loc,
+    ) -> Vec<Op> {
+        let mut result = Vec::new();
+        match self {
+            StructType::Unit(unit) => {
+                let type_id = unit.value_type().operand();
+                result.push(Op::new(push_type, offset as i32, loc));
+
+                if var_typ == VarWordType::Store {
+                    result.insert(0, Op::new(OpType::ExpectType, type_id, loc));
+                    result.push(Op::from((IntrinsicType::Store32, loc)));
+                } else if var_typ == VarWordType::Pointer {
+                    result.push(Op::from((IntrinsicType::Cast(-type_id), loc)));
+                } else {
+                    result.extend([
+                        Op::from((IntrinsicType::Load32, loc)),
+                        Op::from((IntrinsicType::Cast(type_id), loc)),
+                    ])
+                }
+            }
+
+            StructType::Root(root) => {
+                if var_typ == VarWordType::Store {
+                    todo!();
+                }
+
+                if push_type == OpType::PushLocal {
+                    offset += 1;
+                }
+
+                let type_id = root.get_ref_type().operand();
+
+                result.extend([
+                    Op::new(push_type, offset as i32, loc),
+                    Op::from((IntrinsicType::Cast(-type_id), loc)),
+                ]);
+
+                if var_typ != VarWordType::Pointer {
+                    result.push((OpType::Unpack, loc).into());
+                }
+            }
+        };
         result
     }
 }
