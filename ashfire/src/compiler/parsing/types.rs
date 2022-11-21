@@ -117,11 +117,10 @@ impl NameScopes {
     }
 
     pub fn register(&mut self, name: &StrKey, ctx: ParseContext) {
-        if let Some(scope) = self.scopes.last_mut() {
-            scope.names.insert(*name, ctx);
-        } else {
-            self.names.insert(*name, ctx);
-        }
+        self.scopes
+            .last_mut()
+            .map_or_else(|| &mut self.names, |scope| &mut scope.names)
+            .insert(*name, ctx);
     }
 
     pub fn push(&mut self, op: Op) {
@@ -144,9 +143,7 @@ pub trait StructUtils {
 
 impl StructUtils for [StructType] {
     fn get_offset(&self, word: &StrKey) -> Option<(usize, usize)> {
-        let Some(i) = self.iter().position(|stk| word.eq(stk)) else {
-            return None;
-        };
+        let i = self.iter().position(|stk| word.eq(stk))?;
 
         let mut offset = 0;
         for (var, _) in self.iter().zip(0..i) {
@@ -157,9 +154,7 @@ impl StructUtils for [StructType] {
     }
 
     fn get_offset_local(&self, word: &StrKey) -> Option<(usize, usize)> {
-        let Some(i) = self.iter().position(|stk| word.eq(stk)) else {
-            return None;
-        };
+        let i = self.iter().position(|stk| word.eq(stk))?;
 
         let mut offset = 0;
         for (var, _) in self.iter().zip(0..=i) {

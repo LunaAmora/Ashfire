@@ -200,11 +200,11 @@ impl Program {
     fn get_cast_type(&self, rest: &[u8]) -> Option<i32> {
         self.get_key(std::str::from_utf8(rest).ok()?)
             .as_ref()
-            .map(|key| self.get_data_type_id(key))?
+            .map(|key| self.get_struct_type_id(key))?
             .map(|u| u as i32)
     }
 
-    pub fn get_data_type_id(&self, word: &StrKey) -> Option<usize> {
+    pub fn get_struct_type_id(&self, word: &StrKey) -> Option<usize> {
         self.structs_types
             .iter()
             .position(|def| word.eq(def))
@@ -241,11 +241,7 @@ pub trait Visitor {
     }
 
     fn current_proc_mut<'a>(&self, program: &'a mut Program) -> Option<&'a mut Proc> {
-        if let Some(i) = self.get_index() {
-            program.procs.get_mut(i)
-        } else {
-            None
-        }
+        self.get_index().and_then(|i| program.procs.get_mut(i))
     }
 
     #[track_caller]

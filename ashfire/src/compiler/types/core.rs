@@ -1,6 +1,6 @@
 use std::{fmt, ops::Deref};
 
-use firelib::{anyhow::Result, lexer::Loc};
+use firelib::lexer::Loc;
 use lasso::Key;
 use num::FromPrimitive;
 
@@ -229,8 +229,8 @@ impl Operand for Op {
 }
 
 impl Op {
-    pub fn new(op_type: OpType, operand: i32, loc: Loc) -> Self {
-        Self { op_type, operand, loc }
+    pub fn new<O: Operand>(op_type: OpType, operand: O, loc: Loc) -> Self {
+        Self { op_type, operand: operand.operand(), loc }
     }
 
     pub fn set_operand(&mut self, value: i32) {
@@ -286,19 +286,7 @@ impl From<(&ValueUnit, Loc)> for Op {
 
 impl From<(IntrinsicType, Loc)> for Op {
     fn from(value: (IntrinsicType, Loc)) -> Self {
-        Self::new(OpType::Intrinsic, value.0.into(), value.1)
-    }
-}
-
-impl From<Op> for Vec<Op> {
-    fn from(op: Op) -> Self {
-        vec![op]
-    }
-}
-
-impl From<Op> for Result<Option<Vec<Op>>> {
-    fn from(op: Op) -> Self {
-        Ok(Some(op.into()))
+        Self::new(OpType::Intrinsic, i32::from(value.0), value.1)
     }
 }
 

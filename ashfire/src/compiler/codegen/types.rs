@@ -151,10 +151,9 @@ impl From<&Contract> for (Vec<WasmType>, Vec<WasmType>) {
 
 impl StructDef {
     pub fn unpack_struct(&self) -> Vec<Instruction> {
-        let count = self.units().len() as i32;
         let mut instructions = vec![];
 
-        match count {
+        match self.count() as i32 {
             1 => instructions.push(I32(load)),
             2 => instructions.extend(vec![
                 Call("dup".into()),
@@ -164,10 +163,10 @@ impl StructDef {
                 I32(add),
                 I32(load),
             ]),
-            _ => {
+            n => {
                 instructions.push(Call("bind_local".into()));
 
-                for offset in 0..count {
+                for offset in 0..n {
                     instructions.extend(vec![
                         Const(WORD_SIZE),
                         Call("push_local".into()),
