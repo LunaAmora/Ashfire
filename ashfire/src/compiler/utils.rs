@@ -25,10 +25,10 @@ impl Program {
             self.loc_fmt(loc),
             info.to_string(),
             std::panic::Location::caller()
-        )
+        );
     }
 
     pub fn info<S: ToString>(&self, loc: Loc, info: S) {
-        info!("{}{}", self.loc_fmt(loc), info.to_string())
+        info!("{}{}", self.loc_fmt(loc), info.to_string());
     }
 }
