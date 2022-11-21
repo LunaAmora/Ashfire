@@ -1,6 +1,6 @@
 use super::{
     core::{OffsetWord, StrKey, TokenType, WORD_SIZE},
-    data::StructType,
+    data::{StructInfo, StructType},
 };
 
 #[derive(Default)]

@@ -169,6 +169,12 @@ impl Typed for StructRef {
     }
 }
 
+pub trait StructInfo {
+    fn units(&self) -> Vec<&ValueType>;
+    fn count(&self) -> usize;
+    fn size(&self) -> usize;
+}
+
 #[derive(Clone)]
 pub struct StructDef {
     name: StrKey,
@@ -183,21 +189,33 @@ impl StructDef {
     pub fn members(&self) -> &[StructType] {
         &self.members
     }
+}
 
-    pub fn units(&self) -> Vec<&ValueType> {
-        self.members.iter().flat_map(StructType::units).collect()
+impl StructInfo for StructDef {
+    fn units(&self) -> Vec<&ValueType> {
+        self.members.units()
     }
 
-    pub fn count(&self) -> usize {
-        self.members
-            .iter()
-            .fold(0, |acc, member| acc + member.count())
+    fn count(&self) -> usize {
+        self.members.count()
     }
 
-    pub fn size(&self) -> usize {
-        self.members
-            .iter()
-            .fold(0, |acc, member| acc + member.size())
+    fn size(&self) -> usize {
+        self.members.size()
+    }
+}
+
+impl StructInfo for [StructType] {
+    fn units(&self) -> Vec<&ValueType> {
+        self.iter().flat_map(StructInfo::units).collect()
+    }
+
+    fn count(&self) -> usize {
+        self.iter().fold(0, |acc, member| acc + member.count())
+    }
+
+    fn size(&self) -> usize {
+        self.iter().fold(0, |acc, member| acc + member.size())
     }
 }
 
@@ -224,22 +242,22 @@ pub enum StructType {
     Unit(ValueType),
 }
 
-impl StructType {
-    pub fn units(&self) -> Vec<&ValueType> {
+impl StructInfo for StructType {
+    fn units(&self) -> Vec<&ValueType> {
         match self {
             Self::Root(s) => s.units(),
             Self::Unit(v) => vec![v],
         }
     }
 
-    pub fn count(&self) -> usize {
+    fn count(&self) -> usize {
         match self {
             Self::Root(s) => s.count(),
             Self::Unit(_) => 1,
         }
     }
 
-    pub fn size(&self) -> usize {
+    fn size(&self) -> usize {
         match self {
             Self::Root(s) => s.size(),
             Self::Unit(_) => WORD_USIZE,
@@ -270,38 +288,5 @@ impl Typed for StructType {
 impl From<ValueType> for StructType {
     fn from(value: ValueType) -> Self {
         Self::Unit(value)
-    }
-}
-
-pub trait StructUtils {
-    fn get_offset(&self, word: &StrKey) -> Option<(usize, usize)>;
-    fn get_offset_local(&self, word: &StrKey) -> Option<(usize, usize)>;
-}
-
-impl StructUtils for [StructType] {
-    fn get_offset(&self, word: &StrKey) -> Option<(usize, usize)> {
-        let Some(i) = self.iter().position(|stk| word.eq(stk)) else {
-            return None;
-        };
-
-        let mut offset = 0;
-        for (var, _) in self.iter().zip(0..i) {
-            offset += var.size() / WORD_USIZE;
-        }
-
-        Some((offset, i))
-    }
-
-    fn get_offset_local(&self, word: &StrKey) -> Option<(usize, usize)> {
-        let Some(i) = self.iter().position(|stk| word.eq(stk)) else {
-            return None;
-        };
-
-        let mut offset = 0;
-        for (var, _) in self.iter().zip(0..=i) {
-            offset += var.size() / WORD_USIZE;
-        }
-
-        Some((offset - 1, i))
     }
 }

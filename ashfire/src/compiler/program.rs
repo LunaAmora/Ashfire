@@ -5,7 +5,7 @@ use lasso::Rodeo;
 
 use super::types::{
     core::*,
-    data::{Data, StructDef, StructType, Value},
+    data::{Data, StructDef, StructInfo, StructType, Value},
     enums::IntrinsicType,
     proc::{Proc, ProcData},
 };

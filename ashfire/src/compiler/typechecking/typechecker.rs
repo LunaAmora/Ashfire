@@ -3,6 +3,7 @@ use firelib::{anyhow::Result, lazy::LazyCtx, lexer::Loc};
 
 use super::{expect::*, types::TypeFrame};
 use crate::compiler::{
+    parsing::types::StructUtils,
     program::*,
     types::{
         core::*,
@@ -264,7 +265,7 @@ impl TypeChecker {
                     let index = usize::from(n);
                     let stk = &program.structs_types[index];
 
-                    for typ in stk.members().iter().flat_map(StructType::units) {
+                    for typ in stk.units() {
                         self.push_frame(typ.get_type(), loc);
                     }
 

@@ -12,7 +12,7 @@ use crate::compiler::{
     program::*,
     types::{
         core::{Op, Operand, WORD_SIZE, WORD_USIZE},
-        data::StructType,
+        data::StructInfo,
         enums::{IntrinsicType, OpType},
         proc::{Proc, ProcType},
     },
@@ -90,7 +90,7 @@ impl Generator {
                 wasm.add_data((0..padding).map(|_| "\\00").collect());
             }
 
-            for var in program.global_vars.iter().flat_map(StructType::units) {
+            for var in program.global_vars.units() {
                 wasm.add_data_value(var.value());
             }
         }

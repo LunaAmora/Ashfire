@@ -11,7 +11,7 @@ use crate::compiler::{
     program::{InternalString, Program, ProgramVisitor},
     types::{
         core::{Op, Operand, StrKey, WORD_SIZE},
-        data::{StructDef, StructType},
+        data::{StructDef, StructInfo},
         proc::Contract,
     },
 };
@@ -61,7 +61,7 @@ impl Generator {
         }
 
         let mut index = 0..;
-        for var in data.local_vars.iter().flat_map(StructType::units) {
+        for var in data.local_vars.units() {
             let i = index.next().unwrap();
 
             if var.value() > 0 {

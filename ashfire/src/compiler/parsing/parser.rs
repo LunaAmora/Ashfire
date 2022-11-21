@@ -2,7 +2,6 @@ use std::{collections::VecDeque, path::PathBuf};
 
 use either::Either;
 use firelib::{lazy::LazyCtx, lexer::Loc, utils::*, ShortCircuit, TrySuccess};
-use num::iter::range_step_from;
 
 use super::{types::*, utils::*};
 use crate::compiler::{
@@ -369,9 +368,9 @@ impl Parser {
 
         OptionErr::new(if pointer {
             let stk_id = prog.get_data_type_id(struct_type).unwrap() as i32;
-            Program::get_var_pointer(word, vars, push_type, stk_id)
+            vars.get_pointer(word, push_type, stk_id)
         } else {
-            Program::get_var_fields(word, vars, push_type, struct_type, store)
+            vars.get_fields(word, push_type, struct_type, store)
         })
     }
 
@@ -890,65 +889,6 @@ impl Parser {
 }
 
 impl Program {
-    fn get_var_pointer(
-        word: &LocWord, vars: &[StructType], push_type: OpType, stk_id: i32,
-    ) -> Vec<Op> {
-        let index = if push_type == OpType::PushLocal {
-            vars.get_offset_local(word).unwrap().0
-        } else {
-            vars.get_offset(word).unwrap().0
-        };
-
-        vec![
-            Op::new(push_type, index as i32, word.loc),
-            Op::from((IntrinsicType::Cast(-stk_id), word.loc)),
-        ]
-    }
-
-    fn get_var_fields(
-        word: &LocWord, vars: &[StructType], push_type: OpType, struct_type: &StructDef,
-        store: bool,
-    ) -> Vec<Op> {
-        let mut result = Vec::new();
-        let loc = word.loc;
-        let index = vars.get_offset(word).unwrap().0 as i32;
-
-        let is_local = push_type == OpType::PushLocal;
-        let id_range = if store == is_local {
-            range_step_from(index, 1)
-        } else {
-            range_step_from(index + struct_type.count() as i32 - 1, -1)
-        };
-
-        let members = struct_type.units();
-        let members = if store {
-            Either::Left(members.into_iter().rev())
-        } else {
-            Either::Right(members.into_iter())
-        };
-
-        let members = members.map(ValueType::data).map(Operand::operand);
-
-        for (operand, type_id) in id_range.zip(members) {
-            if store {
-                result.push(Op::new(OpType::ExpectType, type_id, loc));
-            }
-
-            result.push(Op::new(push_type, operand, loc));
-
-            if store {
-                result.push(Op::from((IntrinsicType::Store32, loc)));
-            } else {
-                result.extend([
-                    Op::from((IntrinsicType::Load32, loc)),
-                    Op::from((IntrinsicType::Cast(type_id), loc)),
-                ]);
-            }
-        }
-
-        result
-    }
-
     fn try_get_var_field(
         &self, word: &LocWord, vars: &[StructType], push_type: OpType, store: bool, pointer: bool,
     ) -> OptionErr<Vec<Op>> {
