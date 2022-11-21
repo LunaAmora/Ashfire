@@ -19,7 +19,7 @@ pub struct Parser {
     current_proc: Option<usize>,
 }
 
-impl ProgramVisitor for Parser {
+impl Visitor for Parser {
     fn set_index(&mut self, i: Option<usize>) {
         self.current_proc = i;
     }
@@ -90,7 +90,7 @@ impl Parser {
             TokenType::Str => (OpType::PushStr, &tok, tok.loc),
 
             TokenType::Data(data) => match data {
-                Data::Typ(val) => match val {
+                ValueType::Typ(val) => match val {
                     Value::Type(_) => lazybail!(
                         |f| "{}Value type not valid here: `{}`",
                         f.format(Fmt::Loc(tok.loc)),
@@ -98,7 +98,7 @@ impl Parser {
                     ),
                     _ => (OpType::PushData(val), &tok, tok.loc),
                 },
-                Data::Ptr(ptr) => lazybail!(
+                ValueType::Ptr(ptr) => lazybail!(
                     |f| "{}Data pointer type not valid here: `{}`",
                     f.format(Fmt::Loc(tok.loc)),
                     f.format(Fmt::Typ(ptr.get_type()))
@@ -390,7 +390,7 @@ impl Parser {
         let mut colons = 0;
         while let Some(tok) = self.get(i) {
             match (colons, tok.token_type) {
-                (1, TokenType::Data(Data::Typ(Value::Int))) => {
+                (1, TokenType::Data(ValueType::Typ(Value::Int))) => {
                     self.parse_memory(word, prog).try_success()?;
                 }
 
@@ -469,14 +469,14 @@ impl Parser {
                 self.next();
                 let ref_word = self.expect_word("type after `*`", word.loc)?;
 
-                let Some(data) = prog.get_data_ptr(&ref_word) else {
+                let Some(data) = prog.get_type_ptr(&ref_word) else {
                     return unexpected_token(ref_word.into(), "struct type").into();
                 };
 
                 let name = format!("*{}", ref_word.as_str(prog));
                 let word_id = prog.get_or_intern(&name);
 
-                let value = ValueType::new(&StrKey::default(), data);
+                let value = ValueUnit::new(&StrKey::default(), data);
                 let stk = StructDef::new(&word_id, vec![StructType::Unit(value)]);
 
                 prog.structs_types.push(stk.clone()); //Todo: Check if the `*` type is already registered
@@ -543,7 +543,7 @@ impl Parser {
         if let Ok((eval, skip)) = self.compile_eval(prog).value {
             if &eval != Value::Any {
                 self.skip(skip);
-                let value = ValueType::new(word, &eval).into();
+                let value = ValueUnit::new(word, &eval).into();
                 prog.consts.push(value);
 
                 self.name_scopes.register(word, ParseContext::ConstStruct);
@@ -619,7 +619,7 @@ impl Parser {
                     KeywordType::Ref => {
                         let typ = self.expect_word("type after `*`", loc)?;
 
-                        let Some(data_ptr) = prog.get_data_ptr(&typ) else {
+                        let Some(data_ptr) = prog.get_type_ptr(&typ) else {
                             return unexpected_token(typ.into(), tok_err).into();
                         };
 
@@ -763,7 +763,7 @@ impl Parser {
                     );
                 }
 
-                let struct_word = ValueType::new(word, &eval);
+                let struct_word = ValueUnit::new(word, &eval);
                 self.register_const_or_var(assign, StructType::Unit(struct_word), prog);
             }
         } else {
@@ -788,7 +788,7 @@ impl Parser {
             for member in members {
                 match member {
                     StructType::Unit(unit) => {
-                        let value = ValueType::new(unit, item.next().unwrap());
+                        let value = ValueUnit::new(unit, item.next().unwrap());
                         def_members.push(StructType::Unit(value));
                     }
                     StructType::Root(root) => {
@@ -805,7 +805,7 @@ impl Parser {
                                 todo!()
                             };
 
-                            let value = ValueType::new(typ, item.next().unwrap());
+                            let value = ValueUnit::new(typ, item.next().unwrap());
                             new.push(StructType::Unit(value));
                         }
 
@@ -951,7 +951,7 @@ impl Program {
             }
         };
 
-        let type_id = typ.data().operand();
+        let type_id = typ.value_type().operand();
 
         if store {
             result.push(Op::new(OpType::ExpectType, type_id, loc));
@@ -1005,17 +1005,17 @@ impl Program {
             .enumerate()
             .find(|(_, proc)| word.eq(&proc.name))
             .map(|(index, proc)| {
-                let call = match &proc.data {
-                    ProcType::Inline(..) => OpType::CallInline,
-                    ProcType::Declare(_) => OpType::Call,
+                let call = match &proc.mode {
+                    Mode::Inline(..) => OpType::CallInline,
+                    Mode::Declare(_) => OpType::Call,
                 };
                 vec![Op::new(call, index as i32, word.loc)]
             })
     }
 
-    fn get_type_kind(&self, word: &LocWord, as_ref: bool) -> Option<Either<&StructDef, Data>> {
+    fn get_type_kind(&self, word: &LocWord, as_ref: bool) -> Option<Either<&StructDef, ValueType>> {
         if as_ref {
-            self.get_data_ptr(word).map(Either::Right)
+            self.get_type_ptr(word).map(Either::Right)
         } else {
             self.get_type_name(word).map(Either::Left)
         }
@@ -1027,11 +1027,11 @@ impl Program {
             .find(|def| word_id.str_key().eq(def))
     }
 
-    fn get_data_ptr(&self, word: &LocWord) -> Option<Data> {
+    fn get_type_ptr(&self, word: &LocWord) -> Option<ValueType> {
         self.structs_types
             .iter()
             .position(|def| word.eq(def))
-            .map(|i| Data::Ptr(Value::from(i)))
+            .map(|i| ValueType::Ptr(Value::from(i)))
     }
 
     fn get_struct_type(&self, tok: &IRToken) -> Option<&StructDef> {

@@ -5,9 +5,9 @@ use lasso::Rodeo;
 
 use super::types::{
     core::*,
-    data::{Data, StructDef, StructInfo, StructType, Value},
+    data::{StructDef, StructInfo, StructType, Value, ValueType},
     enums::IntrinsicType,
-    proc::{Proc, ProcData},
+    proc::{Data, Proc},
 };
 
 pub type OptionErr<T, E = Fmt> = ashlib::OptionErr<T, E>;
@@ -146,8 +146,8 @@ impl Program {
             TokenType::Keyword => "Keyword",
             TokenType::Word => "Word or Intrinsic",
             TokenType::Data(data) => match data {
-                Data::Typ(value) => return self.data_name(value),
-                Data::Ptr(value) => return self.data_name(value) + " Pointer",
+                ValueType::Typ(value) => return self.data_name(value),
+                ValueType::Ptr(value) => return self.data_name(value) + " Pointer",
             },
             TokenType::Str => "String",
         }
@@ -224,7 +224,7 @@ impl Program {
     }
 }
 
-pub trait ProgramVisitor {
+pub trait Visitor {
     fn set_index(&mut self, i: Option<usize>);
     fn get_index(&self) -> Option<usize>;
 
@@ -236,7 +236,7 @@ pub trait ProgramVisitor {
         self.get_index().and_then(|i| program.procs.get(i))
     }
 
-    fn current_proc_data<'a>(&self, program: &'a Program) -> Option<&'a ProcData> {
+    fn current_proc_data<'a>(&self, program: &'a Program) -> Option<&'a Data> {
         self.current_proc(program).and_then(Proc::get_data)
     }
 

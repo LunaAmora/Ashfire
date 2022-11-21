@@ -14,7 +14,7 @@ use crate::compiler::{
         core::{Op, Operand, WORD_SIZE, WORD_USIZE},
         data::StructInfo,
         enums::{IntrinsicType, OpType},
-        proc::{Proc, ProcType},
+        proc::{Mode, Proc},
     },
 };
 
@@ -203,7 +203,7 @@ impl FuncGen {
             OpType::EndCase => todo!(),
 
             OpType::CallInline => {
-                let ProcType::Inline(start, end) = prog.get_proc(op).data else {
+                let Mode::Inline(start, end) = prog.get_proc(op).mode else {
                     unreachable!();
                 };
 

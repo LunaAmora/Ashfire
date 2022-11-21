@@ -13,13 +13,13 @@ pub enum Value {
 
 impl Typed for Value {
     fn get_type(&self) -> TokenType {
-        TokenType::Data(Data::Typ(*self))
+        TokenType::Data(ValueType::Typ(*self))
     }
 }
 
 impl Operand for Value {
     fn operand(&self) -> i32 {
-        Data::Typ(*self).operand()
+        ValueType::Typ(*self).operand()
     }
 }
 
@@ -48,12 +48,12 @@ impl From<Value> for usize {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum Data {
+pub enum ValueType {
     Typ(Value),
     Ptr(Value),
 }
 
-impl Data {
+impl ValueType {
     pub fn get_value(self) -> Value {
         match self {
             Self::Typ(val) | Self::Ptr(val) => val,
@@ -61,13 +61,13 @@ impl Data {
     }
 }
 
-impl Typed for Data {
+impl Typed for ValueType {
     fn get_type(&self) -> TokenType {
         TokenType::Data(*self)
     }
 }
 
-impl Operand for Data {
+impl Operand for ValueType {
     fn operand(&self) -> i32 {
         match self {
             Self::Typ(value) => 1 + usize::from(*value) as i32,
@@ -80,7 +80,7 @@ impl Operand for Data {
     }
 }
 
-impl From<i32> for Data {
+impl From<i32> for ValueType {
     fn from(value: i32) -> Self {
         match value {
             0 => unimplemented!("Not a valid value"),
@@ -91,47 +91,47 @@ impl From<i32> for Data {
 }
 
 #[derive(Clone)]
-pub struct ValueType {
+pub struct ValueUnit {
     name: StrKey,
     value: i32,
-    data_type: Data,
+    value_type: ValueType,
 }
 
-impl ValueType {
+impl ValueUnit {
     pub fn new<T: Typed + Operand>(name: &StrKey, typed: T) -> Self {
-        let TokenType::Data(data_type) =  typed.get_type() else {
+        let TokenType::Data(value_type) =  typed.get_type() else {
             unimplemented!()
         };
 
-        Self { name: *name, value: typed.operand(), data_type }
+        Self { name: *name, value: typed.operand(), value_type }
     }
 
     pub fn value(&self) -> i32 {
         self.value
     }
 
-    pub fn data(&self) -> &Data {
-        &self.data_type
+    pub fn value_type(&self) -> &ValueType {
+        &self.value_type
     }
 }
 
-impl Typed for ValueType {
+impl Typed for ValueUnit {
     fn get_type(&self) -> TokenType {
-        self.data_type.get_type()
+        self.value_type.get_type()
     }
 }
 
-impl<T: Typed> From<(StrKey, T)> for ValueType {
+impl<T: Typed> From<(StrKey, T)> for ValueUnit {
     fn from(tuple: (StrKey, T)) -> Self {
         let TokenType::Data(data_type) = tuple.1.get_type() else {
             unimplemented!()
         };
 
-        Self { name: tuple.0, value: 0, data_type }
+        Self { name: tuple.0, value: 0, value_type: data_type }
     }
 }
 
-impl Deref for ValueType {
+impl Deref for ValueUnit {
     type Target = StrKey;
 
     fn deref(&self) -> &Self::Target {
@@ -170,7 +170,7 @@ impl Typed for StructRef {
 }
 
 pub trait StructInfo {
-    fn units(&self) -> Vec<&ValueType>;
+    fn units(&self) -> Vec<&ValueUnit>;
     fn count(&self) -> usize;
     fn size(&self) -> usize;
 }
@@ -192,7 +192,7 @@ impl StructDef {
 }
 
 impl StructInfo for StructDef {
-    fn units(&self) -> Vec<&ValueType> {
+    fn units(&self) -> Vec<&ValueUnit> {
         self.members.units()
     }
 
@@ -206,7 +206,7 @@ impl StructInfo for StructDef {
 }
 
 impl StructInfo for [StructType] {
-    fn units(&self) -> Vec<&ValueType> {
+    fn units(&self) -> Vec<&ValueUnit> {
         self.iter().flat_map(StructInfo::units).collect()
     }
 
@@ -239,11 +239,11 @@ impl From<(StrKey, Value)> for StructDef {
 #[derive(Clone)]
 pub enum StructType {
     Root(StructRef),
-    Unit(ValueType),
+    Unit(ValueUnit),
 }
 
 impl StructInfo for StructType {
-    fn units(&self) -> Vec<&ValueType> {
+    fn units(&self) -> Vec<&ValueUnit> {
         match self {
             Self::Root(s) => s.units(),
             Self::Unit(v) => vec![v],
@@ -285,8 +285,8 @@ impl Typed for StructType {
     }
 }
 
-impl From<ValueType> for StructType {
-    fn from(value: ValueType) -> Self {
+impl From<ValueUnit> for StructType {
+    fn from(value: ValueUnit) -> Self {
         Self::Unit(value)
     }
 }

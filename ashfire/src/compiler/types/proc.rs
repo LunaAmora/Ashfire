@@ -4,14 +4,14 @@ use super::{
 };
 
 #[derive(Default)]
-pub struct ProcData {
+pub struct Data {
     pub bindings: Vec<StrKey>,
     pub local_vars: Vec<StructType>,
     pub local_mems: Vec<OffsetWord>,
     mem_size: usize,
 }
 
-impl ProcData {
+impl Data {
     pub fn push_mem(&mut self, word: &StrKey, size: usize) {
         self.mem_size += size;
         self.local_mems
@@ -27,14 +27,14 @@ impl ProcData {
     }
 }
 
-pub enum ProcType {
+pub enum Mode {
     Inline(usize, usize),
-    Declare(ProcData),
+    Declare(Data),
 }
 
-impl Default for ProcType {
+impl Default for Mode {
     fn default() -> Self {
-        Self::Declare(ProcData::default())
+        Self::Declare(Data::default())
     }
 }
 
@@ -42,26 +42,26 @@ impl Default for ProcType {
 pub struct Proc {
     pub name: StrKey,
     pub contract: Contract,
-    pub data: ProcType,
+    pub mode: Mode,
 }
 
 impl Proc {
     pub fn new(name: &StrKey, contract: Contract, inline: Option<usize>) -> Self {
-        let data = inline.map_or_else(ProcType::default, |start| ProcType::Inline(start, 0));
-        Self { name: *name, contract, data }
+        let mode = inline.map_or_else(Mode::default, |start| Mode::Inline(start, 0));
+        Self { name: *name, contract, mode }
     }
 
-    pub fn get_data(&self) -> Option<&ProcData> {
-        match &self.data {
-            ProcType::Inline(..) => None,
-            ProcType::Declare(data) => Some(data),
+    pub fn get_data(&self) -> Option<&Data> {
+        match &self.mode {
+            Mode::Inline(..) => None,
+            Mode::Declare(data) => Some(data),
         }
     }
 
-    pub fn get_data_mut(&mut self) -> Option<&mut ProcData> {
-        match &mut self.data {
-            ProcType::Inline(..) => None,
-            ProcType::Declare(data) => Some(data),
+    pub fn get_data_mut(&mut self) -> Option<&mut Data> {
+        match &mut self.mode {
+            Mode::Inline(..) => None,
+            Mode::Declare(data) => Some(data),
         }
     }
 }

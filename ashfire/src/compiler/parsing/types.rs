@@ -203,7 +203,7 @@ impl StructUtils for [StructType] {
             Either::Right(members.into_iter())
         };
 
-        let members = members.map(ValueType::data).map(Operand::operand);
+        let members = members.map(ValueUnit::value_type).map(Operand::operand);
 
         for (operand, type_id) in id_range.zip(members) {
             if store {

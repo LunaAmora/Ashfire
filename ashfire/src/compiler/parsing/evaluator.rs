@@ -8,7 +8,7 @@ use crate::compiler::{
     typechecking::expect::{format_frames, ArityType, Expect},
     types::{
         core::*,
-        data::{Data, Value},
+        data::{Value, ValueType},
         enums::{IntrinsicType, KeywordType},
     },
 };
@@ -101,7 +101,7 @@ impl Evaluator for EvalStack<IRToken> {
                     )?,
 
                     IntrinsicType::Cast(n) => self.pop_push_arity(
-                        |[a]| IRToken::new(Data::from(n).get_type(), a, tok.loc),
+                        |[a]| IRToken::new(ValueType::from(n).get_type(), a, tok.loc),
                         ArityType::Any,
                         tok.loc,
                     )?,
@@ -124,7 +124,7 @@ impl Evaluator for EvalStack<IRToken> {
                 ]);
             }
 
-            TokenType::Data(Data::Typ(value)) => match value {
+            TokenType::Data(ValueType::Typ(value)) => match value {
                 Value::Int | Value::Bool | Value::Ptr => self.push(tok),
                 _ => Err(Either::Left(tok))?,
             },

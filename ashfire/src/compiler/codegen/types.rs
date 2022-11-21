@@ -8,7 +8,7 @@ use NumMethod::*;
 use Scope::*;
 
 use crate::compiler::{
-    program::{InternalString, Program, ProgramVisitor},
+    program::{InternalString, Program, Visitor},
     types::{
         core::{Op, Operand, StrKey, WORD_SIZE},
         data::{StructDef, StructInfo},
@@ -22,7 +22,7 @@ pub struct Generator {
     _block_map: HashMap<i32, i32>,
 }
 
-impl ProgramVisitor for Generator {
+impl Visitor for Generator {
     fn set_index(&mut self, i: Option<usize>) {
         self.current_proc = i;
     }

@@ -9,7 +9,7 @@ use crate::compiler::{
         core::*,
         data::*,
         enums::{IntrinsicType, OpType},
-        proc::ProcType,
+        proc::Mode,
     },
     utils::err_loc,
 };
@@ -44,7 +44,7 @@ pub struct TypeChecker {
     current_proc: Option<usize>,
 }
 
-impl ProgramVisitor for TypeChecker {
+impl Visitor for TypeChecker {
     fn set_index(&mut self, i: Option<usize>) {
         self.current_proc = i;
     }
@@ -85,16 +85,16 @@ impl TypeChecker {
             OpType::PushGlobal => self.push_value(Value::Ptr, loc),
 
             OpType::OffsetLoad => match self.expect_struct_pointer(program, ip)? {
-                TokenType::Data(Data::Typ(typ)) => {
-                    self.push_frame(Data::Ptr(typ).get_type(), loc);
+                TokenType::Data(ValueType::Typ(typ)) => {
+                    self.push_frame(ValueType::Ptr(typ).get_type(), loc);
                     program.ops.insert(ip + 1, Op::new(OpType::Unpack, 0, loc));
                 }
                 _ => todo!(),
             },
 
             OpType::Offset => match self.expect_struct_pointer(program, ip)? {
-                TokenType::Data(Data::Typ(offset_type)) => {
-                    self.push_frame(Data::Ptr(offset_type).get_type(), loc);
+                TokenType::Data(ValueType::Typ(offset_type)) => {
+                    self.push_frame(ValueType::Ptr(offset_type).get_type(), loc);
                 }
                 _ => todo!(),
             },
@@ -134,7 +134,7 @@ impl TypeChecker {
                 IntrinsicType::Cast(n) => {
                     self.data_stack.expect_pop(loc)?;
 
-                    let cast = Data::from(n).get_type();
+                    let cast = ValueType::from(n).get_type();
                     self.push_frame(cast, loc);
                 }
             },
@@ -246,8 +246,8 @@ impl TypeChecker {
 
                 self.data_stack = EvalStack::default();
 
-                if let ProcType::Inline(start, _) = proc.data {
-                    proc.data = ProcType::Inline(start, ip);
+                if let Mode::Inline(start, _) = proc.mode {
+                    proc.mode = Mode::Inline(start, ip);
                 }
 
                 self.exit_proc();
@@ -261,7 +261,7 @@ impl TypeChecker {
             OpType::EndWhile => todo!(),
 
             OpType::Unpack => match self.data_stack.expect_pop(op.loc)?.get_type() {
-                TokenType::Data(Data::Ptr(n)) => {
+                TokenType::Data(ValueType::Ptr(n)) => {
                     let index = usize::from(n);
                     let stk = &program.structs_types[index];
 
@@ -281,7 +281,7 @@ impl TypeChecker {
             },
 
             OpType::ExpectType => {
-                let typ = Data::from(op.operand).get_type();
+                let typ = ValueType::from(op.operand).get_type();
                 self.data_stack.expect_peek(ArityType::Type(typ), loc)?;
             }
 
@@ -315,7 +315,7 @@ impl TypeChecker {
         let op = &prog.ops[ip];
         let loc = op.loc;
         match self.data_stack.expect_pop(loc)?.get_type() {
-            TokenType::Data(Data::Ptr(value)) => {
+            TokenType::Data(ValueType::Ptr(value)) => {
                 let stk = &prog.structs_types[usize::from(value)];
                 let word = &op.str_key();
 

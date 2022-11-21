@@ -86,17 +86,17 @@ impl Operand for StrKey {
     }
 }
 
-pub const INT: TokenType = TokenType::Data(Data::Typ(Value::Int));
-pub const BOOL: TokenType = TokenType::Data(Data::Typ(Value::Bool));
-pub const PTR: TokenType = TokenType::Data(Data::Typ(Value::Ptr));
-pub const ANY: TokenType = TokenType::Data(Data::Typ(Value::Any));
+pub const INT: TokenType = TokenType::Data(ValueType::Typ(Value::Int));
+pub const BOOL: TokenType = TokenType::Data(ValueType::Typ(Value::Bool));
+pub const PTR: TokenType = TokenType::Data(ValueType::Typ(Value::Ptr));
+pub const ANY: TokenType = TokenType::Data(ValueType::Typ(Value::Any));
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TokenType {
     Keyword,
     Word,
     Str,
-    Data(Data),
+    Data(ValueType),
 }
 
 impl Typed for TokenType {
@@ -114,14 +114,14 @@ impl From<IRToken> for TokenType {
 impl PartialEq<Value> for TokenType {
     fn eq(&self, other: &Value) -> bool {
         match self {
-            Self::Data(Data::Typ(typ)) => typ == other,
+            Self::Data(ValueType::Typ(typ)) => typ == other,
             _ => false,
         }
     }
 }
 
-impl PartialEq<Data> for TokenType {
-    fn eq(&self, other: &Data) -> bool {
+impl PartialEq<ValueType> for TokenType {
+    fn eq(&self, other: &ValueType) -> bool {
         match self {
             Self::Data(data) => data == other,
             _ => false,
@@ -209,9 +209,9 @@ impl From<(&StructType, Loc)> for IRToken {
     }
 }
 
-impl From<(&ValueType, Loc)> for IRToken {
-    fn from(tuple: (&ValueType, Loc)) -> Self {
-        Self::new(tuple.0.data().get_type(), tuple.0.value(), tuple.1)
+impl From<(&ValueUnit, Loc)> for IRToken {
+    fn from(tuple: (&ValueUnit, Loc)) -> Self {
+        Self::new(tuple.0.value_type().get_type(), tuple.0.value(), tuple.1)
     }
 }
 
@@ -273,10 +273,10 @@ impl From<(&StructType, Loc)> for Op {
     }
 }
 
-impl From<(&ValueType, Loc)> for Op {
+impl From<(&ValueUnit, Loc)> for Op {
     #[track_caller]
-    fn from(tuple: (&ValueType, Loc)) -> Self {
-        let Data::Typ(typ) = tuple.0.data() else {
+    fn from(tuple: (&ValueUnit, Loc)) -> Self {
+        let ValueType::Typ(typ) = tuple.0.value_type() else {
             unimplemented!("Conversion supported only for DataTypes")
         };
 
