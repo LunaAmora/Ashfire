@@ -5,7 +5,12 @@ use firelib::{lazy::LazyCtx, lexer::Loc, utils::*, ShortCircuit, TrySuccess};
 use num::iter::range_step_from;
 
 use super::{types::*, utils::*};
-use crate::compiler::{expect::*, program::*, types::*, utils::*};
+use crate::compiler::{
+    program::*,
+    typechecking::expect::Compare,
+    types::{core::*, data::*, enums::*, proc::*},
+    utils::err_loc,
+};
 
 #[derive(Default)]
 pub struct Parser {
@@ -827,6 +832,29 @@ impl Parser {
         self.structs.push(IndexWord::new(word, word_id));
 
         Ok(())
+    }
+
+    pub fn register_const_or_var(
+        &mut self, assign: KeywordType, struct_word: StructType, prog: &mut Program,
+    ) {
+        match assign {
+            KeywordType::Colon => prog.consts.push(struct_word),
+            KeywordType::Equal => self.register_var(struct_word, prog),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn register_var(&mut self, struct_word: StructType, prog: &mut Program) {
+        match self.current_proc_mut(prog) {
+            Some(proc) => {
+                let Some(data) = proc.get_data_mut() else {
+                    todo!();
+                };
+
+                data.local_vars.push(struct_word);
+            }
+            None => prog.global_vars.push(struct_word),
+        }
     }
 
     pub fn lex_file(&mut self, path: &PathBuf, prog: &mut Program) -> LazyResult<&mut Self> {

@@ -3,9 +3,9 @@ use std::{collections::HashMap, ops::Deref};
 use firelib::lexer::Loc;
 
 use crate::compiler::{
-    expect::Compare,
     program::{InternalString, Program},
-    types::*,
+    typechecking::expect::Compare,
+    types::core::*,
 };
 
 impl Compare<IRToken> for Vec<IRToken> {}

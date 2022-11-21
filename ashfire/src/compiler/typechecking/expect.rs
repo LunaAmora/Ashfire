@@ -4,9 +4,12 @@ use ashlib::UncheckedStack;
 use firelib::{lazy::LazyFormatter, lexer::Loc};
 use itertools::Itertools;
 
-use super::{
+use crate::compiler::{
     program::{Fmt, LazyError, LazyResult},
-    types::*,
+    types::{
+        core::{Location, TokenType, Typed},
+        data::{Data, Value},
+    },
 };
 
 pub enum ArityType<T: Copy> {

@@ -3,7 +3,12 @@ use std::collections::HashMap;
 use firelib::{lazy, lexer::Loc};
 use lasso::Rodeo;
 
-use super::types::*;
+use super::types::{
+    core::*,
+    data::{Data, StructDef, StructType, Value},
+    enums::IntrinsicType,
+    proc::{Proc, ProcData},
+};
 
 pub type OptionErr<T, E = Fmt> = ashlib::OptionErr<T, E>;
 pub type LazyResult<T, E = Fmt> = lazy::LazyResult<T, E>;

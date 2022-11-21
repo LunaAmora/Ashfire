@@ -9,7 +9,10 @@ use firelib::{
 
 use super::{
     program::{Fmt, OptionErr, Program},
-    types::*,
+    types::{
+        core::{IRToken, TokenType, INT},
+        enums::KeywordType,
+    },
     utils::err_loc,
 };
 

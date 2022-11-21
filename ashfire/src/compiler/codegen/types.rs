@@ -9,7 +9,11 @@ use Scope::*;
 
 use crate::compiler::{
     program::{InternalString, Program, ProgramVisitor},
-    types::{Contract, Op, Operand, StrKey, StructDef, StructType, WORD_SIZE},
+    types::{
+        core::{Op, Operand, StrKey, WORD_SIZE},
+        data::{StructDef, StructType},
+        proc::Contract,
+    },
 };
 
 pub struct Generator {

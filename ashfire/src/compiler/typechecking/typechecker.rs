@@ -1,7 +1,17 @@
 use ashlib::{EvalStack, UncheckedStack};
 use firelib::{anyhow::Result, lazy::LazyCtx, lexer::Loc};
 
-use super::{expect::*, program::*, types::*, utils::*};
+use super::{expect::*, types::TypeFrame};
+use crate::compiler::{
+    program::*,
+    types::{
+        core::*,
+        data::*,
+        enums::{IntrinsicType, OpType},
+        proc::ProcType,
+    },
+    utils::err_loc,
+};
 
 type DataStack = EvalStack<TypeFrame>;
 

@@ -4,9 +4,13 @@ use firelib::lazy::LazyFormatter;
 
 use super::parser::Parser;
 use crate::compiler::{
-    expect::{format_frames, ArityType, Expect},
     program::{Fmt, Program},
-    types::*,
+    typechecking::expect::{format_frames, ArityType, Expect},
+    types::{
+        core::*,
+        data::{Data, Value},
+        enums::{IntrinsicType, KeywordType},
+    },
 };
 
 type DoubleResult<T> = ashlib::DoubleResult<T, IRToken, Fmt>;

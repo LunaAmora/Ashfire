@@ -8,7 +8,15 @@ use NumMethod::*;
 use Scope::*;
 
 use super::types::{FuncGen, Generator};
-use crate::compiler::{program::*, types::*};
+use crate::compiler::{
+    program::*,
+    types::{
+        core::{Op, Operand, WORD_SIZE, WORD_USIZE},
+        data::StructType,
+        enums::{IntrinsicType, OpType},
+        proc::{Proc, ProcType},
+    },
+};
 
 impl Generator {
     fn generate_module(&mut self, program: &Program) -> Result<Module> {

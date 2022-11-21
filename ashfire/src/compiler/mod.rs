@@ -1,8 +1,7 @@
 mod codegen;
-mod expect;
 mod lexer;
 mod parsing;
 pub mod program;
-mod typechecker;
+mod typechecking;
 mod types;
 #[allow(dead_code)] mod utils;

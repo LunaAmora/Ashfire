@@ -2,8 +2,11 @@ use firelib::lexer::Loc;
 
 use super::{parser::Parser, types::LocWord};
 use crate::compiler::{
-    program::{Fmt, LazyError, LazyResult, Program, ProgramVisitor},
-    types::{IRToken, KeywordType, Op, StructType, TokenType},
+    program::{Fmt, LazyError, LazyResult},
+    types::{
+        core::{IRToken, Op, TokenType},
+        enums::KeywordType,
+    },
 };
 
 impl Parser {
@@ -22,29 +25,6 @@ impl Parser {
         &mut self, pred: impl FnOnce(&IRToken) -> bool, error_text: &str, loc: Loc,
     ) -> LazyResult<IRToken> {
         expect_token_by(self.next(), pred, error_text, loc)
-    }
-
-    pub fn register_const_or_var(
-        &mut self, assign: KeywordType, struct_word: StructType, prog: &mut Program,
-    ) {
-        match assign {
-            KeywordType::Colon => prog.consts.push(struct_word),
-            KeywordType::Equal => self.register_var(struct_word, prog),
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn register_var(&mut self, struct_word: StructType, prog: &mut Program) {
-        match self.current_proc_mut(prog) {
-            Some(proc) => {
-                let Some(data) = proc.get_data_mut() else {
-                    todo!();
-                };
-
-                data.local_vars.push(struct_word);
-            }
-            None => prog.global_vars.push(struct_word),
-        }
     }
 }
 
