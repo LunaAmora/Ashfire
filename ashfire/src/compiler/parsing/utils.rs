@@ -49,20 +49,30 @@ impl Parser {
 }
 
 pub fn invalid_option<S: ToString>(tok: Option<IRToken>, desc: S, loc: Loc) -> LazyError {
-    let desc = desc.to_string();
-    match tok {
-        Some(tok) => LazyError::new(move |f| {
-            format!(
-                "{}Expected {desc}, but found: {} `{}`",
-                f.format(Fmt::Loc(tok.loc)),
-                f.format(Fmt::Typ(tok.token_type)),
-                f.format(Fmt::Tok(tok.clone()))
-            )
-        }),
-        None => LazyError::new(move |f| {
-            format!("{}Expected {desc}, but found nothing", f.format(Fmt::Loc(loc)))
-        }),
+    if let Some(tok) = tok {
+        unexpected_token(tok, desc)
+    } else {
+        unexpected_end(desc, loc)
     }
+}
+
+pub fn unexpected_end<S: ToString>(desc: S, loc: Loc) -> LazyError {
+    let desc = desc.to_string();
+    LazyError::new(move |f| {
+        format!("{}Expected {desc}, but found nothing", f.format(Fmt::Loc(loc)))
+    })
+}
+
+pub fn unexpected_token<S: ToString>(tok: IRToken, desc: S) -> LazyError {
+    let desc = desc.to_string();
+    LazyError::new(move |f| {
+        format!(
+            "{}Expected {desc}, but found: {} `{}`",
+            f.format(Fmt::Loc(tok.loc)),
+            f.format(Fmt::Typ(tok.token_type)),
+            f.format(Fmt::Tok(tok.clone()))
+        )
+    })
 }
 
 pub fn invalid_token<S: ToString>(tok: IRToken, error: S) -> LazyError {

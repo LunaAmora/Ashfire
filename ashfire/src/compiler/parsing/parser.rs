@@ -466,7 +466,7 @@ impl Parser {
                 let ref_word = self.expect_word("type after `*`", word.loc)?;
 
                 let Some(data) = prog.get_data_ptr(&ref_word) else {
-                    return invalid_option(Some(ref_word.into()), "struct type", word.loc).into();
+                    return unexpected_token(ref_word.into(), "struct type").into();
                 };
 
                 let name = format!("*{}", ref_word.as_str(prog));
@@ -555,7 +555,7 @@ impl Parser {
         let tok = self.get_cloned(index).unwrap();
 
         let Some(stk) = prog.get_struct_type(&tok).cloned() else {
-            return invalid_option(Some(tok), "struct type", word.loc).into();
+            return unexpected_token(tok, "struct type").into();
         };
 
         self.next();
@@ -598,8 +598,8 @@ impl Parser {
         let tok_err = "proc contract or `:` after procedure definition";
 
         while let Some(tok) = self.next() {
-            if let Some(key) = tok.get_keyword() {
-                match key {
+            match tok.token_type {
+                TokenType::Keyword => match tok.as_keyword() {
                     KeywordType::Arrow => {
                         if arrow {
                             let error = "Duplicated `->` found on procedure definition";
@@ -616,25 +616,27 @@ impl Parser {
                         let typ = self.expect_word("type after `*`", loc)?;
 
                         let Some(data_ptr) = prog.get_data_ptr(&typ) else {
-                            return invalid_option(Some(typ.into()), tok_err, loc).into();
+                            return unexpected_token(typ.into(), tok_err).into();
                         };
 
                         push_by_condition(arrow, data_ptr.get_type(), &mut outs, &mut ins);
                     }
 
-                    _ => return invalid_option(Some(tok), tok_err, loc).into(),
-                }
-            } else if &tok == TokenType::Word {
-                let Some(stk) = prog.get_type_name(&tok) else {
-                    return invalid_option(Some(tok), tok_err, loc).into();
-                };
+                    _ => return unexpected_token(tok, tok_err).into(),
+                },
+                TokenType::Word => {
+                    let Some(stk) = prog.get_type_name(&tok) else {
+                        return unexpected_token(tok, tok_err).into();
+                    };
 
-                for typ in stk.units().iter().map(Typed::get_type) {
-                    push_by_condition(arrow, typ, &mut outs, &mut ins);
+                    for typ in stk.units().iter().map(Typed::get_type) {
+                        push_by_condition(arrow, typ, &mut outs, &mut ins);
+                    }
                 }
+                _ => return unexpected_token(tok, tok_err).into(),
             }
         }
-        invalid_option(None, tok_err, loc).into()
+        unexpected_end(tok_err, loc).into()
     }
 
     fn parse_memory(&mut self, word: &LocWord, prog: &mut Program) -> LazyResult<()> {
@@ -669,7 +671,7 @@ impl Parser {
             let as_ref = false; // Todo: Add pointers support
 
             let Some(type_kind) = prog.get_type_kind(&name_type, as_ref) else {
-                return invalid_option(Some(name_type.into()), "struct member type", loc).into()
+                return unexpected_token(name_type.into(), "struct member type").into()
             };
 
             match type_kind {
