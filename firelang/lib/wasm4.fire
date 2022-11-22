@@ -1,0 +1,112 @@
+//
+// WASM-4: https://wasm4.org/docs
+
+include "std.fire"
+
+// ┌───────────────────────────────────────────────────────────────────────────┐
+// │                                                                           │
+// │ Drawing Functions                                                         │
+// │                                                                           │
+// └───────────────────────────────────────────────────────────────────────────┘
+// Copies pixels to the framebuffer.
+blit import: ptr int int int int int : end
+
+// Copies a subregion within a larger sprite atlas to the framebuffer.
+blitSub import: ptr int int int int int int int int : end
+
+// Draws a line between two points.
+line import: int int int int : end
+
+// Draws a horizontal line.
+hline import: int int int : end
+
+// Draws a vertical line.
+vline import: int int int : end
+
+// Draws an oval (or circle).
+oval import: int int int int : end
+
+// Draws a rectangle.
+rect import: int int int int : end
+
+// Draws text using the built-: system font.
+text import: ptr int int : end
+textUtf8 import: ptr int int int : end
+textUtf16 import: ptr int int int : end
+
+// ┌───────────────────────────────────────────────────────────────────────────┐
+// │                                                                           │
+// │ Sound Functions                                                           │
+// │                                                                           │
+// └───────────────────────────────────────────────────────────────────────────┘
+// Plays a sound tone.
+tone import: int int int int : end
+
+// ┌───────────────────────────────────────────────────────────────────────────┐
+// │                                                                           │
+// │ Storage Functions                                                         │
+// │                                                                           │
+// └───────────────────────────────────────────────────────────────────────────┘
+// Reads up to `size` bytes from persistent storage into the pointer `dest`.
+diskr import: ptr int : end
+
+// Writes up to `size` bytes from the pointer `src` into persistent storage.
+diskw import: ptr int : end
+
+// Prints a message to the debug console.
+trace import: ptr : end
+traceUtf8 import: ptr int : end
+traceUtf16 import: ptr int : end
+
+// ┌───────────────────────────────────────────────────────────────────────────┐
+// │                                                                           │
+// │ Memory Addresses                                                          │
+// │                                                                           │
+// └───────────────────────────────────────────────────────────────────────────┘
+
+$MEM_BEGIN:     4     end // unused 4 bytes
+$PALETTE0:      4     end
+$PALETTE1:      4     end
+$PALETTE2:      4     end
+$PALETTE3:      4     end
+$DRAW_COLORS:   2     end
+$GAMEPAD1:      1     end
+$GAMEPAD2:      1     end
+$GAMEPAD3:      1     end
+$GAMEPAD4:      1     end
+$MOUSE_X:       2     end
+$MOUSE_Y:       2     end
+$MOUSE_BUTTONS: 1     end
+$SYSTEM_FLAGS:  1     end
+$NETPLAY:       1     end
+$RESERVED:      127   end // Reserved bytes for future use
+$FRAMEBUFFER:   6400  end
+
+$SYSTEM_PRESERVE_FRAMEBUFFER :: 1 end
+$SYSTEM_HIDE_GAMEPAD_OVERLAY :: 2 end
+
+$BUTTON_1 ::      1   end
+$BUTTON_2 ::      2   end // bits 2 and 3 are skipped
+$BUTTON_LEFT ::   16  end
+$BUTTON_RIGHT ::  32  end
+$BUTTON_UP ::     64  end
+$BUTTON_DOWN ::   128 end
+
+$MOUSE_LEFT ::    1   end
+$MOUSE_RIGHT ::   2   end
+$MOUSE_MIDDLE ::  4   end
+
+$BLIT_1BPP ::     0   end
+$BLIT_2BPP ::     1   end
+$BLIT_FLIP_X ::   2   end
+$BLIT_FLIP_Y ::   4   end
+$BLIT_ROTATE ::   8   end
+
+$TONE_PULSE1 ::   0   end
+$TONE_PULSE2 ::   1   end
+$TONE_TRIANGLE :: 2   end
+$TONE_NOISE ::    3   end
+$TONE_MODE1 ::    0   end
+$TONE_MODE2 ::    4   end
+$TONE_MODE3 ::    8   end
+$TONE_MODE4 ::    12  end
