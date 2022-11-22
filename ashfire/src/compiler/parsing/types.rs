@@ -228,7 +228,7 @@ impl StructType {
     ) -> Vec<Op> {
         let mut result = Vec::new();
         match self {
-            StructType::Unit(unit) => {
+            Self::Unit(unit) => {
                 let type_id = unit.value_type().operand();
                 result.push(Op::new(push_type, offset as i32, loc));
 
@@ -241,11 +241,11 @@ impl StructType {
                     result.extend([
                         Op::from((IntrinsicType::Load32, loc)),
                         Op::from((IntrinsicType::Cast(type_id), loc)),
-                    ])
+                    ]);
                 }
             }
 
-            StructType::Root(root) => {
+            Self::Root(root) => {
                 if var_typ == VarWordType::Store {
                     todo!();
                 }

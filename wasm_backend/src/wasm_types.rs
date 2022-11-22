@@ -28,17 +28,15 @@ pub struct FuncType {
 
 impl Display for FuncType {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let mut res = String::new();
-
         if !self.param.is_empty() {
-            res += &format!(" (param {})", self.param.iter().join(" "));
+            write!(f, " (param {})", self.param.iter().join(" "))?;
         }
 
         if !self.result.is_empty() {
-            res += &format!(" (result {})", self.result.iter().join(" "));
+            write!(f, " (result {})", self.result.iter().join(" "))?;
         }
 
-        write!(f, "{res}")
+        Ok(())
     }
 }
 
@@ -136,9 +134,9 @@ impl Display for Instruction {
             Self::Call(ident) => format!("call {ident}"),
             Self::BrIf(_) => todo!(),
             Self::Br(_) => todo!(),
-            Self::Else => "else".to_string(),
-            Self::Drop => "drop".to_string(),
-            Self::End => "end".to_string(),
+            Self::Else => "else".to_owned(),
+            Self::Drop => "drop".to_owned(),
+            Self::End => "end".to_owned(),
         };
         write!(f, "{text}")
     }
@@ -153,7 +151,7 @@ pub enum BlockType {
 impl Display for BlockType {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let text = match self {
-            Self::If => "if".to_string(),
+            Self::If => "if".to_owned(),
             Self::Loop(_) => todo!(),
             Self::Block(_) => todo!(),
         };

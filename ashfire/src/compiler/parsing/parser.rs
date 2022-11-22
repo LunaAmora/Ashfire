@@ -788,7 +788,7 @@ impl Parser {
     pub fn lex_file(&mut self, path: &PathBuf, prog: &mut Program) -> LazyResult<&mut Self> {
         let lex = &mut match prog.new_lexer(path) {
             Ok(ok) => ok,
-            Err(err) => Err(err)?,
+            Err(err) => return Err(err.into()),
         };
 
         while let Some(token) = prog.lex_next_token(lex).value? {
@@ -807,7 +807,7 @@ impl Parser {
             let include_path = prog.get_data_str(tok);
 
             let include = get_dir(path)
-                .with_ctx(|_| "failed to get file directory path".to_string())?
+                .with_ctx(|_| "failed to get file directory path".to_owned())?
                 .join(include_path);
 
             info!("Including file: {:?}", include);

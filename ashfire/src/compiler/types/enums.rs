@@ -214,10 +214,10 @@ mod tests {
         for n in -RANGE..=RANGE {
             let i = i32::from(IntrinsicType::from(n));
 
-            if !(-CAST_BASE..0).contains(&n) {
-                assert_eq!(n, i);
-            } else {
+            if (-CAST_BASE..0).contains(&n) {
                 assert_eq!(i, CAST_BASE);
+            } else {
+                assert_eq!(n, i);
             }
         }
     }

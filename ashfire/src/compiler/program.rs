@@ -25,7 +25,7 @@ impl InternalString for StrKey {
     }
 
     fn as_string(&self, prog: &Program) -> String {
-        prog.interner.resolve(self).to_string()
+        prog.interner.resolve(self).to_owned()
     }
 }
 
