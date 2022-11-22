@@ -66,8 +66,12 @@ impl Program {
         self.mem_size += size;
     }
 
-    pub fn push_data(&mut self, word: &str, size: usize) -> usize {
-        let name = self.get_or_intern(word);
+    pub fn push_data(&mut self, mut word: String, size: usize) -> usize {
+        if word.ends_with("\\0") {
+            word.push('0');
+        };
+
+        let name = self.get_or_intern(&word);
         let value = OffsetData::new(name, size as i32, self.data_size as i32);
         self.data.push(value);
         self.data_size += size;
