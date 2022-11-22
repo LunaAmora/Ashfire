@@ -14,7 +14,7 @@ pub struct Module {
     imports: Vec<Import>,
     exports: Vec<Export>,
     globals: Vec<Global>,
-    data: Vec<String>,
+    data: (Vec<String>, usize),
     funcs: Vec<Func>,
     func_map: HashMap<String, usize>,
     global_map: HashMap<String, usize>,
@@ -28,6 +28,14 @@ impl Module {
     pub fn new_mem(&mut self) -> usize {
         self.mems.push(Memory::default());
         self.mems.len() - 1
+    }
+
+    pub fn add_mem_import(&mut self, module: &str, name: &str, bind: Bind) {
+        self.imports.push(Import {
+            module: module.to_owned(),
+            label: name.to_owned(),
+            bind,
+        });
     }
 
     pub fn add_import(
@@ -78,7 +86,7 @@ impl Module {
     }
 
     pub fn add_data(&mut self, data: String) {
-        self.data.push(data);
+        self.data.0.push(data);
     }
 
     pub fn add_data_value(&mut self, data: i32) {
@@ -124,15 +132,18 @@ impl Module {
 
                     self.func_map.remove(&label);
                 }
-                Bind::Mem(_) => todo!(),
-            }
-        }
-        Ok(self)
-    }
+                Bind::Mem(id) => {
+                    let mem = match id {
+                        Ident::Id(index) => &self.mems[*index],
+                        Ident::Label(_) => unreachable!(),
+                    };
 
-    fn write_memories(&self, writer: &mut impl Write) -> Result<&Self> {
-        for mem in &self.mems {
-            writer.write_all(format!("{mem}\n").as_bytes())?;
+                    writer.write_all(
+                        format!("(import \"{}\" \"{}\" {mem})\n", import.module, import.label,)
+                            .as_bytes(),
+                    )?;
+                }
+            }
         }
         Ok(self)
     }
@@ -141,11 +152,14 @@ impl Module {
         for (label, index) in self.global_map.iter().sorted_by_key(|entry| entry.1) {
             let global = &self.globals[*index].value;
 
-            let global_type =
-                format!("{}{}", if global.is_mut { "mut " } else { "" }, global.wasm_type);
+            let global_type = if global.is_mut {
+                format!("(mut {})", global.wasm_type)
+            } else {
+                global.wasm_type.to_string()
+            };
             writer.write_all(
                 format!(
-                    "(global ${label} ({global_type}) ({}.const {}))\n",
+                    "(global ${label} {global_type} ({}.const {}))\n",
                     global.wasm_type, global.value
                 )
                 .as_bytes(),
@@ -190,8 +204,9 @@ impl Module {
     fn write_data(&self, writer: &mut impl Write) -> Result<&Self> {
         writer.write_all(
             format!(
-                "(data (i32.const 0)\n{}\n)\n",
-                self.data.iter().map(|d| format!("  \"{d}\"")).join("\n")
+                "(data (i32.const {})\n{}\n)\n",
+                self.data.1,
+                self.data.0.iter().map(|d| format!("  \"{d}\"")).join("\n")
             )
             .as_bytes(),
         )?;
@@ -216,7 +231,10 @@ impl Module {
                         Ident::Label(_) => unreachable!(),
                     };
 
-                    writer.write_all(format!("(export \"memory\" (memory {mem}))\n").as_bytes())?;
+                    let memory = &self.mems[*mem];
+                    writer.write_all(
+                        format!("{memory}\n(export \"memory\" (memory {mem}))\n").as_bytes(),
+                    )?;
                 }
             }
         }
@@ -225,7 +243,6 @@ impl Module {
 
     pub fn write_text(mut self, mut writer: impl Write) -> Result<()> {
         self.write_imports(&mut writer)?
-            .write_memories(&mut writer)?
             .write_globals(&mut writer)?
             .write_funcs(&mut writer)?
             .write_data(&mut writer)?

@@ -93,7 +93,13 @@ impl Generator {
             func.extend(vec![Const(mem_to_free), Call("free_local".into())]);
         }
 
-        wasm.add_fn(func.label.as_str(program), &func.contract.0, &func.contract.1, func.code);
+        let label = &func.label.as_str(program);
+        let id = wasm.add_fn(label, &func.contract.0, &func.contract.1, func.code);
+
+        if proc.is_export() {
+            wasm.add_export(label, Bind::Func(Id(id)));
+        }
+
         Ok(false)
     }
 

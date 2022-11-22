@@ -103,9 +103,10 @@ impl Program {
             .enumerate()
             .find(|(_, proc)| word.eq(&proc.name))
             .map(|(index, proc)| {
-                let call = match &proc.mode {
-                    Mode::Inline(..) => OpType::CallInline,
-                    Mode::Declare(_) => OpType::Call,
+                let call = if let Mode::Inlined(..) = &proc.mode {
+                    OpType::CallInline
+                } else {
+                    OpType::Call
                 };
                 vec![Op::new(call, index as i32, word.loc)]
             })

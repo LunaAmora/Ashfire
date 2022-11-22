@@ -61,6 +61,27 @@ fn main() {
     }
 }
 
+pub struct RuntimeConfig {
+    pub module: String,
+    pub imports_mem: bool,
+}
+
+impl RuntimeConfig {
+    pub fn new(module: String, import_mem: bool) -> Self {
+        Self { module, imports_mem: import_mem }
+    }
+}
+
+impl From<&str> for RuntimeConfig {
+    fn from(value: &str) -> Self {
+        match value {
+            "wasmtime" => Self::new("wasi_unstable".to_owned(), false),
+            "w4" => Self::new("env".to_owned(), true),
+            _ => todo!(),
+        }
+    }
+}
+
 fn compile_command(
     path: &PathBuf, output: Option<PathBuf>, run: bool, wat: bool, runtime: String,
 ) -> Result<()> {
@@ -69,7 +90,7 @@ fn compile_command(
     Program::new()
         .compile_file(path)?
         .type_check()?
-        .generate_wasm(&out)?;
+        .generate_wasm(&out, RuntimeConfig::from(runtime.as_str()))?;
 
     let out_wasm = out.with_extension("wasm");
 
@@ -78,7 +99,11 @@ fn compile_command(
         cmd_wait!("wasm2wat", &out_wasm, "-o", &out);
     }
     if run {
-        cmd_wait!(runtime, &out_wasm);
+        if runtime == "w4" {
+            cmd_wait!(runtime, "run", &out_wasm);
+        } else {
+            cmd_wait!(runtime, &out_wasm);
+        }
     }
 
     Ok(())

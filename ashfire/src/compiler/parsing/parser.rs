@@ -283,6 +283,8 @@ impl Parser {
 
             KeywordType::Include |
             KeywordType::Inline |
+            KeywordType::Import |
+            KeywordType::Export |
             KeywordType::Arrow |
             KeywordType::Proc |
             KeywordType::Mem |
@@ -354,7 +356,7 @@ impl Parser {
     ) -> OptionErr<Vec<Op>> {
         let tok = self.get(index).unwrap();
         prog.get_type_def(tok).or_return(OptionErr::default)?;
-        self.parse_procedure(word, prog, false)
+        self.parse_procedure(word, prog, ModeType::Declare)
     }
 
     fn parse_struct_ctx(
@@ -386,12 +388,22 @@ impl Parser {
 
             (0, KeywordType::Proc) => {
                 self.next();
-                self.parse_procedure(word, prog, false)
+                self.parse_procedure(word, prog, ModeType::Declare)
+            }
+
+            (0, KeywordType::Import) => {
+                self.next();
+                self.parse_procedure(word, prog, ModeType::Import)
+            }
+
+            (0, KeywordType::Export) => {
+                self.next();
+                self.parse_procedure(word, prog, ModeType::Export)
             }
 
             (0, KeywordType::Inline) => {
                 self.next();
-                self.parse_procedure(word, prog, true)
+                self.parse_procedure(word, prog, ModeType::Inline(prog.ops.len()))
             }
 
             (0, KeywordType::Ref) => {
@@ -459,14 +471,14 @@ impl Parser {
         (colons == 2).or_return(OptionErr::default)?;
 
         self.parse_static_ctx(ctx_size, word, prog)?;
-        self.define_proc(word, Contract::default(), prog, false)
+        self.define_proc(word, Contract::default(), prog, ModeType::Declare)
             .into_success()?
     }
 
     fn parse_static_ctx(
         &mut self, ctx_size: usize, word: &LocWord, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
-        (ctx_size == 1).or_return(|| self.parse_procedure(word, prog, false))?;
+        (ctx_size == 1).or_return(|| self.parse_procedure(word, prog, ModeType::Declare))?;
 
         self.skip(2);
         if let Ok((eval, skip)) = self.compile_eval(prog).value {
@@ -497,7 +509,7 @@ impl Parser {
     }
 
     fn define_proc(
-        &mut self, name: &LocWord, contract: Contract, prog: &mut Program, inline: bool,
+        &mut self, name: &LocWord, contract: Contract, prog: &mut Program, mode: ModeType,
     ) -> LazyResult<Op> {
         let loc = name.loc;
 
@@ -506,8 +518,7 @@ impl Parser {
             return Err(err_loc(error, loc));
         };
 
-        let inline_ip = fold_bool!(inline, Some(prog.ops.len()), None);
-        let proc = Proc::new(name, contract, inline_ip);
+        let proc = Proc::new(name, contract, mode);
 
         let operand = prog.procs.len();
         self.enter_proc(operand);
@@ -515,12 +526,16 @@ impl Parser {
 
         self.name_scopes.register(name, ParseContext::ProcName);
 
-        let prep = fold_bool!(inline, OpType::PrepInline, OpType::PrepProc);
+        let prep = fold_bool!(
+            matches!(mode, ModeType::Declare | ModeType::Export),
+            OpType::PrepProc,
+            OpType::PrepInline
+        );
         Ok(self.push_block(Op::new(prep, operand as i32, loc)))
     }
 
     fn parse_procedure(
-        &mut self, word: &LocWord, prog: &mut Program, include: bool,
+        &mut self, word: &LocWord, prog: &mut Program, mode: ModeType,
     ) -> OptionErr<Vec<Op>> {
         let mut ins = Vec::new();
         let mut outs = Vec::new();
@@ -542,7 +557,7 @@ impl Parser {
                     }
 
                     KeywordType::Colon => self
-                        .define_proc(word, Contract::new(ins, outs), prog, include)
+                        .define_proc(word, Contract::new(ins, outs), prog, mode)
                         .into_success()?,
 
                     KeywordType::Ref => {

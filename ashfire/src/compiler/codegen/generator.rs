@@ -8,29 +8,40 @@ use NumMethod::*;
 use Scope::*;
 
 use super::types::{FuncGen, Generator};
-use crate::compiler::{
-    program::*,
-    types::{
-        core::{Op, Operand, WORD_SIZE, WORD_USIZE},
-        data::StructInfo,
-        enums::{IntrinsicType, OpType},
-        proc::{Mode, Proc},
+use crate::{
+    compiler::{
+        program::*,
+        types::{
+            core::{Op, Operand, WORD_SIZE, WORD_USIZE},
+            data::StructInfo,
+            enums::{IntrinsicType, OpType},
+            proc::{Mode, Proc},
+        },
     },
+    RuntimeConfig,
 };
 
 impl Generator {
-    fn generate_module(&mut self, program: &Program) -> Result<Module> {
+    fn generate_module(&mut self, program: &Program, config: RuntimeConfig) -> Result<Module> {
         let i1 = &[WasmType::I32; 1];
         let i2 = &[WasmType::I32; 2];
         let i3 = &[WasmType::I32; 3];
-        let i4 = &[WasmType::I32; 4];
 
         let mut wasm = Module::new();
 
-        wasm.add_import("wasi_unstable", "fd_write", "fd_write", i4, i1);
+        for import in program.procs.iter().filter(|p| p.is_import()) {
+            let (ins, outs) = <(Vec<WasmType>, Vec<WasmType>)>::from(&import.contract);
+            let name = &import.name.as_str(program);
+            wasm.add_import(&config.module, name, name, &ins, &outs);
+        }
 
         let mem = wasm.new_mem();
-        wasm.add_export("memory", Bind::Mem(Id(mem)));
+
+        if config.imports_mem {
+            wasm.add_mem_import(&config.module, "memory", Bind::Mem(Id(mem)))
+        } else {
+            wasm.add_export("memory", Bind::Mem(Id(mem)));
+        }
 
         wasm.add_fn("dup", i1, i2, vec![Get(local, Id(0)), Get(local, Id(0))]);
         wasm.add_fn("swap", i2, i2, vec![Get(local, Id(1)), Get(local, Id(0))]);
@@ -77,8 +88,6 @@ impl Generator {
                 }
             }
         }
-
-        wasm.add_export("_start", Bind::Func("start".into()));
 
         for data in program.get_all_data() {
             wasm.add_data(data.as_string(program));
@@ -156,7 +165,6 @@ impl FuncGen {
                 IntrinsicType::Store8 => self.extend([Call("swap".into()), I32(store8)]),
                 IntrinsicType::Store16 => self.extend([Call("swap".into()), I32(store16)]),
                 IntrinsicType::Store32 => self.extend([Call("swap".into()), I32(store)]),
-                IntrinsicType::FdWrite => self.extend([Call("fd_write".into())]),
 
                 IntrinsicType::Cast(_) => {}
             },
@@ -203,7 +211,7 @@ impl FuncGen {
             OpType::EndCase => todo!(),
 
             OpType::CallInline => {
-                let Mode::Inline(start, end) = prog.get_proc(op).mode else {
+                let Mode::Inlined(start, end) = prog.get_proc(op).mode else {
                     unreachable!();
                 };
 
@@ -222,10 +230,12 @@ impl FuncGen {
 }
 
 impl Program {
-    pub fn generate_wasm(&self, output: &Path) -> Result<()> {
+    pub fn generate_wasm(&self, output: &Path, config: RuntimeConfig) -> Result<()> {
         info!("Generating {:?}", output);
 
         let writer = BufWriter::new(File::create(output)?);
-        Generator::new().generate_module(self)?.write_text(writer)
+        Generator::new()
+            .generate_module(self, config)?
+            .write_text(writer)
     }
 }

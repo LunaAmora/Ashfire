@@ -27,14 +27,35 @@ impl Data {
     }
 }
 
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum ModeType {
+    Import,
+    Export,
+    Declare,
+    Inline(usize),
+}
+
 pub enum Mode {
-    Inline(usize, usize),
-    Declare(Data),
+    Imported,
+    Exported(Data),
+    Declared(Data),
+    Inlined(usize, usize),
+}
+
+impl From<ModeType> for Mode {
+    fn from(value: ModeType) -> Self {
+        match value {
+            ModeType::Import => Self::Imported,
+            ModeType::Export => Self::Exported(Data::default()),
+            ModeType::Inline(start) => Self::Inlined(start, 0),
+            ModeType::Declare => Self::default(),
+        }
+    }
 }
 
 impl Default for Mode {
     fn default() -> Self {
-        Self::Declare(Data::default())
+        Self::Declared(Data::default())
     }
 }
 
@@ -46,22 +67,36 @@ pub struct Proc {
 }
 
 impl Proc {
-    pub fn new(name: &StrKey, contract: Contract, inline: Option<usize>) -> Self {
-        let mode = inline.map_or_else(Mode::default, |start| Mode::Inline(start, 0));
+    pub fn new(name: &StrKey, contract: Contract, mode: ModeType) -> Self {
+        let mode = Mode::from(mode);
         Self { name: *name, contract, mode }
     }
 
     pub fn get_data(&self) -> Option<&Data> {
         match &self.mode {
-            Mode::Inline(..) => None,
-            Mode::Declare(data) => Some(data),
+            Mode::Declared(data) | Mode::Exported(data) => Some(data),
+            _ => None,
         }
     }
 
     pub fn get_data_mut(&mut self) -> Option<&mut Data> {
         match &mut self.mode {
-            Mode::Inline(..) => None,
-            Mode::Declare(data) => Some(data),
+            Mode::Declared(data) | Mode::Exported(data) => Some(data),
+            _ => None,
+        }
+    }
+
+    pub fn is_import(&self) -> bool {
+        match self.mode {
+            Mode::Imported => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_export(&self) -> bool {
+        match self.mode {
+            Mode::Exported(_) => true,
+            _ => false,
         }
     }
 }

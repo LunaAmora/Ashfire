@@ -66,6 +66,8 @@ pub enum KeywordType {
     Ref,
     Inline,
     Include,
+    Import,
+    Export,
     Case,
 }
 
@@ -95,6 +97,8 @@ impl KeywordType {
             "struct" => Self::Struct,
             "inline" => Self::Inline,
             "include" => Self::Include,
+            "import" => Self::Import,
+            "export" => Self::Export,
             _ => return None,
         })
     }
@@ -119,7 +123,6 @@ pub enum IntrinsicType {
     Store8,
     Store16,
     Store32,
-    FdWrite,
     Cast(i32),
 }
 
@@ -143,7 +146,6 @@ impl IntrinsicType {
             "!16" => Self::Store16,
             "@32" => Self::Load32,
             "!32" => Self::Store32,
-            "fd_write" => Self::FdWrite,
             _ => return None,
         })
     }
@@ -169,7 +171,6 @@ impl const From<i32> for IntrinsicType {
             14 => Self::Store16,
             15 => Self::Load32,
             16 => Self::Store32,
-            17 => Self::FdWrite,
             n if n.abs() <= CAST_BASE => Self::Cast(0), // invalid cast
             n => Self::Cast(fold_bool!(n.is_positive(), -CAST_BASE, CAST_BASE) + n),
         }
@@ -198,8 +199,7 @@ impl const From<IntrinsicType> for i32 {
             IntrinsicType::Store16 => 14,
             IntrinsicType::Load32 => 15,
             IntrinsicType::Store32 => 16,
-            IntrinsicType::FdWrite => 17,
-            IntrinsicType::Cast(n) => 18 * fold_bool!(n >= 0, 1, -1) + n,
+            IntrinsicType::Cast(n) => 17 * fold_bool!(n >= 0, 1, -1) + n,
         }
     }
 }

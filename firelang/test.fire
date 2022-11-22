@@ -1,4 +1,4 @@
-include "lib/std.fire"
+include "lib/wasi.fire"
 
 double_str struct :
   first  str
@@ -10,7 +10,7 @@ print_double inline: double_str : println println end
 hello double_str := "Hello World!" "Other Text" end
 new_text str := "-> a Really long text" end
 
-start proc ::
+_start export::
   hello print_double
   
   *new_text trim-left

@@ -127,10 +127,6 @@ impl TypeChecker {
                     self.data_stack.expect_array_pop([ANY, ANY], loc)?;
                 }
 
-                IntrinsicType::FdWrite => {
-                    self.pop_push([INT, PTR, INT, PTR], PTR, loc)?;
-                }
-
                 IntrinsicType::Cast(n) => {
                     self.data_stack.expect_pop(loc)?;
 
@@ -165,7 +161,13 @@ impl TypeChecker {
             }
 
             OpType::PrepProc | OpType::PrepInline => {
-                for &typ in self.visit_proc(program, op.index()).contract.ins() {
+                let proc = &self.visit_proc(program, op.index());
+
+                if let Mode::Imported = proc.mode {
+                    return Ok(());
+                }
+
+                for &typ in proc.contract.ins() {
                     self.push_frame(typ, loc);
                 }
             }
@@ -234,20 +236,23 @@ impl TypeChecker {
 
             OpType::EndProc | OpType::EndInline => {
                 let proc = self.current_proc_mut(program).unwrap();
+
+                if let Mode::Imported = proc.mode {
+                    return Ok(());
+                }
+
                 let outs = proc.contract.outs();
 
                 if outs.is_empty() {
                     self.data_stack.expect_exact::<TokenType>(&[], loc)?;
                 } else {
-                    let mut outs = outs.to_vec();
-                    outs.reverse();
                     self.data_stack.expect_exact_pop(&outs, loc)?;
                 }
 
                 self.data_stack = EvalStack::default();
 
-                if let Mode::Inline(start, _) = proc.mode {
-                    proc.mode = Mode::Inline(start, ip);
+                if let Mode::Inlined(start, _) = proc.mode {
+                    proc.mode = Mode::Inlined(start, ip);
                 }
 
                 self.exit_proc();
