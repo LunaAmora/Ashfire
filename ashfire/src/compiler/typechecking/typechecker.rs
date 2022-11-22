@@ -74,10 +74,10 @@ impl TypeChecker {
         match op.op_type {
             OpType::PushData(value) => match value {
                 Value::Int | Value::Bool | Value::Ptr => self.push_value(value, loc),
-                Value::Any | Value::Type(_) => unreachable!(),
+                Value::Str | Value::Any | Value::Type(_) => unreachable!(),
             },
 
-            OpType::PushStr => self.extend_value([Value::Int, Value::Ptr], loc),
+            OpType::PushStr => self.extend_value([Value::Int, Value::Str], loc),
 
             OpType::PushLocalMem |
             OpType::PushGlobalMem |
@@ -100,11 +100,13 @@ impl TypeChecker {
             },
 
             OpType::Intrinsic => match IntrinsicType::from(op.operand) {
-                IntrinsicType::Plus | IntrinsicType::Minus => self.data_stack.pop_push_arity(
-                    |[top, _]| (top.get_type(), loc).into(),
-                    ArityType::Same,
-                    loc,
-                )?,
+                IntrinsicType::Plus |
+                IntrinsicType::Minus |
+                IntrinsicType::And |
+                IntrinsicType::Or |
+                IntrinsicType::Xor => {
+                    self.pop_push([INT, INT], INT, loc)?;
+                }
 
                 IntrinsicType::Times => todo!(),
                 IntrinsicType::Div => todo!(),
@@ -113,10 +115,6 @@ impl TypeChecker {
                 IntrinsicType::GreaterE |
                 IntrinsicType::Lesser |
                 IntrinsicType::LesserE => todo!(),
-
-                IntrinsicType::And | IntrinsicType::Or | IntrinsicType::Xor => {
-                    self.pop_push([INT, INT], INT, loc)?;
-                }
 
                 IntrinsicType::Load8 | IntrinsicType::Load16 | IntrinsicType::Load32 => {
                     self.data_stack.expect_pop_type(PTR, loc)?;

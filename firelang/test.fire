@@ -5,7 +5,7 @@ double_str struct :
   second str
 end
 
-print_double inline: double_str : println println end
+print_double inline: double_str : to_string println to_string println end
 
 hello double_str := "Hello World!" "Other Text" end
 new_text str := "-> a Really long text" end

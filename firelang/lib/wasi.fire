@@ -7,20 +7,20 @@ end
 
 fd_write import: int ptr int ptr -> ptr : end
 
-puts : *str :
+puts : *string :
   iov ciovec:= end
   written: 4 end
   @ swap !iov
   1 *iov #ptr 1 written fd_write drop
 end
 
-print : str :
-  buffer str:= end
+print : string :
+  buffer string:= end
   !buffer *buffer puts
 end
 
-println inline: str :
-  print "\n" print
+println inline: string :
+  print "\n" to_string print
 end
 
 trim-left inline: *str :

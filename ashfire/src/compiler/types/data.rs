@@ -7,6 +7,7 @@ pub enum Value {
     Int,
     Bool,
     Ptr,
+    Str,
     Any,
     Type(usize),
 }
@@ -29,7 +30,8 @@ impl From<usize> for Value {
             0 => Self::Int,
             1 => Self::Bool,
             2 => Self::Ptr,
-            3 => Self::Any,
+            3 => Self::Str,
+            4 => Self::Any,
             i => Self::Type(i),
         }
     }
@@ -41,7 +43,8 @@ impl From<Value> for usize {
             Value::Int => 0,
             Value::Bool => 1,
             Value::Ptr => 2,
-            Value::Any => 3,
+            Value::Str => 3,
+            Value::Any => 4,
             Value::Type(i) => i,
         }
     }
@@ -106,6 +109,10 @@ impl ValueUnit {
         Self { name: *name, value: typed.operand(), value_type }
     }
 
+    pub fn from_type(name: &StrKey, value_type: ValueType) -> Self {
+        Self { name: *name, value: 0, value_type }
+    }
+
     pub fn value(&self) -> i32 {
         self.value
     }
@@ -118,16 +125,6 @@ impl ValueUnit {
 impl Typed for ValueUnit {
     fn get_type(&self) -> TokenType {
         self.value_type.get_type()
-    }
-}
-
-impl<T: Typed> From<(StrKey, T)> for ValueUnit {
-    fn from(tuple: (StrKey, T)) -> Self {
-        let TokenType::Data(data_type) = tuple.1.get_type() else {
-            unimplemented!()
-        };
-
-        Self { name: tuple.0, value: 0, value_type: data_type }
     }
 }
 
@@ -229,10 +226,13 @@ impl Deref for StructDef {
 
 impl From<(StrKey, Value)> for StructDef {
     fn from(tuple: (StrKey, Value)) -> Self {
-        Self {
-            name: tuple.0,
-            members: vec![StructType::Unit((StrKey::default(), tuple.1).into())],
-        }
+        let (name, value_type) = (tuple.0, ValueType::Typ(tuple.1));
+        let members = vec![StructType::Unit(ValueUnit::from_type(
+            &StrKey::default(),
+            value_type,
+        ))];
+
+        Self { name, members }
     }
 }
 

@@ -1,6 +1,14 @@
 include "core.fire"
 
-str :
+string :
   len  int
   data ptr
+end
+
+to_string inline: str -> string :
+  #ptr
+end
+
+to_cster inline: str -> ptr :
+  swap drop #ptr
 end

@@ -594,8 +594,7 @@ impl Parser {
         let value = self.expect_by(|tok| tok == Value::Int, "memory size after `:`", loc)?;
         self.expect_keyword(KeywordType::End, "`end` after memory size", loc)?;
 
-        let size = word_aligned(value) as usize;
-        let ctx = prog.push_mem_by_context(self, word, size);
+        let ctx = prog.push_mem_by_context(self, word, value.index());
         self.name_scopes.register(word, ctx);
 
         Ok(())
@@ -631,7 +630,8 @@ impl Parser {
                             todo!()
                         };
 
-                        members.push(StructType::Unit((member_name.str_key(), typ).into()));
+                        let unit = ValueUnit::from_type(&member_name, *typ.value_type());
+                        members.push(StructType::Unit(unit));
                     } else {
                         let value = prog.get_struct_value_id(type_def).unwrap();
                         let root = StructRef::new(&member_name, ref_members.to_vec(), value);
@@ -639,7 +639,8 @@ impl Parser {
                     }
                 }
                 Either::Right(type_ptr) => {
-                    members.push(StructType::Unit((member_name.str_key(), type_ptr).into()));
+                    let unit = ValueUnit::from_type(&member_name, type_ptr);
+                    members.push(StructType::Unit(unit));
                 }
             }
         }
@@ -824,6 +825,13 @@ impl Parser {
             let include = get_dir(path)
                 .with_ctx(|_| "failed to get file directory path".to_owned())?
                 .join(include_path);
+
+            if let Some(true) = prog
+                .get_key(include.to_str().unwrap())
+                .map(|key| prog.included_files.contains(&key))
+            {
+                continue;
+            }
 
             info!("Including file: {:?}", include);
             self.lex_file(&include, prog)?;

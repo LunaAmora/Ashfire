@@ -5,7 +5,7 @@ use lasso::Rodeo;
 
 use super::types::{
     core::*,
-    data::{StructDef, StructInfo, StructType, Value, ValueType},
+    data::*,
     enums::IntrinsicType,
     proc::{Data, Proc},
 };
@@ -54,6 +54,16 @@ impl Program {
             (interner.get_or_intern("int"), Value::Int).into(),
             (interner.get_or_intern("bool"), Value::Bool).into(),
             (interner.get_or_intern("ptr"), Value::Ptr).into(),
+            StructDef::new(&interner.get_or_intern("str"), vec![
+                StructType::Unit(ValueUnit::from_type(
+                    &interner.get_or_intern("len"),
+                    ValueType::Typ(Value::Int),
+                )),
+                StructType::Unit(ValueUnit::from_type(
+                    &interner.get_or_intern("data"),
+                    ValueType::Typ(Value::Str),
+                )),
+            ]),
             (interner.get_or_intern("any"), Value::Any).into(),
         ];
 
@@ -82,12 +92,12 @@ impl Program {
         self.data_size
     }
 
-    pub fn mem_start(&self) -> i32 {
-        word_aligned(self.data_size)
+    pub fn data_start(&self) -> i32 {
+        word_aligned(self.mem_size)
     }
 
     pub fn global_vars_start(&self) -> i32 {
-        self.mem_start() + self.mem_size as i32
+        self.data_start() + word_aligned(self.data_size)
     }
 
     pub fn global_vars_size(&self) -> i32 {
@@ -139,6 +149,7 @@ impl Program {
             Value::Int => "Integer",
             Value::Bool => "Boolean",
             Value::Ptr => "Pointer",
+            Value::Str => "String",
             Value::Any => "Any",
             Value::Type(n) => self.structs_types[n].as_str(self),
         }
@@ -163,7 +174,7 @@ impl Program {
         match value {
             Value::Bool => fold_bool!(operand != 0, "True", "False").to_owned(),
             Value::Ptr => format!("*{operand}"),
-            Value::Any | Value::Int | Value::Type(_) => operand.to_string(),
+            Value::Str | Value::Any | Value::Int | Value::Type(_) => operand.to_string(),
         }
     }
 

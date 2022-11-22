@@ -13,7 +13,7 @@ use crate::{
         program::*,
         types::{
             core::{Op, Operand, WORD_SIZE, WORD_USIZE},
-            data::StructInfo,
+            data::{StructInfo, Value, ValueUnit},
             enums::{IntrinsicType, OpType},
             proc::{Mode, Proc},
         },
@@ -89,6 +89,8 @@ impl Generator {
             }
         }
 
+        wasm.set_data_offset(program.data_start() as usize);
+
         for data in program.get_all_data() {
             wasm.add_data(data.as_string(program));
         }
@@ -100,7 +102,7 @@ impl Generator {
             }
 
             for var in program.global_vars.units() {
-                wasm.add_data_value(var.value());
+                wasm.add_data_value(program.final_value(var));
             }
         }
 
@@ -117,7 +119,7 @@ impl FuncGen {
 
             OpType::PushStr => {
                 let (size, offset) = prog.get_data(op).data();
-                self.extend([Const(size), Const(offset)]);
+                self.extend([Const(size), Const(offset + prog.data_start())]);
             }
 
             OpType::PushLocalMem => {
@@ -125,10 +127,7 @@ impl FuncGen {
                 self.extend([Const(ptr), Call("push_local".into())]);
             }
 
-            OpType::PushGlobalMem => {
-                let ptr = prog.global_vars_start() + op.operand;
-                self.push(Const(ptr));
-            }
+            OpType::PushGlobalMem => self.push(Const(op.operand)),
 
             OpType::PushLocal => {
                 let ptr = proc
@@ -139,7 +138,7 @@ impl FuncGen {
             }
 
             OpType::PushGlobal => {
-                let ptr = prog.mem_start() + op.operand * WORD_SIZE;
+                let ptr = prog.global_vars_start() + op.operand * WORD_SIZE;
                 self.push(Const(ptr));
             }
 
@@ -230,6 +229,16 @@ impl FuncGen {
 }
 
 impl Program {
+    pub fn final_value(&self, var: &ValueUnit) -> i32 {
+        let var_value = var.value();
+        if var.value_type().get_value() == Value::Str {
+            let offset = self.get_data(var_value).offset();
+            return offset + self.data_start();
+        }
+
+        var_value
+    }
+
     pub fn generate_wasm(&self, output: &Path, config: RuntimeConfig) -> Result<()> {
         info!("Generating {:?}", output);
 

@@ -85,6 +85,10 @@ impl Module {
         self.types.len() - 1
     }
 
+    pub fn set_data_offset(&mut self, offset: usize) {
+        self.data.1 = offset;
+    }
+
     pub fn add_data(&mut self, data: String) {
         self.data.0.push(data);
     }
