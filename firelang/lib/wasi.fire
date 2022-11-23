@@ -13,4 +13,3 @@ puts : *str :
   @ swap !iov
   1 *iov #ptr 1 written fd_write drop
 end
-

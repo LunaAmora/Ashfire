@@ -8,6 +8,6 @@ start export::
 end
 
 update export::
-  "Hello World!\0" to_cster 10 10 text
+  "Hello World!\0"   to_cster 10 10 text
   "Second String!\0" to_cster 10 20 text
 end

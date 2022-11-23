@@ -1,9 +1,5 @@
 include "core.fire"
 
-to_cster inline: str -> ptr :
-  swap drop #ptr
-end
-
 print : str :
   buffer str:= end
   !buffer *buffer puts
@@ -17,4 +13,8 @@ trim-left inline: *str :
   dup
   .*len  dec32
   .*data inc32
+end
+
+to_cster inline: str -> ptr :
+  swap drop
 end
