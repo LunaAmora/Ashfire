@@ -1,4 +1,4 @@
-include "std.fire"
+include "core.fire"
 
 ciovec :
   buf     ptr
@@ -7,24 +7,10 @@ end
 
 fd_write import: int ptr int ptr -> ptr : end
 
-puts : *string :
+puts : *str :
   iov ciovec:= end
   written: 4 end
   @ swap !iov
   1 *iov #ptr 1 written fd_write drop
 end
 
-print : string :
-  buffer string:= end
-  !buffer *buffer puts
-end
-
-println inline: string :
-  print "\n" to_string print
-end
-
-trim-left inline: *str :
-  dup
-  .*len  dec32
-  .*data inc32
-end

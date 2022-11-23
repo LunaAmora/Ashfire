@@ -1,6 +1,11 @@
 include "lib/wasm4.fire"
+include "lib/std.fire"
 
-start export:: end
+greet str := "Initialized" end
+
+start export:: 
+  greet print
+end
 
 update export::
   "Hello World!\0" to_cster 10 10 text

@@ -50,10 +50,27 @@ impl From<Value> for usize {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Eq, Clone, Copy)]
 pub enum ValueType {
     Typ(Value),
     Ptr(Value),
+}
+
+impl PartialEq for ValueType {
+    fn eq(&self, other: &Self) -> bool {
+        let (same, &l, &r) = match (self, other) {
+            (Self::Typ(l), Self::Typ(r)) => (true, l, r),
+            (Self::Ptr(l), Self::Ptr(r)) => (true, l, r),
+            (Self::Ptr(l), Self::Typ(r)) => (false, l, r),
+            (Self::Typ(l), Self::Ptr(r)) => (false, l, r),
+        };
+
+        if same {
+            l == r || (l == Value::Ptr && r == Value::Str)
+        } else {
+            l == Value::Ptr && r == Value::Str
+        }
+    }
 }
 
 impl ValueType {

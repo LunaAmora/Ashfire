@@ -171,7 +171,8 @@ pub trait Compare<T: Clone + Typed + Location + 'static>: Deref<Target = [T]> {
 fn expect_type<T: Clone + Typed + Location + 'static, V: Typed>(
     frame: &T, expected: V, loc: Loc,
 ) -> LazyResult<()> {
-    if equals_any!(expected.get_type(), Value::Any, ValueType::Ptr(Value::Any), frame.get_type()) {
+    let expected_type = expected.get_type();
+    if equals_any!(expected_type, Value::Any, ValueType::Ptr(Value::Any), frame.get_type()) {
         return Ok(());
     }
     Err(format_type_diff(frame.clone(), expected.get_type(), loc))

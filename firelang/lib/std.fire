@@ -1,14 +1,20 @@
 include "core.fire"
 
-string :
-  len  int
-  data ptr
-end
-
-to_string inline: str -> string :
-  #ptr
-end
-
 to_cster inline: str -> ptr :
   swap drop #ptr
+end
+
+print : str :
+  buffer str:= end
+  !buffer *buffer puts
+end
+
+println inline: str :
+  print "\n" print
+end
+
+trim-left inline: *str :
+  dup
+  .*len  dec32
+  .*data inc32
 end

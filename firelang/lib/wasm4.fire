@@ -1,7 +1,7 @@
 //
 // WASM-4: https://wasm4.org/docs
 
-include "std.fire"
+include "core.fire"
 
 // ┌───────────────────────────────────────────────────────────────────────────┐
 // │                                                                           │
@@ -110,3 +110,6 @@ $TONE_MODE1 ::    0   end
 $TONE_MODE2 ::    4   end
 $TONE_MODE3 ::    8   end
 $TONE_MODE4 ::    12  end
+
+// Alias for traceUtf8 that swaps the `str` fields
+puts inline: *str : @ swap traceUtf8 end

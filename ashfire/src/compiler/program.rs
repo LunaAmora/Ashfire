@@ -61,7 +61,7 @@ impl Program {
                 )),
                 StructType::Unit(ValueUnit::from_type(
                     &interner.get_or_intern("data"),
-                    ValueType::Typ(Value::Str),
+                    ValueType::Typ(Value::Ptr),
                 )),
             ]),
             (interner.get_or_intern("any"), Value::Any).into(),

@@ -77,7 +77,7 @@ impl TypeChecker {
                 Value::Str | Value::Any | Value::Type(_) => unreachable!(),
             },
 
-            OpType::PushStr => self.extend_value([Value::Int, Value::Str], loc),
+            OpType::PushStr => self.extend_value([Value::Int, Value::Ptr], loc),
 
             OpType::PushLocalMem |
             OpType::PushGlobalMem |
