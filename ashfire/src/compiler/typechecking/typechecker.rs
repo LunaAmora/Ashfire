@@ -1,18 +1,14 @@
+use ashfire_types::{
+    core::*,
+    data::*,
+    enums::{IntrinsicType, OpType},
+    proc::Mode,
+};
 use ashlib::{EvalStack, UncheckedStack};
 use firelib::{anyhow::Result, lazy::LazyCtx, lexer::Loc};
 
 use super::{expect::*, types::TypeFrame};
-use crate::compiler::{
-    parsing::types::StructUtils,
-    program::*,
-    types::{
-        core::*,
-        data::*,
-        enums::{IntrinsicType, OpType},
-        proc::Mode,
-    },
-    utils::err_loc,
-};
+use crate::compiler::{parsing::types::StructUtils, program::*, utils::err_loc};
 
 type DataStack = EvalStack<TypeFrame>;
 

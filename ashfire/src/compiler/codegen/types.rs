@@ -1,5 +1,10 @@
 use std::collections::HashMap;
 
+use ashfire_types::{
+    core::{Op, Operand, StrKey, WORD_SIZE},
+    data::{StructDef, StructInfo},
+    proc::Contract,
+};
 use firelib::anyhow::{Context, Result};
 use wasm_backend::{wasm_types::*, Module};
 use Ident::*;
@@ -7,14 +12,7 @@ use Instruction::*;
 use NumMethod::*;
 use Scope::*;
 
-use crate::compiler::{
-    program::{InternalString, Program, Visitor},
-    types::{
-        core::{Op, Operand, StrKey, WORD_SIZE},
-        data::{StructDef, StructInfo},
-        proc::Contract,
-    },
-};
+use crate::compiler::program::{InternalString, Program, Visitor};
 
 pub struct Generator {
     current_proc: Option<usize>,
@@ -121,7 +119,7 @@ impl FuncGen {
     pub fn new(label: StrKey, contract: &Contract) -> Self {
         Self {
             label,
-            contract: contract.into(),
+            contract: as_wasm(contract),
             code: Vec::new(),
             bind_count: 0,
         }
@@ -148,44 +146,40 @@ impl FuncGen {
     }
 }
 
-impl From<&Contract> for (Vec<WasmType>, Vec<WasmType>) {
-    fn from(contract: &Contract) -> Self {
-        let (ins, outs) = contract.size();
-        (vec![WasmType::I32; ins], vec![WasmType::I32; outs])
-    }
+pub fn as_wasm(contract: &Contract) -> (Vec<WasmType>, Vec<WasmType>) {
+    let (ins, outs) = contract.size();
+    (vec![WasmType::I32; ins], vec![WasmType::I32; outs])
 }
 
-impl StructDef {
-    pub fn unpack_struct(&self) -> Vec<Instruction> {
-        let mut instructions = vec![];
+pub fn unpack_struct(stk: &StructDef) -> Vec<Instruction> {
+    let mut instructions = vec![];
 
-        match self.count() as i32 {
-            1 => instructions.push(I32(load)),
-            2 => instructions.extend(vec![
-                Call("dup".into()),
-                I32(load),
-                Call("swap".into()),
-                Const(WORD_SIZE),
-                I32(add),
-                I32(load),
-            ]),
-            n => {
-                instructions.push(Call("bind_local".into()));
+    match stk.count() as i32 {
+        1 => instructions.push(I32(load)),
+        2 => instructions.extend(vec![
+            Call("dup".into()),
+            I32(load),
+            Call("swap".into()),
+            Const(WORD_SIZE),
+            I32(add),
+            I32(load),
+        ]),
+        n => {
+            instructions.push(Call("bind_local".into()));
 
-                for offset in 0..n {
-                    instructions.extend(vec![
-                        Const(WORD_SIZE),
-                        Call("push_local".into()),
-                        I32(load),
-                        Const(WORD_SIZE * offset),
-                        I32(add),
-                        I32(load),
-                    ]);
-                }
-
-                instructions.extend(vec![Const(WORD_SIZE), Call("free_local".into())]);
+            for offset in 0..n {
+                instructions.extend(vec![
+                    Const(WORD_SIZE),
+                    Call("push_local".into()),
+                    I32(load),
+                    Const(WORD_SIZE * offset),
+                    I32(add),
+                    I32(load),
+                ]);
             }
-        };
-        instructions
-    }
+
+            instructions.extend(vec![Const(WORD_SIZE), Call("free_local".into())]);
+        }
+    };
+    instructions
 }

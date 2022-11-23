@@ -1,5 +1,11 @@
 use std::{fs::File, io::BufWriter, path::Path};
 
+use ashfire_types::{
+    core::{Op, Operand, WORD_SIZE, WORD_USIZE},
+    data::{StructInfo, Value, ValueUnit},
+    enums::{IntrinsicType, OpType},
+    proc::{Mode, Proc},
+};
 use firelib::anyhow::Result;
 use wasm_backend::{wasm_types::*, Module};
 use Ident::*;
@@ -7,19 +13,8 @@ use Instruction::*;
 use NumMethod::*;
 use Scope::*;
 
-use super::types::{FuncGen, Generator};
-use crate::{
-    compiler::{
-        program::*,
-        types::{
-            core::{Op, Operand, WORD_SIZE, WORD_USIZE},
-            data::{StructInfo, Value, ValueUnit},
-            enums::{IntrinsicType, OpType},
-            proc::{Mode, Proc},
-        },
-    },
-    RuntimeConfig,
-};
+use super::types::{as_wasm, unpack_struct, FuncGen, Generator};
+use crate::{compiler::program::*, RuntimeConfig};
 
 impl Generator {
     fn generate_module(&mut self, program: &Program, config: RuntimeConfig) -> Result<Module> {
@@ -30,7 +25,7 @@ impl Generator {
         let mut wasm = Module::new();
 
         for import in program.procs.iter().filter(|p| p.is_import()) {
-            let (ins, outs) = <(Vec<WasmType>, Vec<WasmType>)>::from(&import.contract);
+            let (ins, outs) = as_wasm(&import.contract);
             let name = &import.name.as_str(program);
             wasm.add_import(&config.module, name, name, &ins, &outs);
         }
@@ -200,7 +195,7 @@ impl FuncGen {
             OpType::Do => todo!(),
             OpType::EndWhile => todo!(),
 
-            OpType::Unpack => self.extend(prog.structs_types[op.index()].unpack_struct()),
+            OpType::Unpack => self.extend(unpack_struct(&prog.structs_types[op.index()])),
 
             OpType::ExpectType => {}
 

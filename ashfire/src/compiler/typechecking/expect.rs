@@ -1,16 +1,14 @@
 use std::ops::Deref;
 
+use ashfire_types::{
+    core::{Location, TokenType, Typed},
+    data::{Value, ValueType},
+};
 use ashlib::UncheckedStack;
 use firelib::{lazy::LazyFormatter, lexer::Loc};
 use itertools::Itertools;
 
-use crate::compiler::{
-    program::{Fmt, LazyError, LazyResult},
-    types::{
-        core::{Location, TokenType, Typed},
-        data::{Value, ValueType},
-    },
-};
+use crate::compiler::program::{Fmt, LazyError, LazyResult};
 
 pub enum ArityType<T: Copy> {
     Any,
@@ -129,7 +127,7 @@ pub trait Expect<T: Clone + Typed + Location + 'static>: UncheckedStack<T> {
     }
 }
 
-impl<T: Clone + Typed + Location + 'static, X: UncheckedStack<T> + ?Sized> Compare<T> for X {}
+impl<T: Clone + Typed + Location + 'static, X: Expect<T> + ?Sized> Compare<T> for X {}
 
 pub trait Compare<T: Clone + Typed + Location + 'static>: Deref<Target = [T]> {
     fn expect_exact<V: Typed>(&self, contract: &[V], loc: Loc) -> LazyResult<()> {

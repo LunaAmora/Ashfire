@@ -12,14 +12,11 @@ clap = { version = "4.0.24", features = ["derive"] }
 clap-verbosity-flag = "2.0.0"
 log = "0.4.17"
 env_logger = { features = ["termcolor", "atty"], default-features = false, version = "0.9.3" }
-num = { default-features = false, version = "0.4.0" }
-num-traits = { default-features = false, version = "0.2" }
-num-derive = "0.3"
 itertools = "0.10.5"
 either = "1.8.0"
-lasso = "0.6.0"
 firelib = {path = "../firelib"}
 wasm_backend = {path = "../wasm_backend"}
+ashfire_types = {path = "../ashfire_types"}
 
 [lib]
 name = "ashlib"

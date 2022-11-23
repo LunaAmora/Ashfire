@@ -1,14 +1,11 @@
 use std::path::PathBuf;
 
+use ashfire_types::{core::*, data::*, enums::*, proc::Mode};
 use either::Either;
 use firelib::{lazy::LazyCtx, ShortCircuit};
 
 use super::{parser::Parser, types::*};
-use crate::compiler::{
-    program::*,
-    types::{core::*, data::*, enums::*, proc::Mode},
-    utils::err_loc,
-};
+use crate::compiler::{program::*, utils::err_loc};
 
 impl Program {
     /// Searches for a `binding` that matches the given [`word`][LocWord]
@@ -139,7 +136,7 @@ impl Program {
             return self
                 .try_get_field(word, vars)
                 .value?
-                .map(|(var, offset)| var.unpack_struct(push_type, offset, var_typ, word.loc))
+                .map(|(var, offset)| unpack_struct(var, push_type, offset, var_typ, word.loc))
                 .into();
         }
 

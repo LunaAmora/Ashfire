@@ -23,18 +23,27 @@ checksum = "216261ddc8289130e551ddcd5ce8a064710c0d064a4d2895c67151c92b5443f6"
 name = "ashfire"
 version = "0.1.0"
 dependencies = [
+ "ashfire_types",
  "clap",
  "clap-verbosity-flag",
  "either",
  "env_logger",
  "firelib",
  "itertools",
- "lasso",
  "log",
+ "wasm_backend",
+]
+
+[[package]]
+name = "ashfire_types"
+version = "0.1.0"
+dependencies = [
+ "either",
+ "firelib",
+ "lasso",
  "num",
  "num-derive",
  "num-traits",
- "wasm_backend",
 ]
 
 [[package]]

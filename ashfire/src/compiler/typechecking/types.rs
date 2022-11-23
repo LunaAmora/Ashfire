@@ -1,6 +1,5 @@
+use ashfire_types::core::{Location, TokenType, Typed};
 use firelib::lexer::Loc;
-
-use crate::compiler::types::core::{Location, TokenType, Typed};
 
 #[derive(Clone, Copy)]
 pub struct TypeFrame(TokenType, Loc);

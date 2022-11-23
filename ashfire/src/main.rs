@@ -1,6 +1,4 @@
-#![feature(const_trait_impl)]
 #![feature(try_blocks)]
-#[macro_use] extern crate num_derive;
 #[macro_use] extern crate log;
 #[macro_use] extern crate firelib;
 

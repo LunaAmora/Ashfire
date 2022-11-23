@@ -1,3 +1,8 @@
+use ashfire_types::{
+    core::*,
+    data::{Value, ValueType},
+    enums::{IntrinsicType, KeywordType},
+};
 use ashlib::{EvalStack, UncheckedStack};
 use either::Either;
 use firelib::lazy::LazyFormatter;
@@ -6,11 +11,6 @@ use super::parser::Parser;
 use crate::compiler::{
     program::{Fmt, Program},
     typechecking::expect::{format_frames, ArityType, Expect},
-    types::{
-        core::*,
-        data::{Value, ValueType},
-        enums::{IntrinsicType, KeywordType},
-    },
 };
 
 type DoubleResult<T> = ashlib::DoubleResult<T, IRToken, Fmt>;

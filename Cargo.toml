@@ -2,6 +2,7 @@
 
 members = [
     "ashfire",
+    "ashfire_types",
     "firelib",
     "firelib_macro",
     "wasm_backend",

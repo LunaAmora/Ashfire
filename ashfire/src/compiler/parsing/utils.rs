@@ -1,13 +1,11 @@
+use ashfire_types::{
+    core::{IRToken, Op, TokenType},
+    enums::KeywordType,
+};
 use firelib::lexer::Loc;
 
 use super::{parser::Parser, types::LocWord};
-use crate::compiler::{
-    program::{Fmt, LazyError, LazyResult},
-    types::{
-        core::{IRToken, Op, TokenType},
-        enums::KeywordType,
-    },
-};
+use crate::compiler::program::{Fmt, LazyError, LazyResult};
 
 impl Parser {
     pub fn expect_keyword(

@@ -1,0 +1,16 @@
+[package]
+name = "ashfire_types"
+description = "Library used by the Ashfire compiler"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+readme.workspace = true
+license-file.workspace = true
+
+[dependencies]
+num = { default-features = false, version = "0.4.0" }
+num-traits = { default-features = false, version = "0.2" }
+num-derive = "0.3"
+lasso = "0.6.0"
+either = "1.8.0"
+firelib = {path = "../firelib"}

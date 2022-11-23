@@ -1,15 +1,11 @@
 use std::{collections::VecDeque, path::PathBuf};
 
+use ashfire_types::{core::*, data::*, enums::*, proc::*};
 use either::Either;
 use firelib::{lazy::LazyCtx, lexer::Loc, utils::*, ShortCircuit, TrySuccess};
 
 use super::{types::*, utils::*};
-use crate::compiler::{
-    program::*,
-    typechecking::expect::Compare,
-    types::{core::*, data::*, enums::*, proc::*},
-    utils::err_loc,
-};
+use crate::compiler::{program::*, typechecking::expect::Compare, utils::err_loc};
 
 #[derive(Default)]
 pub struct Parser {
