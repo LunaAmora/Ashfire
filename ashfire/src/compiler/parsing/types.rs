@@ -6,7 +6,7 @@ use ashfire_types::{
     enums::{IntrinsicType, OpType},
     num::iter::range_step_from,
 };
-use either::Either;
+use ashlib::Either;
 use firelib::lexer::Loc;
 
 use crate::compiler::{

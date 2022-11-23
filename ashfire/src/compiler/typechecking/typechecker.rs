@@ -5,7 +5,7 @@ use ashfire_types::{
     proc::Mode,
 };
 use ashlib::{EvalStack, UncheckedStack};
-use firelib::{anyhow::Result, lazy::LazyCtx, lexer::Loc};
+use firelib::{lazy::LazyCtx, lexer::Loc, Result};
 
 use super::{expect::*, types::TypeFrame};
 use crate::compiler::{parsing::types::StructUtils, program::*, utils::err_loc};

@@ -4,13 +4,12 @@ use std::{
     ops::{ControlFlow, Deref, FromResidual, Try},
 };
 
-use either::Either;
+pub use either::Either;
 use firelib::{
     alternative,
-    anyhow::{Error, Result},
     choice::Alternative,
     lazy::{LazyError, LazyResult},
-    FlowControl, Success, SuccessFrom,
+    Error, FlowControl, Result, Success, SuccessFrom,
 };
 
 #[derive(FlowControl)]

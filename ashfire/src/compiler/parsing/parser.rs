@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, path::PathBuf};
 
 use ashfire_types::{core::*, data::*, enums::*, proc::*};
-use either::Either;
+use ashlib::Either;
 use firelib::{lazy::LazyCtx, lexer::Loc, utils::*, ShortCircuit, TrySuccess};
 
 use super::{types::*, utils::*};

@@ -3,8 +3,7 @@ use ashfire_types::{
     data::{Value, ValueType},
     enums::{IntrinsicType, KeywordType},
 };
-use ashlib::{EvalStack, UncheckedStack};
-use either::Either;
+use ashlib::{Either, EvalStack, UncheckedStack};
 use firelib::lazy::LazyFormatter;
 
 use super::parser::Parser;

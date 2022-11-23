@@ -1,6 +1,7 @@
 [workspace]
 
 members = [
+    "ashlib",
     "ashfire",
     "ashfire_types",
     "firelib",

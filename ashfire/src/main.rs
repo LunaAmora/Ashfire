@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
-use firelib::anyhow::Result;
+use firelib::Result;
 
 use crate::compiler::program::Program;
 

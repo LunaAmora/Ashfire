@@ -6,7 +6,7 @@ use ashfire_types::{
     enums::{IntrinsicType, OpType},
     proc::{Mode, Proc},
 };
-use firelib::anyhow::Result;
+use firelib::Result;
 use wasm_backend::{wasm_types::*, Module};
 use Ident::*;
 use Instruction::*;

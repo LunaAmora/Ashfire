@@ -5,7 +5,7 @@ use ashfire_types::{
     data::{StructDef, StructInfo},
     proc::Contract,
 };
-use firelib::anyhow::{Context, Result};
+use firelib::{Context, Result};
 use wasm_backend::{wasm_types::*, Module};
 use Ident::*;
 use Instruction::*;

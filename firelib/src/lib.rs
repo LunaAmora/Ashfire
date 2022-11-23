@@ -6,7 +6,7 @@ use std::{
     ops::{ControlFlow, FromResidual, Try},
 };
 
-pub use anyhow::{self, bail};
+pub use anyhow::{self, bail, Context, Error, Result};
 #[cfg(feature = "derive")]
 pub use firelib_macro::{alternative, FlowControl};
 use lazy::private::Sealed;

@@ -24,9 +24,9 @@ name = "ashfire"
 version = "0.1.0"
 dependencies = [
  "ashfire_types",
+ "ashlib",
  "clap",
  "clap-verbosity-flag",
- "either",
  "env_logger",
  "firelib",
  "itertools",
@@ -44,6 +44,14 @@ dependencies = [
  "num",
  "num-derive",
  "num-traits",
+]
+
+[[package]]
+name = "ashlib"
+version = "0.1.0"
+dependencies = [
+ "either",
+ "firelib",
 ]
 
 [[package]]

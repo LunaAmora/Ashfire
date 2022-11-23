@@ -4,12 +4,7 @@ use ashfire_types::{
     core::{IRToken, TokenType, INT},
     enums::KeywordType,
 };
-use firelib::{
-    anyhow::{Context, Result},
-    lazy::LazyCtx,
-    lexer::*,
-    ShortCircuit,
-};
+use firelib::{lazy::LazyCtx, lexer::*, Context, Result, ShortCircuit};
 
 use super::{
     program::{Fmt, OptionErr, Program},

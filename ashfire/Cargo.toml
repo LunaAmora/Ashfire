@@ -13,11 +13,7 @@ clap-verbosity-flag = "2.0.0"
 log = "0.4.17"
 env_logger = { features = ["termcolor", "atty"], default-features = false, version = "0.9.3" }
 itertools = "0.10.5"
-either = "1.8.0"
+ashlib = {path = "../ashlib"}
 firelib = {path = "../firelib"}
 wasm_backend = {path = "../wasm_backend"}
 ashfire_types = {path = "../ashfire_types"}
-
-[lib]
-name = "ashlib"
-path = "src/lib.rs"
