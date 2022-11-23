@@ -29,7 +29,7 @@ oval import: int int int int : end
 // Draws a rectangle.
 rect import: int int int int : end
 
-// Draws text using the built-: system font.
+// Draws text using the built-in system font.
 text import: ptr int int : end
 textUtf8 import: ptr int int int : end
 textUtf16 import: ptr int int int : end
