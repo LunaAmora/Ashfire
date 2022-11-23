@@ -1,4 +1,4 @@
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, path::PathBuf, str::FromStr};
 
 use ashfire_types::{
     core::{IRToken, TokenType, INT},
@@ -113,6 +113,7 @@ fn escaped_len(name: &str) -> usize {
 
 fn parse_as_keyword(tok: &Token) -> Option<IRToken> {
     KeywordType::from_str(tok.name.as_str())
+        .ok()
         .map(|k| IRToken::new(TokenType::Keyword, k as i32, tok.loc))
 }
 

@@ -87,17 +87,11 @@ impl Proc {
     }
 
     pub fn is_import(&self) -> bool {
-        match self.mode {
-            Mode::Imported => true,
-            _ => false,
-        }
+        matches!(self.mode, Mode::Imported)
     }
 
     pub fn is_export(&self) -> bool {
-        match self.mode {
-            Mode::Exported(_) => true,
-            _ => false,
-        }
+        matches!(self.mode, Mode::Exported(_))
     }
 }
 

@@ -238,7 +238,7 @@ impl TypeChecker {
                 if outs.is_empty() {
                     self.data_stack.expect_exact::<TokenType>(&[], loc)?;
                 } else {
-                    self.data_stack.expect_exact_pop(&outs, loc)?;
+                    self.data_stack.expect_exact_pop(outs, loc)?;
                 }
 
                 self.data_stack = EvalStack::default();

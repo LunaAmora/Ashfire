@@ -33,7 +33,7 @@ impl Generator {
         let mem = wasm.new_mem();
 
         if config.imports_mem {
-            wasm.add_mem_import(&config.module, "memory", Bind::Mem(Id(mem)))
+            wasm.add_mem_import(&config.module, "memory", Bind::Mem(Id(mem)));
         } else {
             wasm.add_export("memory", Bind::Mem(Id(mem)));
         }

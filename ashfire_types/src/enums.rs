@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use super::data::Value;
 
 #[allow(dead_code)]
@@ -71,9 +73,11 @@ pub enum KeywordType {
     Case,
 }
 
-impl KeywordType {
-    pub fn from_str(value: &str) -> Option<Self> {
-        Some(match value {
+impl FromStr for KeywordType {
+    type Err = ();
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Ok(match value {
             "dup" => Self::Dup,
             "swap" => Self::Swap,
             "drop" => Self::Drop,
@@ -99,7 +103,7 @@ impl KeywordType {
             "include" => Self::Include,
             "import" => Self::Import,
             "export" => Self::Export,
-            _ => return None,
+            _ => return Err(()),
         })
     }
 }
@@ -126,9 +130,11 @@ pub enum IntrinsicType {
     Cast(i32),
 }
 
-impl IntrinsicType {
-    pub fn from_str(value: &str) -> Option<Self> {
-        Some(match value {
+impl FromStr for IntrinsicType {
+    type Err = ();
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Ok(match value {
             "+" => Self::Plus,
             "-" => Self::Minus,
             "*" => Self::Times,
@@ -146,7 +152,7 @@ impl IntrinsicType {
             "!16" => Self::Store16,
             "@32" => Self::Load32,
             "!32" => Self::Store32,
-            _ => return None,
+            _ => return Err(()),
         })
     }
 }

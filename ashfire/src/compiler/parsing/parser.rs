@@ -828,9 +828,10 @@ impl Parser {
                 .with_ctx(|_| "failed to get file directory path".to_owned())?
                 .join(include_path);
 
-            if let Some(true) = prog
+            if prog
                 .get_key(include.to_str().unwrap())
-                .map(|key| prog.included_files.contains(&key))
+                .map(|key| prog.included_files.contains(&key)) ==
+                Some(true)
             {
                 continue;
             }
