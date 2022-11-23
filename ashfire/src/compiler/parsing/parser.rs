@@ -153,9 +153,10 @@ impl Parser {
                     todo!()
                 };
 
-                let op = Op::new(OpType::OffsetLoad, key.operand(), word.loc);
-
-                return OptionErr::new(vec![op]);
+                return OptionErr::new(vec![
+                    (OpType::OffsetLoad, key, word.loc).into(),
+                    (OpType::Unpack, word.loc).into(),
+                ]);
             }
             _ => return OptionErr::default(),
         };
@@ -208,7 +209,12 @@ impl Parser {
                         let word = self.expect_word("word after `.*`", loc)?;
                         (OpType::Offset, word, loc).into()
                     }
-                    TokenType::Word => (OpType::OffsetLoad, next_token, loc).into(),
+                    TokenType::Word => {
+                        return OptionErr::new(vec![
+                            (OpType::OffsetLoad, next_token, loc).into(),
+                            (OpType::Unpack, loc).into(),
+                        ])
+                    }
                     _ => todo!(),
                 }
             }

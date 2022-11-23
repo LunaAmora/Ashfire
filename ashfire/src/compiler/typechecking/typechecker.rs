@@ -87,7 +87,6 @@ impl TypeChecker {
             OpType::OffsetLoad => match self.expect_struct_pointer(program, ip)? {
                 TokenType::Data(ValueType::Typ(typ)) => {
                     self.push_frame(ValueType::Ptr(typ).get_type(), loc);
-                    program.ops.insert(ip + 1, Op::new(OpType::Unpack, 0, loc));
                 }
                 _ => todo!(),
             },
