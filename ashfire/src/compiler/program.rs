@@ -144,6 +144,10 @@ impl Program {
         &self.memory
     }
 
+    pub fn current_ip(&self) -> usize {
+        self.ops.len()
+    }
+
     fn data_name(&self, value: Value) -> String {
         match value {
             Value::Int => "Integer",

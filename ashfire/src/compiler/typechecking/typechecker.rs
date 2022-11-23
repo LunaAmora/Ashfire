@@ -173,7 +173,6 @@ impl TypeChecker {
                 self.data_stack.expect_pop_type(BOOL, loc)?;
                 self.block_stack.push(TypeBlock::new(&self.data_stack, ip));
                 self.data_stack.reset_max_count();
-                program.set_operand(ip, ip);
             }
 
             OpType::Else => {

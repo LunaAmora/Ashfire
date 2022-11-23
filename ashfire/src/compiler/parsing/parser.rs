@@ -256,7 +256,7 @@ impl Parser {
                 ))?,
             },
 
-            KeywordType::If => self.push_block((OpType::IfStart, loc).into()),
+            KeywordType::If => self.push_block((OpType::IfStart, prog.current_ip(), loc).into()),
 
             KeywordType::Else => match self.pop_block(key, loc)? {
                 Op { op_type: OpType::IfStart, .. } => self.push_block((OpType::Else, loc).into()),
@@ -409,7 +409,7 @@ impl Parser {
 
             (0, KeywordType::Inline) => {
                 self.next();
-                self.parse_procedure(word, prog, ModeType::Inline(prog.ops.len()))
+                self.parse_procedure(word, prog, ModeType::Inline(prog.current_ip()))
             }
 
             (0, KeywordType::Ref) => {
