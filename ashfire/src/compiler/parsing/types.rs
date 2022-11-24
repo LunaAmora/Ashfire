@@ -6,8 +6,7 @@ use ashfire_types::{
     enums::{IntrinsicType, OpType},
     num::iter::range_step_from,
 };
-use ashlib::Either;
-use firelib::lexer::Loc;
+use firelib::{lexer::Loc, utils::BoolUtils};
 
 use crate::compiler::{
     program::{InternalString, Program},
@@ -193,11 +192,7 @@ impl StructUtils for [StructType] {
         };
 
         let members = stk_def.units();
-        let members = if store {
-            Either::Left(members.into_iter().rev())
-        } else {
-            Either::Right(members.into_iter())
-        };
+        let members = members.into_iter().conditional_rev(store);
 
         let members = members.map(ValueUnit::value_type).map(Operand::operand);
 

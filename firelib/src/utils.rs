@@ -1,6 +1,7 @@
-use std::{collections::VecDeque, path::Path};
+use std::{collections::VecDeque, iter::Rev, path::Path};
 
 use anyhow::{bail, Result};
+use itertools::Either;
 
 /// Gets the directory of the [`Path`],
 /// or [`None`] if is empty.
@@ -8,40 +9,29 @@ pub fn get_dir(current: &Path) -> Option<&Path> {
     current.ancestors().nth(1)
 }
 
-pub trait EmptySome: Sized {
-    fn empty_or_some(self) -> Option<Self>;
-}
-
-impl<T> EmptySome for Vec<T> {
-    /// Maps an empty vector to [`None`], and a non empty to [`Some<Vec<T>>`].
-    fn empty_or_some(self) -> Option<Self> {
-        if self.is_empty() {
-            None
+pub trait BoolUtils: Sized {
+    /// Push the value to different [`Vecs`][Vec] based on the given condition.
+    fn conditional_push(self, condition: bool, if_true: &mut Vec<Self>, if_false: &mut Vec<Self>) {
+        if condition {
+            if_true.push(self);
         } else {
-            Some(self)
+            if_false.push(self);
+        }
+    }
+
+    fn conditional_rev(self, condition: bool) -> Either<Rev<Self>, Self>
+    where
+        Self: Iterator + DoubleEndedIterator,
+    {
+        if condition {
+            Either::Left(self.rev())
+        } else {
+            Either::Right(self)
         }
     }
 }
 
-/// Push a value `T` to different [`Vec<T>`] based on the given condition.
-pub fn push_by_condition<T>(cond: bool, value: T, if_true: &mut Vec<T>, if_false: &mut Vec<T>) {
-    if cond {
-        if_true.push(value);
-    } else {
-        if_false.push(value);
-    }
-}
-
-/// Gets the index in the [`Vec`] that matches the given predicate.
-///
-/// # Panics
-/// Panics if no matching element is found.
-#[track_caller]
-pub fn expect_index<T>(vec: &[T], pred: impl FnMut(&T) -> bool) -> usize {
-    vec.iter()
-        .position(pred)
-        .expect("no item matched the given predicate")
-}
+impl<T> BoolUtils for T {}
 
 pub trait RangeRef<T> {
     fn get_range_ref<const N: usize>(&self, index: usize) -> Result<[&T; N]>;

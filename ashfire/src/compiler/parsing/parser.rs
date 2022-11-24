@@ -569,7 +569,9 @@ impl Parser {
                             return unexpected_token(typ.into(), tok_err).into();
                         };
 
-                        push_by_condition(arrow, type_ptr.get_type(), &mut outs, &mut ins);
+                        type_ptr
+                            .get_type()
+                            .conditional_push(arrow, &mut outs, &mut ins);
                     }
 
                     _ => return unexpected_token(tok, tok_err).into(),
@@ -580,7 +582,7 @@ impl Parser {
                     };
 
                     for typ in type_def.units().iter().map(Typed::get_type) {
-                        push_by_condition(arrow, typ, &mut outs, &mut ins);
+                        typ.conditional_push(arrow, &mut outs, &mut ins);
                     }
                 }
                 _ => return unexpected_token(tok, tok_err).into(),
@@ -678,11 +680,7 @@ impl Parser {
         };
 
         let end_token = self.skip(eval).unwrap();
-        let members = if self.inside_proc() {
-            Either::Left(stk.members().iter().rev())
-        } else {
-            Either::Right(stk.members().iter())
-        };
+        let members = stk.members().iter().conditional_rev(self.inside_proc());
 
         if result.len() == 1 {
             let eval = result.pop().unwrap();
@@ -714,14 +712,12 @@ impl Parser {
                 self.register_const_or_var(assign, StructType::Unit(struct_word), prog);
             }
         } else {
-            let contract: Vec<TokenType> = if self.inside_proc() {
-                Either::Left(members.clone().rev())
-            } else {
-                Either::Right(members.clone())
-            }
-            .flat_map(StructType::units)
-            .map(Typed::get_type)
-            .collect();
+            let contract: Vec<TokenType> = members
+                .clone()
+                .conditional_rev(self.inside_proc())
+                .flat_map(StructType::units)
+                .map(Typed::get_type)
+                .collect();
 
             result.expect_exact(&contract, end_token.loc)?;
 
@@ -741,11 +737,8 @@ impl Parser {
                     StructType::Root(root) => {
                         let mut new = vec![];
 
-                        let root_members = if self.inside_proc() {
-                            Either::Left(root.members().iter().rev())
-                        } else {
-                            Either::Right(root.members().iter())
-                        };
+                        let root_members =
+                            root.members().iter().conditional_rev(self.inside_proc());
 
                         for member in root_members {
                             let StructType::Unit(typ) = member else {
