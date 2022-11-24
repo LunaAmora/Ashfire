@@ -4,14 +4,16 @@
 
 mod compiler;
 mod logger;
+mod target;
 
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use firelib::Result;
+use target::Target;
 
-use crate::compiler::program::Program;
+use crate::{compiler::program::Program, target::TargetConfig};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -36,8 +38,11 @@ enum Commands {
         /// Decompile the `.wasm` file back into the `.wat`.
         #[arg(short, long)]
         wat: bool,
-        /// Sets the runtime to be used by the `-r` option.
-        #[arg(short = 't', long, default_value_t = format!("wasmtime"))]
+        /// Sets the compilation target.
+        #[arg(short, long, value_enum, default_value_t = Target::Wasi)]
+        target: Target,
+        /// Sets the Wasi runtime to be used by the `-r` option.
+        #[arg(long, default_value_t = format!("wasmtime"))]
         runtime: String,
     },
 }
@@ -51,44 +56,25 @@ fn main() {
     }
 
     if let Err(err) = match args.command {
-        Commands::Com { path, output, run, wat, runtime } => {
-            compile_command(&path, output, run, wat, runtime)
+        Commands::Com { path, output, run, wat, target, runtime } => {
+            compile_command(&path, output, run, wat, target, runtime)
         }
     } {
         error!("{:#}", err);
     }
 }
 
-pub struct RuntimeConfig {
-    pub module: String,
-    pub imports_mem: bool,
-}
-
-impl RuntimeConfig {
-    pub fn new(module: String, import_mem: bool) -> Self {
-        Self { module, imports_mem: import_mem }
-    }
-}
-
-impl From<&str> for RuntimeConfig {
-    fn from(value: &str) -> Self {
-        match value {
-            "wasmtime" => Self::new("wasi_unstable".to_owned(), false),
-            "w4" => Self::new("env".to_owned(), true),
-            _ => todo!(),
-        }
-    }
-}
-
 fn compile_command(
-    path: &PathBuf, output: Option<PathBuf>, run: bool, wat: bool, runtime: String,
+    path: &PathBuf, output: Option<PathBuf>, run: bool, wat: bool, target: Target, runtime: String,
 ) -> Result<()> {
     let out = output.unwrap_or_else(|| path.clone()).with_extension("wat");
+
+    let run_config = TargetConfig::new(target, runtime, run);
 
     Program::new()
         .compile_file(path)?
         .type_check()?
-        .generate_wasm(&out, RuntimeConfig::from(runtime.as_str()))?;
+        .generate_wasm(&out, &run_config)?;
 
     let out_wasm = out.with_extension("wasm");
 
@@ -96,13 +82,6 @@ fn compile_command(
     if wat {
         cmd_wait!("wasm2wat", &out_wasm, "-o", &out);
     }
-    if run {
-        if runtime == "w4" {
-            cmd_wait!(runtime, "run", &out_wasm);
-        } else {
-            cmd_wait!(runtime, &out_wasm);
-        }
-    }
 
-    Ok(())
+    run_config.run(out_wasm)
 }

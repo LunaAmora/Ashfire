@@ -14,10 +14,10 @@ use NumMethod::*;
 use Scope::*;
 
 use super::types::{as_wasm, unpack_struct, FuncGen, Generator};
-use crate::{compiler::program::*, RuntimeConfig};
+use crate::{compiler::program::*, TargetConfig};
 
 impl Generator {
-    fn generate_module(&mut self, program: &Program, config: RuntimeConfig) -> Result<Module> {
+    fn generate_module(&mut self, program: &Program, config: &TargetConfig) -> Result<Module> {
         let i1 = &[WasmType::I32; 1];
         let i2 = &[WasmType::I32; 2];
         let i3 = &[WasmType::I32; 3];
@@ -234,7 +234,7 @@ impl Program {
         var_value
     }
 
-    pub fn generate_wasm(&self, output: &Path, config: RuntimeConfig) -> Result<()> {
+    pub fn generate_wasm(&self, output: &Path, config: &TargetConfig) -> Result<()> {
         info!("Generating {:?}", output);
 
         let writer = BufWriter::new(File::create(output)?);
