@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ashfire_types::{
     core::{Op, Operand, StrKey, WORD_SIZE},
-    data::{StructDef, StructInfo},
+    data::{StructDef, StructInfo, ValueUnit},
     proc::Contract,
 };
 use firelib::{Context, Result};
@@ -58,18 +58,17 @@ impl Generator {
             func.extend(vec![Const(proc_size), Call("aloc_local".into())]);
         }
 
-        let mut index = 0..;
-        for var in data.local_vars.units() {
-            let i = index.next().unwrap();
+        let data_instructions = data
+            .local_vars
+            .units()
+            .zip(0..)
+            .filter_map(|(var, i)| store_if_non_zero(data.var_mem_offset(i), var))
+            .flatten();
 
-            if var.value() > 0 {
-                func.store_local(data.var_mem_offset(i), var.value());
-            }
-        }
+        func.extend(data_instructions);
 
-        for i in 0..proc.contract.ins().len() {
-            func.push(Get(local, Id(i)));
-        }
+        let range = 0..proc.contract.ins().len();
+        func.extend(range.map(|i| Get(local, Id(i))));
 
         Ok(false)
     }
@@ -108,6 +107,19 @@ impl Generator {
     }
 }
 
+fn store_if_non_zero(offset: i32, var: &ValueUnit) -> Option<Vec<Instruction>> {
+    (var.value() > 0).then(|| store_local(offset, var.value()))
+}
+
+fn store_local(offset: i32, var_value: i32) -> Vec<Instruction> {
+    vec![
+        Const(offset),
+        Call("push_local".into()),
+        Const(var_value),
+        I32(store),
+    ]
+}
+
 pub struct FuncGen {
     label: StrKey,
     contract: (Vec<WasmType>, Vec<WasmType>),
@@ -134,15 +146,6 @@ impl FuncGen {
         I: IntoIterator<Item = Instruction>,
     {
         self.code.extend(instructions);
-    }
-
-    pub fn store_local(&mut self, offset: i32, var_value: i32) {
-        self.code.extend(vec![
-            Const(offset),
-            Call("push_local".into()),
-            Const(var_value),
-            I32(store),
-        ]);
     }
 }
 
