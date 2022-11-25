@@ -45,8 +45,7 @@ impl Program {
         self.get_const_by_name(word).map(|tword| match tword {
             StructType::Root(root) => root
                 .units()
-                .iter()
-                .map(|&value| Op::from((value, word.loc)))
+                .map(|value| Op::from((value, word.loc)))
                 .collect(),
             StructType::Unit(_) => vec![Op::from((tword, word.loc))],
         })

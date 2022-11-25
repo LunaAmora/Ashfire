@@ -9,6 +9,8 @@ pub fn get_dir(current: &Path) -> Option<&Path> {
     current.ancestors().nth(1)
 }
 
+pub type EitherRev<T> = Either<Rev<T>, T>;
+
 pub trait BoolUtils: Sized {
     /// Push the value to different [`Vecs`][Vec] based on the given condition.
     fn conditional_push(self, condition: bool, if_true: &mut Vec<Self>, if_false: &mut Vec<Self>) {
@@ -19,9 +21,9 @@ pub trait BoolUtils: Sized {
         }
     }
 
-    fn conditional_rev(self, condition: bool) -> Either<Rev<Self>, Self>
+    fn conditional_rev(self, condition: bool) -> EitherRev<Self>
     where
-        Self: Iterator + DoubleEndedIterator,
+        Self: DoubleEndedIterator,
     {
         if condition {
             Either::Left(self.rev())

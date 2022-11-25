@@ -1,4 +1,6 @@
-use std::ops::Deref;
+use std::{ops::Deref, slice::Iter};
+
+use firelib::utils::{BoolUtils, EitherRev};
 
 use super::core::{Operand, StrKey, TokenType, Typed, WORD_USIZE};
 
@@ -184,7 +186,7 @@ impl Typed for StructRef {
 }
 
 pub trait StructInfo {
-    fn units(&self) -> Vec<&ValueUnit>;
+    fn units(&self) -> Box<dyn DoubleEndedIterator<Item = &ValueUnit> + '_>;
     fn count(&self) -> usize;
     fn size(&self) -> usize;
 }
@@ -203,10 +205,14 @@ impl StructDef {
     pub fn members(&self) -> &[StructType] {
         &self.members
     }
+
+    pub fn ordered_members(&self, rev: bool) -> EitherRev<Iter<'_, StructType>> {
+        self.members.iter().conditional_rev(rev)
+    }
 }
 
 impl StructInfo for StructDef {
-    fn units(&self) -> Vec<&ValueUnit> {
+    fn units(&self) -> Box<dyn DoubleEndedIterator<Item = &ValueUnit> + '_> {
         self.members.units()
     }
 
@@ -220,8 +226,8 @@ impl StructInfo for StructDef {
 }
 
 impl StructInfo for [StructType] {
-    fn units(&self) -> Vec<&ValueUnit> {
-        self.iter().flat_map(StructInfo::units).collect()
+    fn units(&self) -> Box<dyn DoubleEndedIterator<Item = &ValueUnit> + '_> {
+        Box::new(self.iter().flat_map(StructInfo::units))
     }
 
     fn count(&self) -> usize {
@@ -260,10 +266,10 @@ pub enum StructType {
 }
 
 impl StructInfo for StructType {
-    fn units(&self) -> Vec<&ValueUnit> {
+    fn units(&self) -> Box<dyn DoubleEndedIterator<Item = &ValueUnit> + '_> {
         match self {
             Self::Root(s) => s.units(),
-            Self::Unit(v) => vec![v],
+            Self::Unit(v) => Box::new([v].into_iter()),
         }
     }
 

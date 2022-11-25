@@ -581,7 +581,7 @@ impl Parser {
                         return unexpected_token(tok, tok_err).into();
                     };
 
-                    for typ in type_def.units().iter().map(Typed::get_type) {
+                    for typ in type_def.units().map(Typed::get_type) {
                         typ.conditional_push(arrow, &mut outs, &mut ins);
                     }
                 }
@@ -680,7 +680,7 @@ impl Parser {
         };
 
         let end_token = self.skip(eval).unwrap();
-        let members = stk.members().iter().conditional_rev(self.inside_proc());
+        let members = stk.ordered_members(self.inside_proc());
 
         if result.len() == 1 {
             let eval = result.pop().unwrap();
@@ -725,35 +725,31 @@ impl Parser {
                 result.reverse();
             }
 
-            let mut def_members = vec![];
-            let mut item = result.into_iter();
+            let mut eval_items = result.into_iter();
 
-            for member in members {
-                match member {
+            let def_members = members
+                .map(|member| match member {
                     StructType::Unit(unit) => {
-                        let value = ValueUnit::new(unit, item.next().unwrap());
-                        def_members.push(StructType::Unit(value));
+                        StructType::Unit(ValueUnit::new(unit, eval_items.next().unwrap()))
                     }
+
                     StructType::Root(root) => {
-                        let mut new = vec![];
+                        let new_members = root
+                            .ordered_members(self.inside_proc())
+                            .map(|child| {
+                                let StructType::Unit(typ) = child else {
+                                    todo!()
+                                };
 
-                        let root_members =
-                            root.members().iter().conditional_rev(self.inside_proc());
+                                let value = ValueUnit::new(typ, eval_items.next().unwrap());
+                                StructType::Unit(value)
+                            })
+                            .collect();
 
-                        for member in root_members {
-                            let StructType::Unit(typ) = member else {
-                                todo!()
-                            };
-
-                            let value = ValueUnit::new(typ, item.next().unwrap());
-                            new.push(StructType::Unit(value));
-                        }
-
-                        let root = StructRef::new(root, new, root.get_ref_type());
-                        def_members.push(StructType::Root(root));
+                        StructType::Root(StructRef::new(root, new_members, root.get_ref_type()))
                     }
-                }
-            }
+                })
+                .collect();
 
             let value = prog.get_struct_value_id(&stk).unwrap();
             let struct_ref = StructRef::new(word, def_members, value);

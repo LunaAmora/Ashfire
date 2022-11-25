@@ -191,10 +191,11 @@ impl StructUtils for [StructType] {
             range_step_from(index + stk_def.count() as i32 - 1, -1)
         };
 
-        let members = stk_def.units();
-        let members = members.into_iter().conditional_rev(store);
-
-        let members = members.map(ValueUnit::value_type).map(Operand::operand);
+        let members = stk_def
+            .units()
+            .conditional_rev(store)
+            .map(ValueUnit::value_type)
+            .map(Operand::operand);
 
         for (operand, type_id) in id_range.zip(members) {
             if store {
