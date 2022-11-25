@@ -728,28 +728,9 @@ impl Parser {
             let mut eval_items = result.into_iter();
 
             let def_members = members
-                .map(|member| match member {
-                    StructType::Unit(unit) => {
-                        StructType::Unit(ValueUnit::new(unit, eval_items.next().unwrap()))
-                    }
-
-                    StructType::Root(root) => {
-                        let new_members = root
-                            .ordered_members(self.inside_proc())
-                            .map(|child| {
-                                let StructType::Unit(typ) = child else {
-                                    todo!()
-                                };
-
-                                let value = ValueUnit::new(typ, eval_items.next().unwrap());
-                                StructType::Unit(value)
-                            })
-                            .collect();
-
-                        StructType::Root(StructRef::new(root, new_members, root.get_ref_type()))
-                    }
-                })
-                .collect();
+                .map(|member| member.map_with_provider(self.inside_proc(), &mut eval_items))
+                .collect::<Option<_>>()
+                .unwrap();
 
             let value = prog.get_struct_value_id(&stk).unwrap();
             let struct_ref = StructRef::new(word, def_members, value);

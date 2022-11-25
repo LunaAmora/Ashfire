@@ -1,4 +1,4 @@
-use std::{ops::Deref, slice::Iter};
+use std::{ops::Deref, slice::Iter, vec::IntoIter};
 
 use firelib::utils::{BoolUtils, EitherRev};
 
@@ -263,6 +263,25 @@ impl From<(StrKey, Value)> for StructDef {
 pub enum StructType {
     Root(StructRef),
     Unit(ValueUnit),
+}
+
+impl StructType {
+    pub fn map_with_provider<T: Typed + Operand>(
+        &self, orderer: bool, provider: &mut IntoIter<T>,
+    ) -> Option<Self> {
+        Some(match self {
+            StructType::Unit(unit) => StructType::Unit(ValueUnit::new(unit, provider.next()?)),
+
+            StructType::Root(root) => {
+                let new_members = root
+                    .ordered_members(orderer)
+                    .map(|member| member.map_with_provider(orderer, provider))
+                    .collect::<Option<_>>()?;
+
+                StructType::Root(StructRef::new(root, new_members, root.get_ref_type()))
+            }
+        })
+    }
 }
 
 impl StructInfo for StructType {
