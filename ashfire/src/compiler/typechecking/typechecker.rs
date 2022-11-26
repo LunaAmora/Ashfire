@@ -156,7 +156,7 @@ impl TypeChecker {
             OpType::PrepProc | OpType::PrepInline => {
                 let proc = &self.visit_proc(program, op.index());
 
-                if let Mode::Imported = proc.mode {
+                if matches!(proc.mode, Mode::Imported) {
                     return Ok(());
                 }
 
@@ -229,7 +229,7 @@ impl TypeChecker {
             OpType::EndProc | OpType::EndInline => {
                 let proc = self.current_proc_mut(program).unwrap();
 
-                if let Mode::Imported = proc.mode {
+                if matches!(proc.mode, Mode::Imported) {
                     return Ok(());
                 }
 

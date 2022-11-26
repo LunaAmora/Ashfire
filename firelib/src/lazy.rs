@@ -60,9 +60,7 @@ impl<T> Debug for LazyError<T> {
 
 impl<E> From<Error> for LazyError<E> {
     fn from(value: Error) -> Self {
-        let err = value.chain().map(|err| format!("{err}")).join("\n");
-
-        Self::new(move |_| err.to_string())
+        Self::new(move |_| value.chain().map(|err| format!("{err}")).join("\n"))
     }
 }
 
@@ -189,7 +187,7 @@ mod tests {
     fn lazybail_test() {
         let err = lazybail_error(69).try_or_apply(&int_error_fmt).unwrap_err();
 
-        assert_eq!("Error: `69`", err.to_string())
+        assert_eq!("Error: `69`", err.to_string());
     }
 
     #[test]
@@ -198,7 +196,7 @@ mod tests {
             .try_or_apply(&int_error_fmt)
             .unwrap_err();
 
-        assert_eq!("Error: `420`", err.to_string())
+        assert_eq!("Error: `420`", err.to_string());
     }
 
     #[test]
