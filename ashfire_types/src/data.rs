@@ -1,4 +1,4 @@
-use std::{ops::Deref, slice::Iter, vec::IntoIter};
+use std::{iter::once, ops::Deref, slice::Iter, vec::IntoIter};
 
 use firelib::utils::{BoolUtils, EitherRev};
 
@@ -267,20 +267,32 @@ pub enum StructType {
 
 impl StructType {
     pub fn map_with_provider<T: Typed + Operand>(
-        &self, orderer: bool, provider: &mut IntoIter<T>,
+        &self, rev: bool, provider: &mut IntoIter<T>,
     ) -> Option<Self> {
         Some(match self {
-            StructType::Unit(unit) => StructType::Unit(ValueUnit::new(unit, provider.next()?)),
+            Self::Unit(unit) => Self::Unit(ValueUnit::new(unit, provider.next()?)),
 
-            StructType::Root(root) => {
-                let new_members = root
-                    .ordered_members(orderer)
-                    .map(|member| member.map_with_provider(orderer, provider))
-                    .collect::<Option<_>>()?;
-
-                StructType::Root(StructRef::new(root, new_members, root.get_ref_type()))
-            }
+            Self::Root(root) => root
+                .ordered_members(rev)
+                .provide_collect(rev, provider)
+                .map(|members| StructRef::new(root, members, root.get_ref_type()))
+                .map(Self::Root)?,
         })
+    }
+}
+
+pub trait MapCollect<I, T> {
+    fn provide_collect(self, rev: bool, provider: &mut IntoIter<T>) -> Option<Vec<I>>;
+}
+
+impl<'a, I, T> MapCollect<StructType, T> for I
+where
+    I: Iterator<Item = &'a StructType>,
+    T: Typed + Operand,
+{
+    fn provide_collect(self, rev: bool, provider: &mut IntoIter<T>) -> Option<Vec<StructType>> {
+        self.map(|member| member.map_with_provider(rev, provider))
+            .collect()
     }
 }
 
@@ -288,7 +300,7 @@ impl StructInfo for StructType {
     fn units(&self) -> Box<dyn DoubleEndedIterator<Item = &ValueUnit> + '_> {
         match self {
             Self::Root(s) => s.units(),
-            Self::Unit(v) => Box::new([v].into_iter()),
+            Self::Unit(v) => Box::new(once(v)),
         }
     }
 

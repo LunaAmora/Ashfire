@@ -728,8 +728,7 @@ impl Parser {
             let mut eval_items = result.into_iter();
 
             let def_members = members
-                .map(|member| member.map_with_provider(self.inside_proc(), &mut eval_items))
-                .collect::<Option<_>>()
+                .provide_collect(self.inside_proc(), &mut eval_items)
                 .unwrap();
 
             let value = prog.get_struct_value_id(&stk).unwrap();
