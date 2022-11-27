@@ -122,7 +122,7 @@ pub struct ValueUnit {
 
 impl ValueUnit {
     pub fn new<T: Typed + Operand>(name: &StrKey, typed: T) -> Self {
-        let TokenType::Data(value_type) =  typed.get_type() else {
+        let TokenType::Data(value_type) = typed.get_type() else {
             unimplemented!()
         };
 

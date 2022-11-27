@@ -43,11 +43,8 @@ impl Program {
     /// and parses it to an [`Op`].
     pub fn get_const_struct(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.get_const_by_name(word).map(|tword| match tword {
-            StructType::Root(root) => root
-                .units()
-                .map(|value| Op::from((value, word.loc)))
-                .collect(),
-            StructType::Unit(_) => vec![Op::from((tword, word.loc))],
+            StructType::Root(root) => root.units().map(|val| Op::from((val, word.loc))).collect(),
+            StructType::Unit(val) => vec![Op::from((val, word.loc))],
         })
     }
 

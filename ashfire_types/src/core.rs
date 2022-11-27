@@ -266,22 +266,11 @@ impl From<(OpType, Loc)> for Op {
     }
 }
 
-impl From<(&StructType, Loc)> for Op {
-    #[track_caller]
-    fn from(tuple: (&StructType, Loc)) -> Self {
-        let StructType::Unit(val) = tuple.0 else {
-            unimplemented!("Conversion supported only for Unit Types")
-        };
-
-        (val, tuple.1).into()
-    }
-}
-
 impl From<(&ValueUnit, Loc)> for Op {
     #[track_caller]
     fn from(tuple: (&ValueUnit, Loc)) -> Self {
         let ValueType::Typ(typ) = tuple.0.value_type() else {
-            unimplemented!("Conversion supported only for DataTypes")
+            unimplemented!("Conversion not supported for `ValueType::Ptr`")
         };
 
         Self::new(OpType::PushData(*typ), tuple.0.value(), tuple.1)
