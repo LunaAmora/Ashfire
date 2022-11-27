@@ -235,10 +235,10 @@ impl Program {
             .map(|u| u + 1)
     }
 
-    pub fn get_struct_value_id(&self, def: &StructDef) -> Option<Value> {
+    pub fn get_struct_value_id(&self, word: &StrKey) -> Option<Value> {
         self.structs_types
             .iter()
-            .position(|id| id.eq(def))
+            .position(|id| word.eq(id))
             .map(Value::from)
     }
 

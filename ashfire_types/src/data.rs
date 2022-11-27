@@ -1,8 +1,9 @@
-use std::{iter::once, ops::Deref, slice::Iter, vec::IntoIter};
+use std::{iter::once, ops::Deref};
 
-use firelib::utils::{BoolUtils, EitherRev};
+use firelib::utils::BoolUtils;
 
 use super::core::{Operand, StrKey, TokenType, Typed, WORD_USIZE};
+use crate::core::IRToken;
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum Value {
@@ -166,10 +167,6 @@ impl Deref for StructRef {
 }
 
 impl StructRef {
-    pub fn new(name: &StrKey, members: Vec<StructType>, reftype: Value) -> Self {
-        Self { data: StructDef::new(name, members), reftype }
-    }
-
     pub fn get_ref_type(&self) -> Value {
         self.reftype
     }
@@ -202,8 +199,8 @@ impl StructDef {
         &self.members
     }
 
-    pub fn ordered_members(&self, rev: bool) -> EitherRev<Iter<'_, StructType>> {
-        self.members.iter().conditional_rev(rev)
+    pub fn ordered_members(self, rev: bool) -> impl Iterator<Item = StructType> {
+        self.members.into_iter().conditional_rev(rev)
     }
 }
 
@@ -263,33 +260,43 @@ impl StructType {
         Self::Unit(ValueUnit { name: *name, value: 0, value_type })
     }
 
-    pub fn map_with_provider<T: Typed + Operand>(
-        &self, rev: bool, provider: &mut IntoIter<T>,
-    ) -> Option<Self> {
-        Some(match self {
-            Self::Unit(unit) => Self::Unit(ValueUnit::new(unit, provider.next()?)),
+    pub fn root(name: &StrKey, members: Vec<Self>, reftype: Value) -> Self {
+        Self::Root(StructRef { data: StructDef::new(name, members), reftype })
+    }
+}
 
-            Self::Root(root) => root
-                .ordered_members(rev)
-                .provide_collect(rev, provider)
-                .map(|members| StructRef::new(root, members, root.get_ref_type()))
-                .map(Self::Root)?,
+pub trait Transposer<T, I> {
+    type Provider<'a>
+    where
+        I: 'a,
+    = &'a mut (dyn Iterator<Item = I>);
+    fn transpose(self, rev: bool, provider: Self::Provider<'_>) -> Option<T>;
+}
+
+impl<I> Transposer<Vec<StructType>, IRToken> for I
+where
+    I: Iterator<Item = StructType>,
+{
+    fn transpose(self, rev: bool, provider: Self::Provider<'_>) -> Option<Vec<StructType>> {
+        self.map(|member| member.transpose(rev, provider)).collect()
+    }
+}
+
+impl Transposer<Self, IRToken> for StructType {
+    fn transpose(self, rev: bool, provider: Self::Provider<'_>) -> Option<Self> {
+        Some(match self {
+            Self::Unit(unit) => Self::Unit(ValueUnit::new(&unit, provider.next()?)),
+
+            Self::Root(StructRef { data: str_def @ StructDef { name, .. }, reftype }) => str_def
+                .transpose(rev, provider)
+                .map(|members| Self::root(&name, members, reftype))?,
         })
     }
 }
 
-pub trait MapCollect<I, T> {
-    fn provide_collect(self, rev: bool, provider: &mut IntoIter<T>) -> Option<Vec<I>>;
-}
-
-impl<'a, I, T> MapCollect<StructType, T> for I
-where
-    I: Iterator<Item = &'a StructType>,
-    T: Typed + Operand,
-{
-    fn provide_collect(self, rev: bool, provider: &mut IntoIter<T>) -> Option<Vec<StructType>> {
-        self.map(|member| member.map_with_provider(rev, provider))
-            .collect()
+impl Transposer<Vec<StructType>, IRToken> for StructDef {
+    fn transpose(self, rev: bool, provider: Self::Provider<'_>) -> Option<Vec<StructType>> {
+        self.ordered_members(rev).transpose(rev, provider)
     }
 }
 

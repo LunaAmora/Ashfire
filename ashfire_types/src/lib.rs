@@ -1,4 +1,5 @@
 #![feature(const_trait_impl)]
+#![feature(associated_type_defaults)]
 #[macro_use] extern crate num_derive;
 #[macro_use] extern crate firelib;
 

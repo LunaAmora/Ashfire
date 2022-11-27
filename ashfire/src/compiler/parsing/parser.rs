@@ -637,8 +637,7 @@ impl Parser {
                         members.push(StructType::unit(&member_name, *typ.value_type()));
                     } else {
                         let value = prog.get_struct_value_id(type_def).unwrap();
-                        let root = StructRef::new(&member_name, ref_members.to_vec(), value);
-                        members.push(StructType::Root(root));
+                        members.push(StructType::root(&member_name, ref_members.to_vec(), value));
                     }
                 }
                 Either::Right(type_ptr) => {
@@ -678,16 +677,16 @@ impl Parser {
         };
 
         let end_token = self.skip(eval).unwrap();
-        let members = stk.ordered_members(self.inside_proc());
+        let stk_name = stk.str_key();
 
         if result.len() == 1 {
             let eval = result.pop().unwrap();
+            let members = stk.ordered_members(self.inside_proc());
 
             if &eval == Value::Any {
-                let members: Vec<StructType> = members.cloned().collect();
-                let value = prog.get_struct_value_id(&stk).unwrap();
-                let struct_word = StructRef::new(word, members, value);
-                self.register_const_or_var(assign, StructType::Root(struct_word), prog);
+                let value = prog.get_struct_value_id(&stk_name).unwrap();
+                let struct_word = StructType::root(word, members.collect(), value);
+                self.register_const_or_var(assign, struct_word, prog);
             } else {
                 let member_type = match members.last().unwrap() {
                     StructType::Root(_) => todo!(),
@@ -710,9 +709,9 @@ impl Parser {
                 self.register_const_or_var(assign, StructType::Unit(struct_word), prog);
             }
         } else {
-            let contract: Vec<TokenType> = members
-                .clone()
-                .conditional_rev(self.inside_proc())
+            let contract: Vec<TokenType> = stk
+                .members()
+                .iter()
                 .flat_map(StructType::units)
                 .map(Typed::get_type)
                 .collect();
@@ -725,13 +724,11 @@ impl Parser {
 
             let mut eval_items = result.into_iter();
 
-            let def_members = members
-                .provide_collect(self.inside_proc(), &mut eval_items)
-                .unwrap();
+            let def_members = stk.transpose(self.inside_proc(), &mut eval_items).unwrap();
 
-            let value = prog.get_struct_value_id(&stk).unwrap();
-            let struct_ref = StructRef::new(word, def_members, value);
-            self.register_const_or_var(assign, StructType::Root(struct_ref), prog);
+            let value = prog.get_struct_value_id(&stk_name).unwrap();
+            let struct_word = StructType::root(word, def_members, value);
+            self.register_const_or_var(assign, struct_word, prog);
         }
 
         let ctx = match (assign, self.inside_proc()) {
