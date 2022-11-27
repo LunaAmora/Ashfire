@@ -3,6 +3,7 @@ use std::{
     convert::Infallible,
     fmt::{Debug, Display},
     ops::{ControlFlow, Try},
+    string::ToString,
 };
 
 use anyhow::{Error, Result};
@@ -60,7 +61,7 @@ impl<T> Debug for LazyError<T> {
 
 impl<E> From<Error> for LazyError<E> {
     fn from(value: Error) -> Self {
-        Self::new(move |_| value.chain().map(|err| format!("{err}")).join("\n"))
+        Self::new(move |_| value.chain().map(ToString::to_string).join("\n"))
     }
 }
 
