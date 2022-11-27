@@ -168,6 +168,9 @@ impl IRToken {
         }
     }
 
+    /// # Panics
+    ///
+    /// Will panic if the operand is not a valid `KeywordType`.
     #[track_caller]
     pub fn as_keyword(&self) -> KeywordType {
         FromPrimitive::from_i32(self.operand).unwrap()
