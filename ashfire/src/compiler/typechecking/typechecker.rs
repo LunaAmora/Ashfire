@@ -262,8 +262,8 @@ impl TypeChecker {
                     let index = usize::from(n);
                     let stk = &program.structs_types[index];
 
-                    for typ in stk.units() {
-                        self.push_frame(typ.get_type(), loc);
+                    for typ in stk.units().map(Typed::get_type) {
+                        self.push_frame(typ, loc);
                     }
 
                     program.set_operand(ip, index);

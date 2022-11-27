@@ -709,13 +709,7 @@ impl Parser {
                 self.register_const_or_var(assign, StructType::Unit(struct_word), prog);
             }
         } else {
-            let contract: Vec<TokenType> = stk
-                .members()
-                .iter()
-                .flat_map(StructType::units)
-                .map(Typed::get_type)
-                .collect();
-
+            let contract: Vec<_> = stk.units().map(Typed::get_type).collect();
             result.expect_exact(&contract, end_token.loc)?;
 
             if self.inside_proc() && assign == KeywordType::Equal {
