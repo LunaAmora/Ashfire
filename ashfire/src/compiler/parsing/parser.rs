@@ -634,8 +634,7 @@ impl Parser {
                             todo!()
                         };
 
-                        let unit = ValueUnit::from_type(&member_name, *typ.value_type());
-                        members.push(StructType::Unit(unit));
+                        members.push(StructType::unit(&member_name, *typ.value_type()));
                     } else {
                         let value = prog.get_struct_value_id(type_def).unwrap();
                         let root = StructRef::new(&member_name, ref_members.to_vec(), value);
@@ -643,8 +642,7 @@ impl Parser {
                     }
                 }
                 Either::Right(type_ptr) => {
-                    let unit = ValueUnit::from_type(&member_name, type_ptr);
-                    members.push(StructType::Unit(unit));
+                    members.push(StructType::unit(&member_name, type_ptr));
                 }
             }
         }

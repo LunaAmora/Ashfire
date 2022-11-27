@@ -128,10 +128,6 @@ impl ValueUnit {
         Self { name: *name, value: typed.operand(), value_type }
     }
 
-    pub fn from_type(name: &StrKey, value_type: ValueType) -> Self {
-        Self { name: *name, value: 0, value_type }
-    }
-
     pub fn value(&self) -> i32 {
         self.value
     }
@@ -250,10 +246,7 @@ impl Deref for StructDef {
 impl From<(StrKey, Value)> for StructDef {
     fn from(tuple: (StrKey, Value)) -> Self {
         let (name, value_type) = (tuple.0, ValueType::Typ(tuple.1));
-        let members = vec![StructType::Unit(ValueUnit::from_type(
-            &StrKey::default(),
-            value_type,
-        ))];
+        let members = vec![StructType::unit(&StrKey::default(), value_type)];
 
         Self { name, members }
     }
@@ -266,6 +259,10 @@ pub enum StructType {
 }
 
 impl StructType {
+    pub fn unit(name: &StrKey, value_type: ValueType) -> Self {
+        Self::Unit(ValueUnit { name: *name, value: 0, value_type })
+    }
+
     pub fn map_with_provider<T: Typed + Operand>(
         &self, rev: bool, provider: &mut IntoIter<T>,
     ) -> Option<Self> {

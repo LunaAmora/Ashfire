@@ -28,6 +28,16 @@ impl InternalString for StrKey {
     }
 }
 
+fn intern_all<const N: usize>(rodeo: &mut Rodeo, strings: [&'static str; N]) -> [StrKey; N] {
+    strings
+        .iter()
+        .map(|s| rodeo.get_or_intern_static(s))
+        .collect::<Vec<_>>()
+        .try_into()
+        .ok()
+        .unwrap()
+}
+
 #[derive(Default)]
 pub struct Program {
     pub ops: Vec<Op>,
@@ -46,24 +56,20 @@ pub struct Program {
 
 impl Program {
     pub fn new() -> Self {
-        let mut interner = Rodeo::default();
-        interner.get_or_intern(String::new());
+        let mut interner = Rodeo::new();
+
+        let names = ["", "int", "bool", "ptr", "str", "len", "data", "any"];
+        let [_, int, bool, ptr, str, len, data, any] = intern_all(&mut interner, names);
 
         let structs_types = vec![
-            (interner.get_or_intern("int"), Value::Int).into(),
-            (interner.get_or_intern("bool"), Value::Bool).into(),
-            (interner.get_or_intern("ptr"), Value::Ptr).into(),
-            StructDef::new(&interner.get_or_intern("str"), vec![
-                StructType::Unit(ValueUnit::from_type(
-                    &interner.get_or_intern("len"),
-                    ValueType::Typ(Value::Int),
-                )),
-                StructType::Unit(ValueUnit::from_type(
-                    &interner.get_or_intern("data"),
-                    ValueType::Typ(Value::Ptr),
-                )),
+            (int, Value::Int).into(),
+            (bool, Value::Bool).into(),
+            (ptr, Value::Ptr).into(),
+            StructDef::new(&str, vec![
+                StructType::unit(&len, ValueType::Typ(Value::Int)),
+                StructType::unit(&data, ValueType::Typ(Value::Ptr)),
             ]),
-            (interner.get_or_intern("any"), Value::Any).into(),
+            (any, Value::Any).into(),
         ];
 
         Self { structs_types, interner, ..Default::default() }
