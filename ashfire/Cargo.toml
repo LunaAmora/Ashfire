@@ -17,3 +17,7 @@ ashlib = {path = "../ashlib"}
 firelib = {path = "../firelib"}
 wasm_backend = {path = "../wasm_backend"}
 ashfire_types = {path = "../ashfire_types"}
+
+[lib]
+name = "ashfire_lib"
+path = "src/lib.rs"

@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, path::PathBuf};
+use std::{collections::VecDeque, path::Path};
 
 use ashfire_types::{core::*, data::*, enums::*, proc::*};
 use ashlib::Either;
@@ -761,7 +761,7 @@ impl Parser {
         }
     }
 
-    pub fn lex_file(&mut self, path: &PathBuf, prog: &mut Program) -> LazyResult<&mut Self> {
+    pub fn lex_file(&mut self, path: &Path, prog: &mut Program) -> LazyResult<&mut Self> {
         let lex = &mut match prog.new_lexer(path) {
             Ok(ok) => ok,
             Err(err) => return Err(err.into()),

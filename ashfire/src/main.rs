@@ -1,19 +1,18 @@
-#![feature(try_blocks)]
 #[macro_use] extern crate log;
-#[macro_use] extern crate firelib;
 
-mod compiler;
-mod logger;
-mod target;
+use std::{
+    fs::File,
+    io::BufWriter,
+    path::{Path, PathBuf},
+};
 
-use std::path::PathBuf;
-
+use ashfire_lib::{
+    compile, logger,
+    target::{Target, TargetConfig},
+};
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
-use firelib::Result;
-use target::Target;
-
-use crate::{compiler::program::Program, target::TargetConfig};
+use firelib::{cmd_wait, Result};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -57,25 +56,24 @@ fn main() {
 
     if let Err(err) = match args.command {
         Commands::Com { path, output, run, wat, target, runtime } => {
-            compile_command(&path, output, run, wat, target, runtime)
+            compile_command(&path, output.as_deref(), run, wat, target, runtime)
         }
     } {
         error!("{:#}", err);
     }
 }
 
-fn compile_command(
-    path: &PathBuf, output: Option<PathBuf>, run: bool, wat: bool, target: Target, runtime: String,
+pub fn compile_command(
+    path: &Path, output: Option<&Path>, run: bool, wat: bool, target: Target, runtime: String,
 ) -> Result<()> {
-    let out = output.unwrap_or_else(|| path.clone()).with_extension("wat");
+    let out = output.unwrap_or(path).with_extension("wat");
 
     let run_config = TargetConfig::new(target, runtime, run);
 
-    Program::new()
-        .compile_file(path)?
-        .type_check()?
-        .generate_wasm(&out, &run_config)?;
+    let writer = BufWriter::new(File::create(&out)?);
+    compile(path, writer, &run_config)?;
 
+    info!("Generated {:?}", out);
     let out_wasm = out.with_extension("wasm");
 
     cmd_wait!("wat2wasm", &out, "-o", &out_wasm);

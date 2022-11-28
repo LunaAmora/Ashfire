@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use ashfire_types::{core::*, data::*, enums::*, proc::Mode};
 use ashlib::Either;
@@ -204,7 +204,7 @@ impl Program {
         ParseContext::LocalMem
     }
 
-    pub fn compile_file(&mut self, path: &PathBuf) -> firelib::Result<&mut Self> {
+    pub fn compile_file(&mut self, path: &Path) -> firelib::Result<&mut Self> {
         info!("Compiling file: {:?}", path);
 
         Parser::new()

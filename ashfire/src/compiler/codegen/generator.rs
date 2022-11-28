@@ -1,4 +1,4 @@
-use std::{fs::File, io::BufWriter, path::Path};
+use std::io::Write;
 
 use ashfire_types::{
     core::{Op, Operand, WORD_SIZE, WORD_USIZE},
@@ -234,10 +234,7 @@ impl Program {
         var_value
     }
 
-    pub fn generate_wasm(&self, output: &Path, config: &TargetConfig) -> Result<()> {
-        info!("Generating {:?}", output);
-
-        let writer = BufWriter::new(File::create(output)?);
+    pub fn generate_wasm(&self, writer: impl Write, config: &TargetConfig) -> Result<()> {
         Generator::new()
             .generate_module(self, config)?
             .write_text(writer)

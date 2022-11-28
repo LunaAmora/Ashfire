@@ -1,4 +1,4 @@
-use std::{fs::File, path::PathBuf, str::FromStr};
+use std::{fs::File, path::Path, str::FromStr};
 
 use ashfire_types::{
     core::{IRToken, TokenType, INT},
@@ -12,7 +12,7 @@ use super::{
 };
 
 impl Program {
-    pub fn new_lexer(&mut self, path: &PathBuf) -> Result<Lexer> {
+    pub fn new_lexer(&mut self, path: &Path) -> Result<Lexer> {
         let file = File::open(path).with_context(|| format!("Could not read file `{path:?}`"))?;
 
         let str_key = self.get_or_intern(path.to_str().unwrap());
