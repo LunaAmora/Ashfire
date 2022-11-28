@@ -762,7 +762,7 @@ impl Parser {
     }
 
     pub fn lex_file(&mut self, path: &Path, prog: &mut Program) -> LazyResult<&mut Self> {
-        let lex = &mut match prog.new_lexer(path) {
+        let lex = &mut match prog.new_file_lexer(path) {
             Ok(ok) => ok,
             Err(err) => return Err(err.into()),
         };
@@ -786,11 +786,7 @@ impl Parser {
                 .with_ctx(|_| "failed to get file directory path".to_owned())?
                 .join(include_path);
 
-            if prog
-                .get_key(include.to_str().unwrap())
-                .map(|key| prog.included_files.contains(&key)) ==
-                Some(true)
-            {
+            if prog.contains_source(include.to_str().unwrap()) {
                 continue;
             }
 

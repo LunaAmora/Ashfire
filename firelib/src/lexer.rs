@@ -1,21 +1,16 @@
-use std::{
-    collections::HashMap,
-    io::{BufRead, BufReader, Read},
-};
+use std::{collections::HashMap, io::BufRead};
 
 use crate::utils::strip_trailing_newline;
 
 pub struct LexerBuilder {
-    read: Box<dyn Read>,
     matches: Vec<Match>,
     separators: Vec<char>,
     comments: Option<String>,
 }
 
 impl LexerBuilder {
-    fn new(read: impl Read + 'static) -> Self {
+    fn new() -> Self {
         Self {
-            read: Box::new(read),
             matches: vec![],
             separators: vec![],
             comments: None,
@@ -24,14 +19,14 @@ impl LexerBuilder {
 
     #[must_use]
     /// Separators are not included in other tokens, unless inside a [`Match`].
-    pub fn with_separators(mut self, sep: Vec<char>) -> Self {
+    pub fn with_separators<const N: usize>(mut self, sep: [char; N]) -> Self {
         self.separators.extend(sep);
         self
     }
 
     #[must_use]
     /// Captures everything betwen a pair of chars or until the end of the line.
-    pub fn with_matches(mut self, matches: Vec<Match>) -> Self {
+    pub fn with_matches<const N: usize>(mut self, matches: [Match; N]) -> Self {
         self.matches.extend(matches);
         self
     }
@@ -43,8 +38,8 @@ impl LexerBuilder {
         self
     }
 
-    /// Tries to build an `Lexer` with the given file and parameters.
-    pub fn build(self, index: usize) -> Lexer {
+    /// Tries to build an `Lexer` with the given `BufRead` and parameters.
+    pub fn build(self, index: usize, read: impl BufRead + 'static) -> Lexer {
         let mut matches = HashMap::with_capacity(self.matches.len());
 
         for value in &self.matches {
@@ -54,8 +49,7 @@ impl LexerBuilder {
             };
         }
 
-        let reader = BufReader::new(self.read);
-        Lexer::new(Box::new(reader), index, self.separators, self.comments, matches)
+        Lexer::new(Box::new(read), index, self.separators, self.comments, matches)
     }
 }
 
@@ -109,8 +103,8 @@ impl Lexer {
     }
 
     /// Returns an builder object for working with the `Lexer`.
-    pub fn builder(file: impl Read + 'static) -> LexerBuilder {
-        LexerBuilder::new(file)
+    pub fn builder() -> LexerBuilder {
+        LexerBuilder::new()
     }
 
     fn next_token(&mut self) -> Option<Token> {

@@ -46,7 +46,7 @@ pub struct Program {
     pub global_vars: Vec<StructType>,
     pub structs_types: Vec<StructDef>,
     pub block_contracts: HashMap<usize, (usize, usize)>,
-    pub included_files: Vec<StrKey>,
+    included_sources: Vec<StrKey>,
     interner: Rodeo,
     mem_size: usize,
     memory: Vec<OffsetWord>,
@@ -73,6 +73,20 @@ impl Program {
         ];
 
         Self { structs_types, interner, ..Default::default() }
+    }
+
+    pub fn contains_source(&self, source: &str) -> bool {
+        let Some(key) = self.interner.get(source) else {
+            return false;
+        };
+
+        self.included_sources.contains(&key)
+    }
+
+    pub fn push_source(&mut self, source: &str) -> usize {
+        let key = self.interner.get_or_intern(source);
+        self.included_sources.push(key);
+        self.included_sources.len() - 1
     }
 
     pub fn push_mem(&mut self, word: &StrKey, size: usize) {
@@ -198,7 +212,7 @@ impl Program {
 
     pub fn loc_fmt<L: Location>(&self, loc: L) -> String {
         let loc = loc.loc();
-        self.included_files
+        self.included_sources
             .get(loc.file_index)
             .map_or_else(String::new, |l| format!("{}:{}:{} ", l.as_str(self), loc.line, loc.col))
     }

@@ -1,4 +1,9 @@
-use std::{fs::File, path::Path, str::FromStr};
+use std::{
+    fs::File,
+    io::{BufRead, BufReader},
+    path::Path,
+    str::FromStr,
+};
 
 use ashfire_types::{
     core::{IRToken, TokenType, INT},
@@ -11,23 +16,28 @@ use super::{
     utils::err_loc,
 };
 
+fn builder() -> LexerBuilder {
+    Lexer::builder()
+        .with_separators([':', '=', '*'])
+        .with_matches([
+            Match::Same('\''),
+            Match::Same('\"'),
+            Match::Pair('(', ')'),
+            Match::Pair('#', ' '),
+        ])
+        .with_comments("//")
+}
+
+pub fn new_lexer(buf_id: usize, reader: impl BufRead + 'static) -> Lexer {
+    builder().build(buf_id, reader)
+}
+
 impl Program {
-    pub fn new_lexer(&mut self, path: &Path) -> Result<Lexer> {
+    pub fn new_file_lexer(&mut self, path: &Path) -> Result<Lexer> {
         let file = File::open(path).with_context(|| format!("Could not read file `{path:?}`"))?;
 
-        let str_key = self.get_or_intern(path.to_str().unwrap());
-        self.included_files.push(str_key);
-
-        Ok(Lexer::builder(file)
-            .with_separators(vec![':', '=', '*'])
-            .with_matches(vec![
-                Match::Same('\''),
-                Match::Same('\"'),
-                Match::Pair('(', ')'),
-                Match::Pair('#', ' '),
-            ])
-            .with_comments("//")
-            .build(self.included_files.len() - 1))
+        let buf_id = self.push_source(path.to_str().unwrap());
+        Ok(new_lexer(buf_id, BufReader::new(file)))
     }
 
     pub fn lex_next_token(&mut self, lexer: &mut Lexer) -> OptionErr<IRToken> {
