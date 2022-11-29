@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{io::Read, path::Path};
 
 use ashfire_types::{core::*, data::*, enums::*, proc::Mode};
 use ashlib::Either;
@@ -202,6 +202,22 @@ impl Program {
 
         data.push_mem(word, size);
         ParseContext::LocalMem
+    }
+
+    pub fn compile_buffer(
+        &mut self, path: &Path, source: &str, reader: impl Read + 'static,
+    ) -> firelib::Result<&mut Self> {
+        info!("Compiling buffer: {:?}", source);
+
+        let lexer = self.new_lexer(source, reader);
+
+        Parser::new()
+            .read_lexer(self, lexer, path)
+            .and_then(|parser| parser.parse_tokens(self))
+            .try_or_apply(&|fmt| self.format(fmt))?;
+
+        info!("Compilation done");
+        Ok(self)
     }
 
     pub fn compile_file(&mut self, path: &Path) -> firelib::Result<&mut Self> {

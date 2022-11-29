@@ -1,9 +1,4 @@
-use std::{
-    fs::File,
-    io::{BufRead, BufReader},
-    path::Path,
-    str::FromStr,
-};
+use std::{fs::File, io::Read, path::Path, str::FromStr};
 
 use ashfire_types::{
     core::{IRToken, TokenType, INT},
@@ -28,7 +23,7 @@ fn builder() -> LexerBuilder {
         .with_comments("//")
 }
 
-pub fn new_lexer(buf_id: usize, reader: impl BufRead + 'static) -> Lexer {
+fn new_lexer(buf_id: usize, reader: impl Read + 'static) -> Lexer {
     builder().build(buf_id, reader)
 }
 
@@ -37,7 +32,11 @@ impl Program {
         let file = File::open(path).with_context(|| format!("Could not read file `{path:?}`"))?;
 
         let buf_id = self.push_source(path.to_str().unwrap());
-        Ok(new_lexer(buf_id, BufReader::new(file)))
+        Ok(new_lexer(buf_id, file))
+    }
+
+    pub fn new_lexer(&mut self, source: &str, reader: impl Read + 'static) -> Lexer {
+        new_lexer(self.push_source(source), reader)
     }
 
     pub fn lex_next_token(&mut self, lexer: &mut Lexer) -> OptionErr<IRToken> {

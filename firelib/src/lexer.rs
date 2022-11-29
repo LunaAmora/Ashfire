@@ -1,4 +1,7 @@
-use std::{collections::HashMap, io::BufRead};
+use std::{
+    collections::HashMap,
+    io::{BufRead, BufReader, Read},
+};
 
 use crate::utils::strip_trailing_newline;
 
@@ -38,8 +41,8 @@ impl LexerBuilder {
         self
     }
 
-    /// Tries to build an `Lexer` with the given `BufRead` and parameters.
-    pub fn build(self, index: usize, read: impl BufRead + 'static) -> Lexer {
+    /// Tries to build an `Lexer` with the given `Read` and parameters.
+    pub fn build(self, index: usize, read: impl Read + 'static) -> Lexer {
         let mut matches = HashMap::with_capacity(self.matches.len());
 
         for value in &self.matches {
@@ -49,7 +52,7 @@ impl LexerBuilder {
             };
         }
 
-        Lexer::new(Box::new(read), index, self.separators, self.comments, matches)
+        Lexer::new(Box::new(BufReader::new(read)), index, self.separators, self.comments, matches)
     }
 }
 

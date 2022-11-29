@@ -2,7 +2,12 @@ use std::{collections::VecDeque, path::Path};
 
 use ashfire_types::{core::*, data::*, enums::*, proc::*};
 use ashlib::Either;
-use firelib::{lazy::LazyCtx, lexer::Loc, utils::*, ShortCircuit, TrySuccess};
+use firelib::{
+    lazy::LazyCtx,
+    lexer::{Lexer, Loc},
+    utils::*,
+    ShortCircuit, TrySuccess,
+};
 
 use super::{types::*, utils::*};
 use crate::compiler::{program::*, typechecking::expect::Compare, utils::err_loc};
@@ -762,19 +767,25 @@ impl Parser {
     }
 
     pub fn lex_file(&mut self, path: &Path, prog: &mut Program) -> LazyResult<&mut Self> {
-        let lex = &mut match prog.new_file_lexer(path) {
+        let lex = match prog.new_file_lexer(path) {
             Ok(ok) => ok,
             Err(err) => return Err(err.into()),
         };
 
-        while let Some(token) = prog.lex_next_token(lex).value? {
+        self.read_lexer(prog, lex, path)
+    }
+
+    pub fn read_lexer(
+        &mut self, prog: &mut Program, mut lex: Lexer, path: &Path,
+    ) -> LazyResult<&mut Self> {
+        while let Some(token) = prog.lex_next_token(&mut lex).value? {
             if &token != KeywordType::Include {
                 self.ir_tokens.push_back(token);
                 continue;
             }
 
             let tok = expect_token_by(
-                prog.lex_next_token(lex).value?,
+                prog.lex_next_token(&mut lex).value?,
                 |tok| tok == TokenType::Str,
                 "include file name",
                 token.loc,
