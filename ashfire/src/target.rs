@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::ValueEnum;
 use firelib::Result;
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Debug, Copy, Clone, ValueEnum)]
 pub enum Target {
     Wasi,
     Wasm4,

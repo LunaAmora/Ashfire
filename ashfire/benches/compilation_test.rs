@@ -20,7 +20,7 @@ mod tests {
     #[bench]
     fn bench_wasi(b: &mut Bencher) -> io::Result<()> {
         let target = TargetConfig::new(Target::Wasi, WASI_RUNTIME.to_owned(), false);
-        let path = PathBuf::from(bech_folder()?).join("test.fire");
+        let path = bech_folder()?.join("test.fire");
 
         b.iter(|| compile(&path, io::sink(), &target));
         Ok(())
@@ -29,7 +29,7 @@ mod tests {
     #[bench]
     fn bench_wasm4(b: &mut Bencher) -> io::Result<()> {
         let target = TargetConfig::new(Target::Wasm4, WASI_RUNTIME.to_owned(), false);
-        let path = PathBuf::from(bech_folder()?).join("w4.fire");
+        let path = bech_folder()?.join("w4.fire");
 
         b.iter(|| compile(&path, io::sink(), &target));
         Ok(())
