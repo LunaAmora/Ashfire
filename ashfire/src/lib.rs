@@ -31,3 +31,40 @@ pub fn compile_buffer(
         .type_check()?
         .generate_wasm(writer, run_config)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{env, io, path::PathBuf};
+
+    use firelib::Result;
+
+    use crate::{
+        compile_buffer,
+        target::{Target, TargetConfig},
+    };
+
+    const WASI_RUNTIME: &str = "Wasmtime";
+
+    fn lib_folder() -> io::Result<PathBuf> {
+        Ok(env::current_dir()?.join("../firelang/lib"))
+    }
+
+    #[test]
+    fn buffer_compilation() -> Result<()> {
+        compile(
+            r#"
+            include "lib/wasi.fire"
+            include "lib/std.fire"
+            
+            _start export::
+                "Hello World!" println
+            end
+            "#,
+        )
+    }
+
+    fn compile(code: &'static str) -> Result<()> {
+        let target = TargetConfig::new(Target::Wasi, WASI_RUNTIME.to_owned(), false);
+        compile_buffer(&lib_folder().unwrap(), "buffer", code.as_bytes(), io::sink(), &target)
+    }
+}
