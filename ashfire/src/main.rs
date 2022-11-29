@@ -1,13 +1,14 @@
 #[macro_use] extern crate log;
 
 use std::{
+    env,
     fs::File,
-    io::BufWriter,
+    io::{self, BufWriter},
     path::{Path, PathBuf},
 };
 
 use ashfire_lib::{
-    compile, logger,
+    compile, compile_buffer, logger,
     target::{Target, TargetConfig},
 };
 use clap::{Parser, Subcommand};
@@ -28,7 +29,7 @@ enum Commands {
     /// Compile a `.fire` file to WebAssembly.
     Com {
         #[arg(value_name = "FILE")]
-        path: PathBuf,
+        path: Option<PathBuf>,
         #[arg(short, long)]
         output: Option<PathBuf>,
         /// Run the `.wasm` file with a runtime.
@@ -54,16 +55,19 @@ fn main() {
             .init();
     }
 
-    if let Err(err) = match args.command {
-        Commands::Com { path, output, run, wat, target, runtime } => {
-            compile_command(&path, output.as_deref(), run, wat, target, runtime)
-        }
-    } {
+    let result = match args.command {
+        Commands::Com { path, output, run, wat, target, runtime } => match path {
+            Some(path) => compile_command(&path, output.as_deref(), run, wat, target, runtime),
+            None => compile_pipe(target, runtime, run),
+        },
+    };
+
+    if let Err(err) = result {
         error!("{:#}", err);
     }
 }
 
-pub fn compile_command(
+fn compile_command(
     path: &Path, output: Option<&Path>, run: bool, wat: bool, target: Target, runtime: String,
 ) -> Result<()> {
     let out = output.unwrap_or(path).with_extension("wat");
@@ -82,4 +86,24 @@ pub fn compile_command(
     }
 
     run_config.run(out_wasm)
+}
+
+fn compile_pipe(target: Target, runtime: String, run: bool) -> Result<()> {
+    let config = TargetConfig::new(target, runtime, run);
+    let path = lib_folder().unwrap();
+
+    if run {
+        let out = env::temp_dir().join("out.wat");
+        compile_buffer(&path, "stdin", io::stdin(), File::create(&out)?, &config)?;
+
+        let out_wasm = out.with_extension("wasm");
+        cmd_wait!("wat2wasm", &out, "-o", &out_wasm);
+        config.run(out_wasm)
+    } else {
+        compile_buffer(&path, "stdin", io::stdin(), io::stdout(), &config)
+    }
+}
+
+fn lib_folder() -> io::Result<PathBuf> {
+    Ok(env::current_dir()?.join("lib/_"))
 }
