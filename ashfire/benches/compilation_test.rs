@@ -13,18 +13,6 @@ mod tests {
 
     const WASI_RUNTIME: &str = "Wasmtime";
 
-    struct Discard();
-
-    impl io::Write for Discard {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            Ok(buf.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
     fn bech_folder() -> io::Result<PathBuf> {
         Ok(env::current_dir()?.join("../firelang"))
     }
@@ -34,7 +22,7 @@ mod tests {
         let target = TargetConfig::new(Target::Wasi, WASI_RUNTIME.to_owned(), false);
         let path = PathBuf::from(bech_folder()?).join("test.fire");
 
-        b.iter(|| compile(&path, Discard(), &target));
+        b.iter(|| compile(&path, io::sink(), &target));
         Ok(())
     }
 
@@ -43,7 +31,7 @@ mod tests {
         let target = TargetConfig::new(Target::Wasm4, WASI_RUNTIME.to_owned(), false);
         let path = PathBuf::from(bech_folder()?).join("w4.fire");
 
-        b.iter(|| compile(&path, Discard(), &target));
+        b.iter(|| compile(&path, io::sink(), &target));
         Ok(())
     }
 }
