@@ -1,5 +1,5 @@
-include "lib/wasi.fire"
-include "lib/std.fire"
+include lib/wasi
+include lib/std
 
 double_str struct :
   first  str

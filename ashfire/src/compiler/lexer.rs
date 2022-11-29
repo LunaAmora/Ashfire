@@ -29,9 +29,10 @@ fn new_lexer(buf_id: usize, reader: impl Read + 'static) -> Lexer {
 
 impl Program {
     pub fn new_file_lexer(&mut self, path: &Path) -> Result<Lexer> {
-        let file = File::open(path).with_context(|| format!("Could not read file `{path:?}`"))?;
+        let file = File::open(path.with_extension("fire"))
+            .with_context(|| format!("Could not read file `{path:?}`"))?;
 
-        let buf_id = self.push_source(path.to_str().unwrap());
+        let buf_id = self.push_source(path.with_extension("").to_str().unwrap());
         Ok(new_lexer(buf_id, file))
     }
 

@@ -1,5 +1,5 @@
-include "lib/wasm4.fire"
-include "lib/std.fire"
+include lib/wasm4
+include lib/std
 
 greet str := "Initialized" end
 

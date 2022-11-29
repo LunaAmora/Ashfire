@@ -786,22 +786,22 @@ impl Parser {
 
             let tok = expect_token_by(
                 prog.lex_next_token(&mut lex).value?,
-                |tok| tok == TokenType::Str,
+                |tok| tok == TokenType::Word,
                 "include file name",
                 token.loc,
             )?;
 
-            let include_path = prog.get_data_str(tok);
+            let include_path = prog.get_word(tok);
 
             let include = get_dir(path)
                 .with_ctx(|_| "failed to get file directory path".to_owned())?
                 .join(include_path);
 
-            if prog.contains_source(include.to_str().unwrap()) {
+            if prog.contains_source(include.with_extension("").to_str().unwrap()) {
                 continue;
             }
 
-            info!("Including file: {:?}", include);
+            info!("Including file: {:?}", include.with_extension("fire"));
             self.lex_file(&include, prog)?;
         }
         Ok(self)

@@ -1,4 +1,4 @@
-include "core.fire"
+include core
 
 print : str :
   buffer str:= end

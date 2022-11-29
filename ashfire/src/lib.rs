@@ -53,8 +53,8 @@ mod tests {
     fn buffer_compilation() -> Result<()> {
         compile(
             r#"
-            include "lib/wasi.fire"
-            include "lib/std.fire"
+            include lib/wasi
+            include lib/std
             
             _start export::
                 "Hello World!" println
