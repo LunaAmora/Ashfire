@@ -1,0 +1,27 @@
+{
+    "rust-analyzer.checkOnSave.command": "clippy",
+    "rust-analyzer.checkOnSave.extraArgs": [
+        "--",
+        "-Wclippy::all",
+
+        "-Wclippy::nursery",
+        "-Aclippy::non-send-fields-in-send-ty",
+        "-Aclippy::missing_const_for_fn",
+
+        "-Wclippy::pedantic",
+        "-Aclippy::trivially_copy_pass_by_ref",
+        "-Aclippy::missing_errors_doc",
+        "-Aclippy::missing_panics_doc",
+
+        "-Aclippy::cast_possible_truncation",
+        "-Aclippy::cast_possible_wrap",
+        "-Aclippy::cast_sign_loss",
+        
+        "-Aclippy::module_name_repetitions",
+        "-Aclippy::must_use_candidate",
+        "-Aclippy::wildcard_imports",
+        "-Aclippy::enum_glob_use",
+        "-Aclippy::too_many_lines",
+        "-Aclippy::similar_names",
+    ]
+}
