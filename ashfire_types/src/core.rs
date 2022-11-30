@@ -48,7 +48,6 @@ pub trait Operand {
         self.operand() as usize
     }
 
-    #[track_caller]
     fn str_key(&self) -> StrKey {
         StrKey::try_from_usize(self.index()).unwrap()
     }
@@ -171,7 +170,6 @@ impl IRToken {
     /// # Panics
     ///
     /// Will panic if the operand is not a valid `KeywordType`.
-    #[track_caller]
     pub fn as_keyword(&self) -> KeywordType {
         FromPrimitive::from_i32(self.operand).unwrap()
     }
@@ -186,7 +184,6 @@ impl Deref for IRToken {
 }
 
 impl PartialEq<KeywordType> for &IRToken {
-    #[track_caller]
     fn eq(&self, other: &KeywordType) -> bool {
         self.token_type == TokenType::Keyword && other == &self.as_keyword()
     }
@@ -267,7 +264,6 @@ impl From<(OpType, Loc)> for Op {
 }
 
 impl From<(&ValueUnit, Loc)> for Op {
-    #[track_caller]
     fn from(tuple: (&ValueUnit, Loc)) -> Self {
         let ValueType::Typ(typ) = tuple.0.value_type() else {
             unimplemented!("Conversion not supported for `ValueType::Ptr`")

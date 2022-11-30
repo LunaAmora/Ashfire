@@ -282,7 +282,6 @@ pub trait Visitor {
         self.get_index().and_then(|i| program.procs.get_mut(i))
     }
 
-    #[track_caller]
     fn visit_proc<'a>(&mut self, program: &'a Program, index: usize) -> &'a Proc {
         self.enter_proc(index);
         &program.procs[index]
