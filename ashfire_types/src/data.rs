@@ -62,10 +62,8 @@ pub enum ValueType {
 impl PartialEq for ValueType {
     fn eq(&self, other: &Self) -> bool {
         let (same, &l, &r) = match (self, other) {
-            (Self::Typ(l), Self::Typ(r)) => (true, l, r),
-            (Self::Ptr(l), Self::Ptr(r)) => (true, l, r),
-            (Self::Ptr(l), Self::Typ(r)) => (false, l, r),
-            (Self::Typ(l), Self::Ptr(r)) => (false, l, r),
+            (Self::Ptr(l), Self::Ptr(r)) | (Self::Typ(l), Self::Typ(r)) => (true, l, r),
+            (Self::Ptr(l), Self::Typ(r)) | (Self::Typ(l), Self::Ptr(r)) => (false, l, r),
         };
 
         if same {

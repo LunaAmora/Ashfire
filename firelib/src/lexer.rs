@@ -61,6 +61,7 @@ pub enum Match {
     Pair(char, char),
 }
 
+#[derive(Clone, Copy)]
 enum Predicate {
     Char(char),
     Whitespace,
@@ -150,7 +151,7 @@ impl Lexer {
     fn read_line(&mut self) -> bool {
         let mut line = String::new();
         match self.reader.read_line(&mut line) {
-            Ok(read) if read > 0 => self.setup_buffer(line),
+            Ok(read) if read > 0 => self.setup_buffer(&line),
             _ => {
                 self.buffer = Vec::new();
                 false
@@ -158,13 +159,13 @@ impl Lexer {
         }
     }
 
-    fn setup_buffer(&mut self, line: String) -> bool {
+    fn setup_buffer(&mut self, line: &str) -> bool {
         self.line_num += 1;
         (line.trim().is_empty() && self.read_line()) || self.setup_cursor_and_trim(line)
     }
 
-    fn setup_cursor_and_trim(&mut self, line: String) -> bool {
-        self.buffer = strip_trailing_newline(&line).chars().collect();
+    fn setup_cursor_and_trim(&mut self, line: &str) -> bool {
+        self.buffer = strip_trailing_newline(line).chars().collect();
         self.col_num = 0;
         self.lex_pos = 0;
         self.seek_next_token()
