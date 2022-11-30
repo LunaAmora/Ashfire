@@ -256,7 +256,7 @@ impl Module {
 
 fn inverse_hex_representation(data: i32) -> String {
     bytes_from_value(data)
-        .iter()
+        .into_iter()
         .rev()
         .flat_map(u8_to_hex_representation)
         .collect()
@@ -266,13 +266,13 @@ fn bytes_from_value(data: i32) -> Vec<u8> {
     LowerHexString::new(format!("{data:08x}")).unwrap().into()
 }
 
-fn u8_to_hex_representation(b: &u8) -> [char; 3] {
-    let upper = nibble_to_hexchar(&((b & 0xf0) >> 4)).unwrap();
-    let lower = nibble_to_hexchar(&(b & 0x0f)).unwrap();
+fn u8_to_hex_representation(b: u8) -> [char; 3] {
+    let upper = nibble_to_hexchar((b & 0xf0) >> 4).unwrap();
+    let lower = nibble_to_hexchar(b & 0x0f).unwrap();
     ['\\', upper, lower]
 }
 
-fn nibble_to_hexchar(b: &u8) -> Result<char> {
+fn nibble_to_hexchar(b: u8) -> Result<char> {
     match b {
         0 => Ok('0'),
         1 => Ok('1'),
