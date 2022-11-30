@@ -1,4 +1,4 @@
-use std::{fmt, ops::Deref};
+use std::ops::Deref;
 
 use firelib::lexer::Loc;
 use lasso::Key;
@@ -236,17 +236,6 @@ impl Op {
 
     pub fn set_operand(&mut self, value: i32) {
         self.operand = value;
-    }
-}
-
-impl fmt::Display for Op {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.op_type {
-            OpType::Intrinsic => {
-                write!(f, "Intrinsic {:?}", IntrinsicType::from(self.operand))
-            }
-            _ => write!(f, "{:?} [{}]", self.op_type, self.operand),
-        }
     }
 }
 
