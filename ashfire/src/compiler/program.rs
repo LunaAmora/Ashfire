@@ -260,6 +260,27 @@ impl Program {
     pub fn get_const_by_name(&self, word: &StrKey) -> Option<&StructType> {
         self.consts.iter().find(|cnst| word.eq(cnst))
     }
+
+    #[cfg(debug_assertions)]
+    #[allow(dead_code)]
+    fn op_debug(&self, op: Op) -> String {
+        use ashfire_types::enums::OpType;
+
+        match op.op_type {
+            OpType::Intrinsic => match IntrinsicType::from(op.operand) {
+                IntrinsicType::Cast(n) => {
+                    format!("Intrinsic Cast [{}]", self.type_name(ValueType::from(n).get_type()))
+                }
+                intrinsic => format!("Intrinsic [{intrinsic:?}]"),
+            },
+            OpType::Call => format!("Call [{}]", self.get_proc(op.operand).name.as_str(self)),
+            OpType::EndProc => format!("EndProc [{}]", self.get_proc(op.operand).name.as_str(self)),
+            OpType::CallInline => {
+                format!("Inline [{}]", self.get_proc(op.operand).name.as_str(self))
+            }
+            _ => format!("{:?} [{}]", op.op_type, op.operand),
+        }
+    }
 }
 
 pub trait Visitor {
