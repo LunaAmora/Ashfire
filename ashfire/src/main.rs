@@ -107,3 +107,15 @@ fn compile_pipe(target: Target, runtime: String, run: bool) -> Result<()> {
 fn lib_folder() -> io::Result<PathBuf> {
     Ok(env::current_dir()?.join("lib/_"))
 }
+
+
+#[cfg(test)]
+mod tests {
+    use crate::Cli;
+
+    #[test]
+    fn verify_cli() {
+        use clap::CommandFactory;
+        Cli::command().debug_assert();
+    }
+}
