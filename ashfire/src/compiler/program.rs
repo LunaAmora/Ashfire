@@ -263,7 +263,7 @@ impl Program {
 
     #[cfg(debug_assertions)]
     #[allow(dead_code)]
-    fn op_debug(&self, op: Op) -> String {
+    fn op_debug(&self, op: &Op) -> String {
         use ashfire_types::enums::OpType;
 
         match op.op_type {

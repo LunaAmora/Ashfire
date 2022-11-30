@@ -73,45 +73,47 @@ impl Parser {
     /// This function will return an error if any problem is encountered during parsing.
     pub fn parse_tokens(&mut self, prog: &mut Program) -> LazyResult<()> {
         while let Some(token) = self.next() {
-            if let Some(mut op) = self.define_op(token, prog).value? {
+            if let Some(mut op) = self.define_op(&token, prog).value? {
                 prog.ops.append(&mut op);
             }
         }
         Ok(())
     }
 
-    fn define_op(&mut self, tok: IRToken, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        if !(matches!(tok.token_type, TokenType::Keyword | TokenType::Word) || self.inside_proc()) {
+    fn define_op(&mut self, tok: &IRToken, prog: &mut Program) -> OptionErr<Vec<Op>> {
+        let &IRToken { token_type, operand, loc } = tok;
+
+        if !(matches!(token_type, TokenType::Keyword | TokenType::Word) || self.inside_proc()) {
             lazybail!(
                 |f| "{}Token type cannot be used outside of a procedure: `{}`",
-                f.format(Fmt::Loc(tok.loc)),
-                f.format(Fmt::Typ(tok.token_type))
+                f.format(Fmt::Loc(loc)),
+                f.format(Fmt::Typ(token_type))
             );
         };
 
-        let op = Op::from(match tok.token_type {
-            TokenType::Keyword => return self.define_keyword_op(&tok, prog),
+        let op = Op::from(match token_type {
+            TokenType::Keyword => return self.define_keyword_op(tok.as_keyword(), loc, prog),
 
-            TokenType::Str => (OpType::PushStr, &tok, tok.loc),
+            TokenType::Str => (OpType::PushStr, operand, loc),
 
             TokenType::Data(data) => match data {
                 ValueType::Typ(val) => match val {
                     Value::Type(_) => lazybail!(
                         |f| "{}Value type not valid here: `{}`",
-                        f.format(Fmt::Loc(tok.loc)),
+                        f.format(Fmt::Loc(loc)),
                         f.format(Fmt::Typ(val.get_type()))
                     ),
-                    _ => (OpType::PushData(val), &tok, tok.loc),
+                    _ => (OpType::PushData(val), operand, loc),
                 },
                 ValueType::Ptr(ptr) => lazybail!(
                     |f| "{}Data pointer type not valid here: `{}`",
-                    f.format(Fmt::Loc(tok.loc)),
+                    f.format(Fmt::Loc(loc)),
                     f.format(Fmt::Typ(ptr.get_type()))
                 ),
             },
 
             TokenType::Word => {
-                let word = &LocWord::new(&tok, tok.loc);
+                let word = &LocWord::new(operand, loc);
 
                 choice!(
                     OptionErr,
@@ -122,7 +124,7 @@ impl Parser {
 
                 let error =
                     format!("Word was not declared on the program: `{}`", word.as_str(prog));
-                return err_loc(error, tok.loc).into();
+                return err_loc(error, loc).into();
             }
         });
 
@@ -181,10 +183,9 @@ impl Parser {
         }
     }
 
-    fn define_keyword_op(&mut self, tok: &IRToken, prog: &Program) -> OptionErr<Vec<Op>> {
-        let key = tok.as_keyword();
-        let loc = tok.loc;
-
+    fn define_keyword_op(
+        &mut self, key: KeywordType, loc: Loc, prog: &Program,
+    ) -> OptionErr<Vec<Op>> {
         let op = match key {
             KeywordType::Drop => (OpType::Drop, loc).into(),
             KeywordType::Dup => (OpType::Dup, loc).into(),
@@ -238,11 +239,9 @@ impl Parser {
                 Op { op_type: OpType::CaseMatch, operand, .. } => {
                     (OpType::CaseOption, operand, loc).into()
                 }
-                block => Err(format_block(
-                    "`do` can only come in a `while` or `case` block",
-                    block,
-                    loc,
-                ))?,
+                op => {
+                    Err(format_block("`do` can only come in a `while` or `case` block", &op, loc))?
+                }
             },
 
             KeywordType::Let => todo!(),
@@ -250,9 +249,9 @@ impl Parser {
 
             KeywordType::Colon => match self.pop_block(key, loc)? {
                 Op { op_type: OpType::CaseStart, .. } => todo!(),
-                block => Err(format_block(
+                op => Err(format_block(
                     "`:` can only be used on word or `case` block definition",
-                    block,
+                    &op,
                     loc,
                 ))?,
             },
@@ -262,8 +261,8 @@ impl Parser {
             KeywordType::Else => match self.pop_block(key, loc)? {
                 Op { op_type: OpType::IfStart, .. } => self.push_block((OpType::Else, loc).into()),
                 Op { op_type: OpType::CaseOption, .. } => todo!(),
-                block => {
-                    Err(format_block("`else` can only come in a `if` or `case` block", block, loc))?
+                op => {
+                    Err(format_block("`else` can only come in a `if` or `case` block", &op, loc))?
                 }
             },
 
@@ -285,7 +284,7 @@ impl Parser {
                     (OpType::EndInline, operand, loc).into()
                 }
 
-                block => Err(format_block("Expected `end` to close a valid block", block, loc))?,
+                op => Err(format_block("Expected `end` to close a valid block", &op, loc))?,
             },
 
             KeywordType::Include |
@@ -538,7 +537,7 @@ impl Parser {
             OpType::PrepProc,
             OpType::PrepInline
         );
-        Ok(self.push_block(Op::new(prep, operand as i32, loc)))
+        Ok(self.push_block(Op::new(prep, operand, loc)))
     }
 
     fn parse_procedure(

@@ -110,7 +110,7 @@ impl FuncGen {
         &mut self, prog: &Program, op: &Op, proc: &Proc, module: &mut Module,
     ) -> Result<()> {
         match op.op_type {
-            OpType::PushData(_) => self.push(Const(op.operand)),
+            OpType::PushData(_) | OpType::PushGlobalMem => self.push(Const(op.operand)),
 
             OpType::PushStr => {
                 let (size, offset) = prog.get_data(op).data();
@@ -121,8 +121,6 @@ impl FuncGen {
                 let ptr = self.bind_count * WORD_SIZE + op.operand;
                 self.extend([Const(ptr), Call("push_local".into())]);
             }
-
-            OpType::PushGlobalMem => self.push(Const(op.operand)),
 
             OpType::PushLocal => {
                 let ptr = proc

@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use ashfire_types::{
     core::{IRToken, Op, TokenType},
     enums::KeywordType,
@@ -8,25 +10,27 @@ use super::{parser::Parser, types::LocWord};
 use crate::compiler::program::{Fmt, LazyError, LazyResult};
 
 impl Parser {
-    pub fn expect_keyword(
-        &mut self, key: KeywordType, error_text: &str, loc: Loc,
+    pub fn expect_keyword<S: Display + 'static>(
+        &mut self, key: KeywordType, error_text: S, loc: Loc,
     ) -> LazyResult<IRToken> {
         self.expect_by(|tok| tok == key, error_text, loc)
     }
 
-    pub fn expect_word(&mut self, error_text: &str, loc: Loc) -> LazyResult<LocWord> {
+    pub fn expect_word<S: Display + 'static>(
+        &mut self, error_text: S, loc: Loc,
+    ) -> LazyResult<LocWord> {
         self.expect_by(|tok| tok == TokenType::Word, error_text, loc)
             .map(|tok| LocWord::new(&tok, tok.loc))
     }
 
-    pub fn expect_by(
-        &mut self, pred: impl FnOnce(&IRToken) -> bool, error_text: &str, loc: Loc,
+    pub fn expect_by<S: Display + 'static>(
+        &mut self, pred: impl FnOnce(&IRToken) -> bool, error_text: S, loc: Loc,
     ) -> LazyResult<IRToken> {
         expect_token_by(self.next(), pred, error_text, loc)
     }
 }
 
-pub fn invalid_option<S: ToString>(tok: Option<IRToken>, desc: S, loc: Loc) -> LazyError {
+pub fn invalid_option<S: Display + 'static>(tok: Option<IRToken>, desc: S, loc: Loc) -> LazyError {
     if let Some(tok) = tok {
         unexpected_token(tok, desc)
     } else {
@@ -34,39 +38,40 @@ pub fn invalid_option<S: ToString>(tok: Option<IRToken>, desc: S, loc: Loc) -> L
     }
 }
 
-pub fn unexpected_end<S: ToString>(desc: S, loc: Loc) -> LazyError {
-    let desc = desc.to_string();
+pub fn unexpected_end<S: Display + 'static>(desc: S, loc: Loc) -> LazyError {
     LazyError::new(move |f| {
         format!("{}Expected {desc}, but found nothing", f.format(Fmt::Loc(loc)))
     })
 }
 
-pub fn unexpected_token<S: ToString>(tok: IRToken, desc: S) -> LazyError {
-    let desc = desc.to_string();
+pub fn unexpected_token<S: Display + 'static>(tok: IRToken, desc: S) -> LazyError {
+    let IRToken { token_type, loc, .. } = tok;
+
     LazyError::new(move |f| {
         format!(
             "{}Expected {desc}, but found: {} `{}`",
-            f.format(Fmt::Loc(tok.loc)),
-            f.format(Fmt::Typ(tok.token_type)),
+            f.format(Fmt::Loc(loc)),
+            f.format(Fmt::Typ(token_type)),
             f.format(Fmt::Tok(tok.clone()))
         )
     })
 }
 
-pub fn invalid_token<S: ToString>(tok: IRToken, error: S) -> LazyError {
-    let error = error.to_string();
+pub fn invalid_token<S: Display + 'static>(tok: IRToken, error: S) -> LazyError {
+    let IRToken { token_type, loc, .. } = tok;
+
     LazyError::new(move |f| {
         format!(
             "{}Invalid `{}` found on {error}: `{}`",
-            f.format(Fmt::Loc(tok.loc)),
-            f.format(Fmt::Typ(tok.token_type)),
+            f.format(Fmt::Loc(loc)),
+            f.format(Fmt::Typ(token_type)),
             f.format(Fmt::Tok(tok.clone()))
         )
     })
 }
 
-pub fn format_block<S: ToString>(error: S, op: Op, loc: Loc) -> LazyError {
-    let error = error.to_string();
+pub fn format_block<S: Display + 'static>(error: S, op: &Op, loc: Loc) -> LazyError {
+    let (op_loc, typ) = (op.loc, op.op_type);
     LazyError::new(move |f| {
         format!(
             concat!(
@@ -75,13 +80,13 @@ pub fn format_block<S: ToString>(error: S, op: Op, loc: Loc) -> LazyError {
             ),
             f.format(Fmt::Loc(loc)),
             error,
-            op.op_type,
-            f.format(Fmt::Loc(op.loc))
+            typ,
+            f.format(Fmt::Loc(op_loc))
         )
     })
 }
 
-pub fn expect_token_by<S: ToString>(
+pub fn expect_token_by<S: Display + 'static>(
     value: Option<IRToken>, pred: impl FnOnce(&IRToken) -> bool, desc: S, loc: Loc,
 ) -> LazyResult<IRToken> {
     match value {

@@ -108,7 +108,6 @@ fn lib_folder() -> io::Result<PathBuf> {
     Ok(env::current_dir()?.join("lib/_"))
 }
 
-
 #[cfg(test)]
 mod tests {
     use crate::Cli;

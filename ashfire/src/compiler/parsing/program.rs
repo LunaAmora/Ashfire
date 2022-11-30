@@ -101,7 +101,7 @@ impl Program {
                 } else {
                     OpType::Call
                 };
-                vec![Op::new(call, index as i32, word.loc)]
+                vec![Op::new(call, index, word.loc)]
             })
     }
 
