@@ -1,7 +1,6 @@
 use std::{io::Read, path::Path};
 
 use ashfire_types::{core::*, data::*, enums::*, proc::Mode};
-use ashlib::Either;
 use firelib::{lazy::LazyCtx, ShortCircuit};
 
 use super::{parser::Parser, types::*};
@@ -46,16 +45,6 @@ impl Program {
             StructType::Root(root) => root.units().map(|val| Op::from((val, word.loc))).collect(),
             StructType::Unit(val) => vec![Op::from((val, word.loc))],
         })
-    }
-
-    pub fn get_type_kind(
-        &self, word: &LocWord, as_ref: bool,
-    ) -> Option<Either<&StructDef, ValueType>> {
-        if as_ref {
-            self.get_type_ptr(word).map(Either::Right)
-        } else {
-            self.get_type_def(word).map(Either::Left)
-        }
     }
 
     /// Searches for a `struct` that matches the given [`StrKey`],

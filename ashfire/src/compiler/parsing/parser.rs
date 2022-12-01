@@ -622,12 +622,7 @@ impl Parser {
             }
 
             let member_name = self.expect_word("struct member name", loc)?;
-            let name_type = self.expect_word("struct member type", loc)?;
-            let as_ref = false; // Todo: Add pointers support
-
-            let Some(type_kind) = prog.get_type_kind(&name_type, as_ref) else {
-                return unexpected_token(name_type.into(), "struct member type").into()
-            };
+            let type_kind = self.expect_type_kind("struct member type", prog, loc)?;
 
             match type_kind {
                 Either::Left(type_def) => {
