@@ -1,7 +1,7 @@
 include lib/wasm4
 include lib/std
 
-greet str := "Initialized" end
+greet: str = "Initialized" end
 
 start export:: 
   greet print

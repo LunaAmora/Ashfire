@@ -70,10 +70,6 @@ impl Program {
             .map(|i| ValueType::Ptr(Value::from(i)))
     }
 
-    pub fn try_get_struct_def(&self, tok: &IRToken) -> Option<&StructDef> {
-        fold_bool!(tok == TokenType::Word, self.get_type_def(tok))
-    }
-
     pub fn get_intrinsic(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.get_intrinsic_type(word.as_str(self))
             .map(|i| vec![Op::from((i, word.loc))])

@@ -91,6 +91,10 @@ pub fn unexpected_token<S: Display + 'static>(tok: IRToken, desc: S) -> LazyErro
     })
 }
 
+pub fn invalid_context(tok: IRToken, word: &str) -> LazyError {
+    invalid_token(tok, format!("`{word}` context declaration"))
+}
+
 pub fn invalid_token<S: Display + 'static>(tok: IRToken, error: S) -> LazyError {
     let IRToken { token_type, loc, .. } = tok;
 

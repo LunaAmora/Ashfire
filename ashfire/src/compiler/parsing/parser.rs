@@ -6,11 +6,15 @@ use firelib::{
     lazy::LazyCtx,
     lexer::{Lexer, Loc},
     utils::*,
-    ShortCircuit, TrySuccess,
+    TrySuccess,
 };
 
 use super::{types::*, utils::*};
-use crate::compiler::{program::*, typechecking::expect::Compare, utils::err_loc};
+use crate::compiler::{
+    program::*,
+    typechecking::expect::{expect_type, Compare},
+    utils::err_loc,
+};
 
 #[derive(Default)]
 pub struct Parser {
@@ -171,7 +175,7 @@ impl Parser {
         let local = match self.name_scopes.lookup(&key, prog) {
             Some(ParseContext::LocalVar) => true,
             Some(ParseContext::GlobalVar) => false,
-            _ => return OptionErr::default(),
+            _ => todo!(),
         };
 
         let word = LocWord::new(key, word.loc);
@@ -331,135 +335,68 @@ impl Parser {
                     self.parse_memory(word, prog).try_success()?;
                 }
 
-                (1, TokenType::Word) => {
-                    return choice!(
-                        OptionErr,
-                        self.parse_proc_ctx(i, word, prog),
-                        self.parse_struct_ctx(i, word, prog),
-                        invalid_token(self.get_cloned(i).unwrap(), "context declaration")
-                    )
+                (1, TokenType::Word) if prog.get_type_def(tok).is_none() => {
+                    return self.parse_struct(word, prog);
                 }
 
-                (_, TokenType::Keyword) => {
-                    choice!(
-                        OptionErr,
-                        self.parse_keyword_ctx(&mut colons, tok.as_keyword(), word, prog),
-                        self.parse_end_ctx(colons, i, word, prog),
-                    )?;
+                (_, TokenType::Word) => {}
+
+                (0, TokenType::Keyword) => {
+                    self.parse_expected_type(&mut colons, i, word, prog)?;
                 }
 
-                (0, TokenType::Word) => return self.parse_word_ctx(i, word, prog),
+                (1, TokenType::Keyword) => {
+                    self.parse_keyword_ctx(i, word, prog)?;
+                }
 
-                _ => Err(invalid_token(tok.clone(), "context declaration"))?,
+                _ => return Err(invalid_context(tok.clone(), word.as_str(prog))).into(),
             }
             i += 1;
         }
         OptionErr::default()
     }
 
-    fn parse_proc_ctx(
-        &mut self, index: usize, word: &LocWord, prog: &mut Program,
+    fn parse_expected_type(
+        &mut self, colons: &mut u8, top_index: usize, word: &LocWord, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
-        let tok = self.get(index).unwrap();
-        prog.get_type_def(tok).or_return(OptionErr::default)?;
-        self.parse_procedure(word, prog, ModeType::Declare)
-    }
-
-    fn parse_struct_ctx(
-        &mut self, top_index: usize, word: &LocWord, prog: &mut Program,
-    ) -> OptionErr<Vec<Op>> {
-        if let Ok([n1, n2]) = self.ir_tokens.get_range_ref(top_index + 1) {
-            if prog.try_get_struct_def(n1).is_some() &&
-                equals_any!(n2, KeywordType::End, TokenType::Word)
-            {
-                return self.parse_struct(word, prog);
-            }
-        }
-        OptionErr::default()
-    }
-
-    fn parse_keyword_ctx(
-        &mut self, colons: &mut u8, key: KeywordType, word: &LocWord, prog: &mut Program,
-    ) -> OptionErr<Vec<Op>> {
-        match (*colons, key) {
-            (0, KeywordType::Mem) => {
+        let tok = self.get(top_index).unwrap();
+        match tok.as_keyword() {
+            KeywordType::Mem => {
                 self.next();
                 self.parse_memory(word, prog).try_success()?;
             }
 
-            (0, KeywordType::Struct) => {
+            KeywordType::Struct => {
                 self.next();
                 self.parse_struct(word, prog)
             }
 
-            (0, KeywordType::Proc) => {
+            KeywordType::Proc => {
                 self.next();
                 self.parse_procedure(word, prog, ModeType::Declare)
             }
 
-            (0, KeywordType::Import) => {
+            KeywordType::Import => {
                 self.next();
                 self.parse_procedure(word, prog, ModeType::Import)
             }
 
-            (0, KeywordType::Export) => {
+            KeywordType::Export => {
                 self.next();
                 self.parse_procedure(word, prog, ModeType::Export)
             }
 
-            (0, KeywordType::Inline) => {
+            KeywordType::Inline => {
                 self.next();
                 self.parse_procedure(word, prog, ModeType::Inline(prog.current_ip()))
             }
 
-            (0, KeywordType::Ref) => {
-                self.next();
-                let ref_word = self.expect_word("type after `*`", word.loc)?;
-
-                let Some(type_ptr) = prog.get_type_ptr(&ref_word) else {
-                    return unexpected_token(ref_word.into(), "struct type").into();
-                };
-
-                let name = format!("*{}", ref_word.as_str(prog));
-                let word_id = prog.get_or_intern(&name);
-
-                let value = ValueUnit::new(&StrKey::default(), type_ptr);
-                let stk = StructDef::new(&word_id, vec![StructType::Unit(value)]);
-
-                prog.structs_types.push(stk.clone()); //Todo: Check if the `*` type is already registered
-
-                self.parse_const_or_var(word, word_id, stk, prog)
-                    .try_success()?;
-            }
-
-            (1, KeywordType::Equal) => {
-                self.skip(2);
-                match self.compile_eval(prog).value {
-                    Ok((_, _)) => {
-                        todo!("Refactor broke stuff");
-
-                        // if &result == Value::Any {
-                        //     Err(error_loc("Undefined variable value is not allowed", word.loc))?;
-                        // }
-
-                        // self.skip(eval);
-                        // let struct_word = ValueType::new(word.to_string(), &result);
-                        // self.register_var(struct_word, prog);
-                        // success!();
-                    }
-                    Err(either) => match either {
-                        Either::Left(tok) => invalid_token(tok, "context declaration").into(),
-                        Either::Right(err) => err.into(),
-                    },
-                }
-            }
-
-            (_, KeywordType::Colon) => {
+            KeywordType::Colon => {
                 *colons += 1;
                 OptionErr::default()
             }
 
-            (_, KeywordType::End) => {
+            KeywordType::End => {
                 let error = format!(
                     "Missing body or contract necessary to infer the type of the word: `{}`",
                     word.as_str(prog)
@@ -467,27 +404,50 @@ impl Parser {
                 err_loc(error, word.loc).into()
             }
 
-            _ => OptionErr::default(),
+            _ => Err(invalid_context(tok.clone(), word.as_str(prog))).into(),
         }
     }
 
-    fn parse_end_ctx(
-        &mut self, colons: u8, ctx_size: usize, word: &LocWord, prog: &mut Program,
+    fn parse_keyword_ctx(
+        &mut self, top_index: usize, word: &LocWord, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
-        (colons == 2).or_return(OptionErr::default)?;
+        let tok = self.get(top_index).unwrap();
+        match tok.as_keyword() {
+            KeywordType::Equal => {
+                self.skip(1);
+                self.parse_var(word, prog, true).try_success()?
+            }
 
-        self.parse_static_ctx(ctx_size, word, prog)?;
+            KeywordType::Colon if top_index == 1 => self.parse_end_ctx(word, prog),
+
+            KeywordType::Colon | KeywordType::Arrow => {
+                self.parse_procedure(word, prog, ModeType::Declare)
+            }
+
+            KeywordType::End => {
+                if top_index == 0 {
+                    todo!("Unitialized, unknown type");
+                } else {
+                    self.skip(1);
+                    self.parse_var(word, prog, false).try_success()?
+                }
+            }
+
+            KeywordType::Ref => OptionErr::default(),
+
+            _ => Err(invalid_context(tok.clone(), word.as_str(prog))).into(),
+        }
+    }
+
+    fn parse_end_ctx(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
+        self.skip(2);
+        self.parse_static_ctx(word, prog)?;
         self.define_proc(word, Contract::default(), prog, ModeType::Declare)
             .into_success()?
     }
 
-    fn parse_static_ctx(
-        &mut self, ctx_size: usize, word: &LocWord, prog: &mut Program,
-    ) -> OptionErr<Vec<Op>> {
-        (ctx_size == 1).or_return(|| self.parse_procedure(word, prog, ModeType::Declare))?;
-
-        self.skip(2);
-        if let Ok((eval, skip)) = self.compile_eval(prog).value {
+    fn parse_static_ctx(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
+        if let Ok((eval, skip)) = self.compile_eval(prog, word.loc).value {
             if &eval != Value::Any {
                 self.skip(skip);
                 let value = ValueUnit::new(word, &eval).into();
@@ -498,20 +458,6 @@ impl Parser {
             }
         }
         OptionErr::default()
-    }
-
-    fn parse_word_ctx(
-        &mut self, index: usize, word: &LocWord, prog: &mut Program,
-    ) -> OptionErr<Vec<Op>> {
-        let tok = self.get_cloned(index).unwrap();
-
-        let Some(stk) = prog.try_get_struct_def(&tok).cloned() else {
-            return unexpected_token(tok, "struct type").into();
-        };
-
-        self.next();
-        self.parse_const_or_var(word, tok, stk, prog)
-            .try_success()?;
     }
 
     fn define_proc(
@@ -648,20 +594,64 @@ impl Parser {
         err_loc("Expected struct members or `end` after struct declaration", loc).into()
     }
 
-    fn parse_const_or_var<O: Operand>(
-        &mut self, word: &LocWord, word_id: O, stk: StructDef, prog: &mut Program,
+    fn parse_var(
+        &mut self, word: &LocWord, prog: &mut Program, initialize: bool,
     ) -> LazyResult<()> {
-        self.expect_keyword(KeywordType::Colon, "`:` after variable type definition", word.loc)?;
+        let loc = word.loc;
+        let type_kind = self.expect_type_kind("variable type", prog, loc)?;
 
-        let assign = self
-            .expect_by(
-                |tok| equals_any!(tok, KeywordType::Colon, KeywordType::Equal),
-                "`:` or `=` after keyword `:`",
-                word.loc,
-            )?
-            .as_keyword();
+        let assign = KeywordType::Equal;
 
-        let (mut result, eval) = match self.compile_eval_n(stk.count(), prog).value {
+        if initialize {
+            self.expect_keyword(assign, "`=` after variable type", loc)?;
+
+            match type_kind {
+                Either::Left(type_def) => {
+                    self.eval_const_or_var(word, type_def.clone(), prog, assign)
+                }
+                Either::Right(_) => {
+                    todo!()
+                    // let name = format!("*{}", ref_word.as_str(prog));
+                    // let word_id = prog.get_or_intern(&name);
+
+                    // let value = ValueUnit::new(&StrKey::default(), type_ptr);
+                    // let stk = StructDef::new(&word_id, vec![StructType::Unit(value)]);
+
+                    // prog.structs_types.push(stk.clone()); //Todo: Check if the `*` type is already registered
+
+                    // self.parse_const_or_var(word, word_id, stk, prog)
+                    //     .try_success()?;
+                }
+            }
+        } else {
+            self.expect_keyword(KeywordType::End, "`end` after variable type", loc)?;
+
+            let Either::Left(type_def) = type_kind else {
+                return Err(err_loc("error", loc))
+            };
+
+            let ref_members: Vec<_> = type_def
+                .clone()
+                .ordered_members(self.inside_proc())
+                .collect();
+
+            if ref_members.len() == 1 {
+                todo!()
+            } else {
+                let type_name = &type_def.str_key();
+
+                let reftype = prog.get_struct_value_id(type_name).unwrap();
+                let struct_type = StructType::root(word, ref_members, reftype);
+                self.register_const_or_var(assign, word, type_name, struct_type, prog);
+            }
+            Ok(())
+        }
+    }
+
+    fn eval_const_or_var(
+        &mut self, word: &LocWord, stk: StructDef, prog: &mut Program, assign: KeywordType,
+    ) -> LazyResult<()> {
+        let (mut result, eval) = match self.compile_eval_n(stk.count(), prog, word.loc).value {
             Ok(value) => value,
             Err(either) => {
                 return Err(either.either(
@@ -674,73 +664,52 @@ impl Parser {
         let end_token = self.skip(eval).unwrap();
         let stk_name = stk.str_key();
 
-        if result.len() == 1 {
+        let struct_type = if result.len() == 1 {
             let eval = result.pop().unwrap();
             let members = stk.ordered_members(self.inside_proc());
 
-            if &eval == Value::Any {
-                let value = prog.get_struct_value_id(&stk_name).unwrap();
-                let struct_word = StructType::root(word, members.collect(), value);
-                self.register_const_or_var(assign, struct_word, prog);
-            } else {
-                let member_type = match members.last().unwrap() {
-                    StructType::Root(_) => todo!(),
-                    StructType::Unit(typ) => typ.get_type(),
-                };
+            match members.last().unwrap() {
+                StructType::Root(_) => todo!(),
+                StructType::Unit(typ) => expect_type(&eval, typ.get_type(), end_token.loc)?,
+            };
 
-                if !equals_any!(member_type, Value::Any, eval.token_type) {
-                    lazybail!(
-                        |f| concat!(
-                            "{}Expected type `{}` on the stack at the end of ",
-                            "the compile-time evaluation, but found: `{}`"
-                        ),
-                        f.format(Fmt::Loc(end_token.loc)),
-                        f.format(Fmt::Typ(member_type)),
-                        f.format(Fmt::Typ(eval.token_type))
-                    );
-                }
-
-                let struct_word = ValueUnit::new(word, &eval);
-                self.register_const_or_var(assign, StructType::Unit(struct_word), prog);
-            }
+            StructType::Unit(ValueUnit::new(word, &eval))
         } else {
             let contract: Vec<_> = stk.units().map(Typed::get_type).collect();
             result.expect_exact(&contract, end_token.loc)?;
 
-            if self.inside_proc() && assign == KeywordType::Equal {
-                result.reverse();
-            }
-
-            let mut eval_items = result.into_iter();
+            let mut eval_items = result
+                .into_iter()
+                .conditional_rev(self.inside_proc() && assign == KeywordType::Equal);
 
             let def_members = stk.transpose(self.inside_proc(), &mut eval_items).unwrap();
-
             let value = prog.get_struct_value_id(&stk_name).unwrap();
-            let struct_word = StructType::root(word, def_members, value);
-            self.register_const_or_var(assign, struct_word, prog);
-        }
 
-        let ctx = match (assign, self.inside_proc()) {
-            (KeywordType::Colon, _) => ParseContext::ConstStruct,
-            (KeywordType::Equal, true) => ParseContext::LocalVar,
-            (KeywordType::Equal, false) => ParseContext::GlobalVar,
+            StructType::root(word, def_members, value)
+        };
+
+        self.register_const_or_var(assign, word, &stk_name, struct_type, prog);
+        Ok(())
+    }
+
+    fn register_const_or_var(
+        &mut self, assign: KeywordType, word: &LocWord, ref_name: &StrKey, struct_type: StructType,
+        prog: &mut Program,
+    ) {
+        let ctx = match assign {
+            KeywordType::Colon => {
+                prog.consts.push(struct_type);
+                ParseContext::ConstStruct
+            }
+            KeywordType::Equal => {
+                self.register_var(struct_type, prog);
+                fold_bool!(self.inside_proc(), ParseContext::LocalVar, ParseContext::GlobalVar)
+            }
             _ => unreachable!(),
         };
 
         self.name_scopes.register(word, ctx);
-        self.structs.push(IndexWord::new(word, word_id));
-
-        Ok(())
-    }
-
-    pub fn register_const_or_var(
-        &mut self, assign: KeywordType, struct_word: StructType, prog: &mut Program,
-    ) {
-        match assign {
-            KeywordType::Colon => prog.consts.push(struct_word),
-            KeywordType::Equal => self.register_var(struct_word, prog),
-            _ => unreachable!(),
-        }
+        self.structs.push(IndexWord::new(word, ref_name));
     }
 
     pub fn register_var(&mut self, struct_word: StructType, prog: &mut Program) {

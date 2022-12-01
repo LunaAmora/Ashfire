@@ -166,7 +166,7 @@ pub trait Compare<T: Clone + Typed + Location + 'static>: Deref<Target = [T]> {
     }
 }
 
-fn expect_type<T: Clone + Typed + Location + 'static, V: Typed>(
+pub fn expect_type<T: Clone + Typed + Location + 'static, V: Typed>(
     frame: &T, expected: V, loc: Loc,
 ) -> LazyResult<()> {
     let expected_type = expected.get_type();

@@ -1,15 +1,15 @@
 include lib/wasi
 include lib/std
 
-double_str struct :
+double_str :
   first  str
   second str
 end
 
 print_double inline: double_str : println println end
 
-hello double_str := "Hello World!" "Other Text" end
-new_text str := "-> a Really long text" end
+hello: double_str = "Hello World!" "Other Text" end
+new_text: str = "-> a Really long text" end
 
 _start export::
   hello print_double

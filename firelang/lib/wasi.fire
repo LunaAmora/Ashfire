@@ -8,7 +8,7 @@ end
 fd_write import: int ptr int ptr -> ptr : end
 
 puts : *str :
-  iov ciovec:= end
+  iov: ciovec end
   written: 4 end
   @ swap !iov
   1 *iov #ptr 1 written fd_write drop

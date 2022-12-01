@@ -4,9 +4,9 @@ use ashfire_types::{
     enums::{IntrinsicType, KeywordType},
 };
 use ashlib::{Either, EvalStack, UncheckedStack};
-use firelib::lazy::LazyFormatter;
+use firelib::{lazy::LazyFormatter, lexer::Loc};
 
-use super::parser::Parser;
+use super::{parser::Parser, utils::unexpected_end};
 use crate::compiler::{
     program::{Fmt, Program},
     typechecking::expect::{format_frames, ArityType, Expect},
@@ -15,19 +15,21 @@ use crate::compiler::{
 type DoubleResult<T> = ashlib::DoubleResult<T, IRToken, Fmt>;
 
 impl Parser {
-    pub fn compile_eval(&self, prog: &Program) -> DoubleResult<(IRToken, usize)> {
-        let (mut result, skip) = self.compile_eval_n(1, prog)?;
+    pub fn compile_eval(&self, prog: &Program, loc: Loc) -> DoubleResult<(IRToken, usize)> {
+        let (mut result, skip) = self.compile_eval_n(1, prog, loc)?;
         DoubleResult::new((result.pop().unwrap(), skip))
     }
 
-    pub fn compile_eval_n(&self, n: usize, prog: &Program) -> DoubleResult<(Vec<IRToken>, usize)> {
+    pub fn compile_eval_n(
+        &self, n: usize, prog: &Program, loc: Loc,
+    ) -> DoubleResult<(Vec<IRToken>, usize)> {
         let mut stack = EvalStack::default();
         let mut i = 0;
 
         while let Some(tok) = self.get_cloned(i) {
             if &tok == KeywordType::End {
                 if stack.is_empty() && i == 0 {
-                    stack.push(IRToken::new(Value::Any.get_type(), 0, tok.loc));
+                    todo!()
                 } else if stack.len() != n {
                     let frames = format_frames(&stack);
                     let len = stack.len();
@@ -45,7 +47,8 @@ impl Parser {
                         frames.apply(f)
                     );
                 }
-                break;
+
+                return DoubleResult::new((stack.to_vec(), i + 1));
             }
 
             stack.evaluate(tok, prog)?;
@@ -53,7 +56,7 @@ impl Parser {
             i += 1;
         }
 
-        DoubleResult::new((stack.to_vec(), i + 1))
+        Err(unexpected_end("`end` to close compile time evaluation block", loc))?
     }
 }
 
