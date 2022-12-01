@@ -2,7 +2,7 @@
 #[macro_use] extern crate log;
 #[macro_use] extern crate firelib;
 
-pub mod compiler;
+mod compiler;
 pub mod logger;
 pub mod target;
 

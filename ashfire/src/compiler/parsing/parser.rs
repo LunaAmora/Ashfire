@@ -324,7 +324,7 @@ impl Parser {
     /// based on the preceding [`IRTokens`][IRToken].
     fn define_context(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
         let mut i = 0;
-        let mut colons = 0;
+        let mut colons: u8 = 0;
         while let Some(tok) = self.get(i) {
             match (colons, tok.token_type) {
                 (1, TokenType::Data(ValueType::Typ(Value::Int))) => {
@@ -343,7 +343,7 @@ impl Parser {
                 (_, TokenType::Keyword) => {
                     choice!(
                         OptionErr,
-                        self.parse_keyword_ctx(&mut colons, i, word, prog),
+                        self.parse_keyword_ctx(&mut colons, tok.as_keyword(), word, prog),
                         self.parse_end_ctx(colons, i, word, prog),
                     )?;
                 }
@@ -379,9 +379,9 @@ impl Parser {
     }
 
     fn parse_keyword_ctx(
-        &mut self, colons: &mut i32, index: usize, word: &LocWord, prog: &mut Program,
+        &mut self, colons: &mut u8, key: KeywordType, word: &LocWord, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
-        match (*colons, self.get(index).unwrap().as_keyword()) {
+        match (*colons, key) {
             (0, KeywordType::Mem) => {
                 self.next();
                 self.parse_memory(word, prog).try_success()?;
@@ -472,7 +472,7 @@ impl Parser {
     }
 
     fn parse_end_ctx(
-        &mut self, colons: i32, ctx_size: usize, word: &LocWord, prog: &mut Program,
+        &mut self, colons: u8, ctx_size: usize, word: &LocWord, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
         (colons == 2).or_return(OptionErr::default)?;
 
@@ -664,19 +664,15 @@ impl Parser {
                 "`:` or `=` after keyword `:`",
                 word.loc,
             )?
-            .get_keyword()
-            .unwrap();
+            .as_keyword();
 
         let (mut result, eval) = match self.compile_eval_n(stk.count(), prog).value {
             Ok(value) => value,
             Err(either) => {
-                return match either {
-                    Either::Right(err) => Err(err),
-                    Either::Left(tok) => Err(err_loc(
-                        "Failed to parse an valid struct value at compile-time evaluation",
-                        tok.loc,
-                    )),
-                }
+                return Err(either.either(
+                    |tok| err_loc("Failed to parse an valid struct value at compile-time", tok.loc),
+                    |err| err,
+                ))
             }
         };
 
@@ -794,13 +790,16 @@ impl Parser {
 
             let include = get_dir(path)
                 .with_ctx(|_| "failed to get file directory path".to_owned())?
-                .join(include_path);
+                .join(include_path)
+                .with_extension("fire");
 
-            if prog.contains_source(include.with_extension("").to_str().unwrap()) {
+            if prog.contains_source(include.with_extension("").to_str().unwrap()) ||
+                prog.contains_source(include.to_str().unwrap())
+            {
                 continue;
             }
 
-            info!("Including file: {:?}", include.with_extension("fire"));
+            info!("Including file: {:?}", include);
             self.lex_file(&include, prog)?;
         }
         Ok(self)
