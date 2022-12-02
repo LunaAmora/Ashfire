@@ -1,17 +1,18 @@
 #[macro_use] extern crate log;
+#[macro_use] extern crate firelib;
 
 use std::{
     env,
     fs::File,
     io::{self, BufWriter},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Stdio,
 };
 
 use ashfire_lib::{compile, compile_buffer, logger, target::Target};
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
-use firelib::{cmd_wait, Result};
+use firelib::Result;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -90,17 +91,23 @@ fn compile_command(
 
 fn compile_pipe(target: Target, runtime_name: &str, run: bool) -> Result<()> {
     let path = lib_folder().unwrap();
-    if run {
-        let runtime_arg = "/dev/stdin";
-        let mut runtime = Command::new(runtime_name)
-            .arg(runtime_arg)
-            .stdin(Stdio::piped())
-            .spawn()?;
 
+    if run && matches!(target, Target::Wasi) {
+        let mut runtime = cmd!(Stdio::piped() => runtime_name, "/dev/stdin");
         compile_buffer(&path, "stdin", io::stdin(), runtime.stdin.take().unwrap(), target)?;
 
-        info!("[CMD] {} {}", runtime_name, runtime_arg);
+        info!("[CMD] {} {}", runtime_name, "/dev/stdin");
         runtime.wait()?;
+    } else if run {
+        let mut w4 = cmd!(Stdio::piped() => "w4", "run", "/dev/stdin");
+        let mut wat2wasm =
+            cmd!(Stdio::piped() => "wat2wasm", "-", "--output=-" => w4.stdin.take().unwrap());
+
+        compile_buffer(&path, "stdin", io::stdin(), wat2wasm.stdin.take().unwrap(), target)?;
+
+        info!("[CMD] | wat2wasm - --output=- | w4 run /dev/stdin");
+        wat2wasm.wait()?;
+        w4.wait()?;
     } else {
         compile_buffer(&path, "stdin", io::stdin(), io::stdout(), target)?;
     }

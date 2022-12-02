@@ -157,6 +157,24 @@ macro_rules! cmd_wait {
     };
 }
 
+#[macro_export]
+macro_rules! cmd {
+    ($stdin:expr => $cmd:expr, $($arg:expr),* $(=> $stdout:expr)?) => {
+        std::process::Command::new($cmd)
+            $(.arg($arg))*
+            .stdin($stdin)
+            $(.stdout($stdout))*
+            .spawn()?
+    };
+
+    ($cmd:expr, $($arg:expr),* $(=> $stdout:expr)?) => {
+        std::process::Command::new($cmd)
+            $(.arg($arg))*
+            $(.stdout($stdout))*
+            .spawn()?
+    };
+}
+
 pub trait ShortCircuit<T>: Sealed
 where
     T: FromResidual<ControlFlow<T, Infallible>>,
