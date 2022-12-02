@@ -495,50 +495,40 @@ impl Parser {
         let loc = word.loc;
 
         self.expect_keyword(KeywordType::Colon, "`:` after procedure declaration", loc)?;
-        let tok_err = "proc contract or `:` after procedure definition";
-
         while let Some(tok) = self.next() {
-            match tok.token_type {
-                TokenType::Keyword => match tok.as_keyword() {
-                    KeywordType::Arrow => {
-                        if arrow {
-                            let error = "Duplicated `->` found on procedure definition";
-                            return err_loc(error, loc).into();
+            match tok.get_keyword() {
+                Some(KeywordType::Arrow) => {
+                    if arrow {
+                        let error = "Duplicated `->` found on procedure definition";
+                        return err_loc(error, loc).into();
+                    }
+                    arrow = true;
+                }
+
+                Some(KeywordType::Colon) => self
+                    .define_proc(word, Contract::new(ins, outs), prog, mode)
+                    .into_success()?,
+
+                _ => {
+                    let type_kind = self.check_type_kind(tok, "variable type", prog)?;
+
+                    match type_kind {
+                        Either::Left(type_def) => {
+                            for typ in type_def.units().map(Typed::get_type) {
+                                typ.conditional_push(arrow, &mut outs, &mut ins);
+                            }
                         }
-                        arrow = true;
-                    }
-
-                    KeywordType::Colon => self
-                        .define_proc(word, Contract::new(ins, outs), prog, mode)
-                        .into_success()?,
-
-                    KeywordType::Ref => {
-                        let typ = self.expect_word("type after `*`", loc)?;
-
-                        let Some(type_ptr) = prog.get_type_ptr(&typ) else {
-                            return unexpected_token(typ.into(), tok_err).into();
-                        };
-
-                        type_ptr
-                            .get_type()
-                            .conditional_push(arrow, &mut outs, &mut ins);
-                    }
-
-                    _ => return unexpected_token(tok, tok_err).into(),
-                },
-                TokenType::Word => {
-                    let Some(type_def) = prog.get_type_def(&tok) else {
-                        return unexpected_token(tok, tok_err).into();
-                    };
-
-                    for typ in type_def.units().map(Typed::get_type) {
-                        typ.conditional_push(arrow, &mut outs, &mut ins);
+                        Either::Right(type_ptr) => {
+                            type_ptr
+                                .get_type()
+                                .conditional_push(arrow, &mut outs, &mut ins);
+                        }
                     }
                 }
-                _ => return unexpected_token(tok, tok_err).into(),
             }
         }
-        unexpected_end(tok_err, loc).into()
+
+        unexpected_end("proc contract or `:` after procedure definition", loc).into()
     }
 
     fn parse_memory(&mut self, word: &LocWord, prog: &mut Program) -> LazyResult<()> {

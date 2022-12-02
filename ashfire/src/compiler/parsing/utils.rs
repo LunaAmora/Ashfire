@@ -21,7 +21,14 @@ impl Parser {
             loc,
         )?;
 
-        match next.token_type {
+        self.check_type_kind(next, error_text, prog)
+    }
+
+    pub fn check_type_kind<'a, S: Display + 'static + Clone>(
+        &mut self, tok: IRToken, error_text: S, prog: &'a Program,
+    ) -> LazyResult<Either<&'a StructDef, ValueType>> {
+        let loc = tok.loc;
+        match tok.token_type {
             TokenType::Keyword => {
                 let word_error = format!("{error_text} after `*`");
                 let ref_word = self.expect_word(word_error.clone(), loc)?;
@@ -33,14 +40,15 @@ impl Parser {
             }
 
             TokenType::Word => {
-                let name_type = LocWord::new(next.operand, next.loc);
+                let name_type = LocWord::new(tok, loc);
 
                 prog.get_type_def(&name_type).map_or_else(
                     || Err(unexpected_token(name_type.into(), error_text)),
                     |type_kind| Ok(Either::Left(type_kind)),
                 )
             }
-            _ => unreachable!(),
+
+            _ => Err(unexpected_token(tok, error_text)),
         }
     }
 
