@@ -6,7 +6,6 @@ use std::{
     fs::File,
     io::{self, BufWriter},
     path::{Path, PathBuf},
-    process::Stdio,
 };
 
 use ashfire_lib::{compile, compile_buffer, logger, target::Target};
@@ -92,24 +91,30 @@ fn compile_command(
 fn compile_pipe(target: Target, runtime_name: &str, run: bool) -> Result<()> {
     let path = lib_folder().unwrap();
 
-    if run && matches!(target, Target::Wasi) {
-        let mut runtime = cmd!(Stdio::piped() => runtime_name, "/dev/stdin");
-        compile_buffer(&path, "stdin", io::stdin(), runtime.stdin.take().unwrap(), target)?;
+    match (run, target) {
+        (true, Target::Wasi) => {
+            let mut runtime = cmd_piped!(runtime_name, "/dev/stdin");
+            compile_buffer(&path, "stdin", io::stdin(), runtime.stdin.take().unwrap(), target)?;
 
-        info!("[CMD] {} {}", runtime_name, "/dev/stdin");
-        runtime.wait()?;
-    } else if run {
-        let mut w4 = cmd!(Stdio::piped() => "w4", "run", "/dev/stdin");
-        let mut wat2wasm =
-            cmd!(Stdio::piped() => "wat2wasm", "-", "--output=-" => w4.stdin.take().unwrap());
+            info!("[CMD] {} {}", runtime_name, "/dev/stdin");
+            runtime.wait()?;
+        }
 
-        compile_buffer(&path, "stdin", io::stdin(), wat2wasm.stdin.take().unwrap(), target)?;
+        (true, Target::Wasm4) => {
+            let mut w4 = cmd_piped!("w4", "run", "/dev/stdin");
+            let mut wat2wasm =
+                cmd_piped!("wat2wasm", "-", "--output=-" => w4.stdin.take().unwrap());
 
-        info!("[CMD] | wat2wasm - --output=- | w4 run /dev/stdin");
-        wat2wasm.wait()?;
-        w4.wait()?;
-    } else {
-        compile_buffer(&path, "stdin", io::stdin(), io::stdout(), target)?;
+            compile_buffer(&path, "stdin", io::stdin(), wat2wasm.stdin.take().unwrap(), target)?;
+
+            info!("[CMD] | wat2wasm - --output=- | w4 run /dev/stdin");
+            wat2wasm.wait()?;
+            w4.wait()?;
+        }
+
+        (false, _) => {
+            compile_buffer(&path, "stdin", io::stdin(), io::stdout(), target)?;
+        }
     }
 
     Ok(())

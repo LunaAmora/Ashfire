@@ -158,7 +158,7 @@ macro_rules! cmd_wait {
 }
 
 #[macro_export]
-macro_rules! cmd {
+macro_rules! cmd_piped {
     ($stdin:expr => $cmd:expr, $($arg:expr),* $(=> $stdout:expr)?) => {
         std::process::Command::new($cmd)
             $(.arg($arg))*
@@ -170,6 +170,7 @@ macro_rules! cmd {
     ($cmd:expr, $($arg:expr),* $(=> $stdout:expr)?) => {
         std::process::Command::new($cmd)
             $(.arg($arg))*
+            .stdin(std::process::Stdio::piped())
             $(.stdout($stdout))*
             .spawn()?
     };
