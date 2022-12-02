@@ -1,8 +1,10 @@
 pub mod wasm_types;
 
-use std::{collections::HashMap, io::Write};
+use std::{
+    collections::HashMap,
+    io::{Result, Write},
+};
 
-use anyhow::{bail, Result};
 use hexstring::LowerHexString;
 use itertools::Itertools;
 use wasm_types::*;
@@ -246,11 +248,15 @@ impl Module {
     }
 
     pub fn write_text(mut self, mut writer: impl Write) -> Result<()> {
+        writer.write_all(b";;;\n(module\n")?;
+
         self.write_imports(&mut writer)?
             .write_globals(&mut writer)?
             .write_funcs(&mut writer)?
             .write_data(&mut writer)?
-            .write_exports(&mut writer)
+            .write_exports(&mut writer)?;
+
+        writer.write_all(b")")
     }
 }
 
@@ -272,24 +278,24 @@ fn u8_to_hex_representation(b: u8) -> [char; 3] {
     ['\\', upper, lower]
 }
 
-fn nibble_to_hexchar(b: u8) -> Result<char> {
-    match b {
-        0 => Ok('0'),
-        1 => Ok('1'),
-        2 => Ok('2'),
-        3 => Ok('3'),
-        4 => Ok('4'),
-        5 => Ok('5'),
-        6 => Ok('6'),
-        7 => Ok('7'),
-        8 => Ok('8'),
-        9 => Ok('9'),
-        10 => Ok('a'),
-        11 => Ok('b'),
-        12 => Ok('c'),
-        13 => Ok('d'),
-        14 => Ok('e'),
-        15 => Ok('f'),
-        _ => bail!("Invalid nibble: {}", b),
-    }
+fn nibble_to_hexchar(b: u8) -> Option<char> {
+    Some(match b {
+        0 => '0',
+        1 => '1',
+        2 => '2',
+        3 => '3',
+        4 => '4',
+        5 => '5',
+        6 => '6',
+        7 => '7',
+        8 => '8',
+        9 => '9',
+        10 => 'a',
+        11 => 'b',
+        12 => 'c',
+        13 => 'd',
+        14 => 'e',
+        15 => 'f',
+        _ => return None,
+    })
 }

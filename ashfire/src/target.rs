@@ -9,46 +9,40 @@ pub enum Target {
     Wasm4,
 }
 
-pub struct TargetConfig {
-    pub module: String,
-    pub imports_mem: bool,
-    pub runner: Option<Box<dyn FnOnce(PathBuf) -> Result<()>>>,
+pub struct Runner(Box<dyn FnOnce(PathBuf) -> Result<()>>);
+
+impl Runner {
+    pub fn run(self, path: PathBuf) -> Result<()> {
+        self.0(path)
+    }
 }
 
-impl TargetConfig {
-    pub fn new(target: Target, wasi_runtime: String, run: bool) -> Self {
-        match target {
-            Target::Wasi => Self::create(
-                "wasi_unstable",
-                false,
-                run.then_some(move |out| {
-                    cmd_wait!(wasi_runtime, out);
-                    Ok(())
-                }),
-            ),
-            Target::Wasm4 => Self::create(
-                "env",
-                true,
-                run.then_some(|out| {
-                    cmd_wait!("w4", "run", out);
-                    Ok(())
-                }),
-            ),
+impl Target {
+    pub fn module(&self) -> &str {
+        match self {
+            Self::Wasi => "wasi_unstable",
+            Self::Wasm4 => "env",
         }
     }
 
-    pub fn create(
-        module: &str, imports_mem: bool,
-        runner: Option<impl FnOnce(PathBuf) -> Result<()> + 'static>,
-    ) -> Self {
-        Self {
-            module: module.to_owned(),
-            imports_mem,
-            runner: runner.map(|some| Box::new(some) as _),
+    pub fn imports_mem(&self) -> bool {
+        match self {
+            Self::Wasi => false,
+            Self::Wasm4 => true,
         }
     }
 
-    pub fn run(self, path: PathBuf) -> Result<()> {
-        self.runner.map_or(Ok(()), |runner| runner(path))
+    pub fn runner(&self, wasi_runtime: String) -> Runner {
+        match self {
+            Self::Wasi => Runner(Box::new(move |out| {
+                cmd_wait!(wasi_runtime, out);
+                Ok(())
+            })),
+
+            Self::Wasm4 => Runner(Box::new(|out| {
+                cmd_wait!("w4", "run", out);
+                Ok(())
+            })),
+        }
     }
 }

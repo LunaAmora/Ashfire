@@ -5,12 +5,10 @@ use std::{
     fs::File,
     io::{self, BufWriter},
     path::{Path, PathBuf},
+    process::{Command, Stdio},
 };
 
-use ashfire_lib::{
-    compile, compile_buffer, logger,
-    target::{Target, TargetConfig},
-};
+use ashfire_lib::{compile, compile_buffer, logger, target::Target};
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use firelib::{cmd_wait, Result};
@@ -58,7 +56,7 @@ fn main() {
     let result = match args.command {
         Commands::Com { path, output, run, wat, target, runtime } => match path {
             Some(path) => compile_command(&path, output.as_deref(), run, wat, target, runtime),
-            None => compile_pipe(target, runtime, run),
+            None => compile_pipe(target, &runtime, run),
         },
     };
 
@@ -72,10 +70,8 @@ fn compile_command(
 ) -> Result<()> {
     let out = output.unwrap_or(path).with_extension("wat");
 
-    let run_config = TargetConfig::new(target, runtime, run);
-
     let writer = BufWriter::new(File::create(&out)?);
-    compile(path, writer, &run_config)?;
+    compile(path, writer, target)?;
 
     info!("Generated {:?}", out);
     let out_wasm = out.with_extension("wasm");
@@ -85,23 +81,31 @@ fn compile_command(
         cmd_wait!("wasm2wat", &out_wasm, "-o", &out);
     }
 
-    run_config.run(out_wasm)
+    if run {
+        target.runner(runtime).run(out_wasm)?;
+    }
+
+    Ok(())
 }
 
-fn compile_pipe(target: Target, runtime: String, run: bool) -> Result<()> {
-    let config = TargetConfig::new(target, runtime, run);
+fn compile_pipe(target: Target, runtime_name: &str, run: bool) -> Result<()> {
     let path = lib_folder().unwrap();
-
     if run {
-        let out = env::temp_dir().join("out.wat");
-        compile_buffer(&path, "stdin", io::stdin(), File::create(&out)?, &config)?;
+        let runtime_arg = "/dev/stdin";
+        let mut runtime = Command::new(runtime_name)
+            .arg(runtime_arg)
+            .stdin(Stdio::piped())
+            .spawn()?;
 
-        let out_wasm = out.with_extension("wasm");
-        cmd_wait!("wat2wasm", &out, "-o", &out_wasm);
-        config.run(out_wasm)
+        compile_buffer(&path, "stdin", io::stdin(), runtime.stdin.take().unwrap(), target)?;
+
+        info!("[CMD] {} {}", runtime_name, runtime_arg);
+        runtime.wait()?;
     } else {
-        compile_buffer(&path, "stdin", io::stdin(), io::stdout(), &config)
+        compile_buffer(&path, "stdin", io::stdin(), io::stdout(), target)?;
     }
+
+    Ok(())
 }
 
 fn lib_folder() -> io::Result<PathBuf> {

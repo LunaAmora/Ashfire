@@ -8,6 +8,5 @@ readme.workspace = true
 license-file.workspace = true
 
 [dependencies]
-anyhow = "1.0"
 itertools = "0.10.5"
 hexstring = { default-features = false, version = "0.1.3" }

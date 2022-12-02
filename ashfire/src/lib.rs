@@ -13,23 +13,22 @@ use std::{
 
 use firelib::Result;
 
-use crate::{compiler::program::Program, target::TargetConfig};
+use crate::{compiler::program::Program, target::Target};
 
-pub fn compile(path: &Path, writer: impl Write, run_config: &TargetConfig) -> Result<()> {
+pub fn compile(path: &Path, writer: impl Write, target: Target) -> Result<()> {
     Program::new()
         .compile_file(path)?
         .type_check()?
-        .generate_wasm(writer, run_config)
+        .generate_wasm(writer, target)
 }
 
 pub fn compile_buffer(
-    path: &Path, source: &str, reader: impl Read + 'static, writer: impl Write,
-    run_config: &TargetConfig,
+    path: &Path, source: &str, reader: impl Read + 'static, writer: impl Write, target: Target,
 ) -> Result<()> {
     Program::new()
         .compile_buffer(path, source, reader)?
         .type_check()?
-        .generate_wasm(writer, run_config)
+        .generate_wasm(writer, target)
 }
 
 #[cfg(test)]
@@ -38,12 +37,7 @@ mod tests {
 
     use firelib::Result;
 
-    use crate::{
-        compile_buffer,
-        target::{Target, TargetConfig},
-    };
-
-    const WASI_RUNTIME: &str = "Wasmtime";
+    use crate::{compile_buffer, target::Target};
 
     fn lib_folder() -> io::Result<PathBuf> {
         Ok(env::current_dir()?.join("../firelang/lib"))
@@ -64,7 +58,6 @@ mod tests {
     }
 
     fn compile(code: &'static str) -> Result<()> {
-        let target = TargetConfig::new(Target::Wasi, WASI_RUNTIME.to_owned(), false);
-        compile_buffer(&lib_folder().unwrap(), "buffer", code.as_bytes(), io::sink(), &target)
+        compile_buffer(&lib_folder().unwrap(), "buffer", code.as_bytes(), io::sink(), Target::Wasi)
     }
 }

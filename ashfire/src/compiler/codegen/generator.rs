@@ -6,7 +6,7 @@ use ashfire_types::{
     enums::{IntrinsicType, OpType},
     proc::{Mode, Proc},
 };
-use firelib::Result;
+use firelib::{Context, Result};
 use wasm_backend::{wasm_types::*, Module};
 use Ident::*;
 use Instruction::*;
@@ -14,26 +14,27 @@ use NumMethod::*;
 use Scope::*;
 
 use super::types::{as_wasm, unpack_struct, FuncGen, Generator};
-use crate::{compiler::program::*, TargetConfig};
+use crate::{compiler::program::*, target::Target};
 
 impl Generator {
-    fn generate_module(&mut self, program: &Program, config: &TargetConfig) -> Result<Module> {
+    fn generate_module(&mut self, program: &Program, target: Target) -> Result<Module> {
         let i1 = &[WasmType::I32; 1];
         let i2 = &[WasmType::I32; 2];
         let i3 = &[WasmType::I32; 3];
 
         let mut wasm = Module::new();
 
+        let module = &target.module();
         for import in program.procs.iter().filter(|p| p.is_import()) {
             let (ins, outs) = as_wasm(&import.contract);
             let name = &import.name.as_str(program);
-            wasm.add_import(&config.module, name, name, &ins, &outs);
+            wasm.add_import(module, name, name, &ins, &outs);
         }
 
         let mem = wasm.new_mem();
 
-        if config.imports_mem {
-            wasm.add_mem_import(&config.module, "memory", Bind::Mem(Id(mem)));
+        if target.imports_mem() {
+            wasm.add_mem_import(module, "memory", Bind::Mem(Id(mem)));
         } else {
             wasm.add_export("memory", Bind::Mem(Id(mem)));
         }
@@ -232,9 +233,10 @@ impl Program {
         var_value
     }
 
-    pub fn generate_wasm(&self, writer: impl Write, config: &TargetConfig) -> Result<()> {
+    pub fn generate_wasm(&self, writer: impl Write, target: Target) -> Result<()> {
         Generator::new()
-            .generate_module(self, config)?
+            .generate_module(self, target)?
             .write_text(writer)
+            .with_context(|| "Failed to save the file")
     }
 }
