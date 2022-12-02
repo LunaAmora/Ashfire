@@ -349,7 +349,7 @@ impl Parser {
                     self.parse_keyword_ctx(i, word, prog)?;
                 }
 
-                _ => return Err(invalid_context(tok.clone(), word.as_str(prog))).into(),
+                _ => return invalid_context(tok.clone(), word.as_str(prog)).into(),
             }
             i += 1;
         }
@@ -404,7 +404,7 @@ impl Parser {
                 err_loc(error, word.loc).into()
             }
 
-            _ => Err(invalid_context(tok.clone(), word.as_str(prog))).into(),
+            _ => invalid_context(tok.clone(), word.as_str(prog)).into(),
         }
     }
 
@@ -435,7 +435,7 @@ impl Parser {
 
             KeywordType::Ref => OptionErr::default(),
 
-            _ => Err(invalid_context(tok.clone(), word.as_str(prog))).into(),
+            _ => invalid_context(tok.clone(), word.as_str(prog)).into(),
         }
     }
 
