@@ -42,11 +42,11 @@ fn intern_all<const N: usize>(rodeo: &mut Rodeo, strings: [&'static str; N]) -> 
 pub struct Program {
     pub ops: Vec<Op>,
     pub procs: Vec<Proc>,
-    pub consts: Vec<StructType>,
     pub global_vars: Vec<StructType>,
     pub structs_types: Vec<StructDef>,
     pub block_contracts: HashMap<usize, (usize, usize)>,
     included_sources: Vec<StrKey>,
+    consts: Vec<StructType>,
     interner: Rodeo,
     mem_size: usize,
     memory: Vec<OffsetWord>,
@@ -105,6 +105,10 @@ impl Program {
         self.data.push(value);
         self.data_size += size;
         self.data.len() - 1
+    }
+
+    pub fn register_const(&mut self, struct_type: StructType) {
+        self.consts.push(struct_type);
     }
 
     pub fn data_size(&self) -> usize {

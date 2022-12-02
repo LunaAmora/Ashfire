@@ -450,8 +450,8 @@ impl Parser {
         if let Ok((eval, skip)) = self.compile_eval(prog, word.loc).value {
             if &eval != Value::Any {
                 self.skip(skip);
-                let value = ValueUnit::new(word, &eval).into();
-                prog.consts.push(value);
+                let struct_type = ValueUnit::new(word, &eval).into();
+                prog.register_const(struct_type);
 
                 self.name_scopes.register(word, ParseContext::ConstStruct);
                 success!();
@@ -600,14 +600,12 @@ impl Parser {
         let loc = word.loc;
         let type_kind = self.expect_type_kind("variable type", prog, loc)?;
 
-        let assign = KeywordType::Equal;
-
         if initialize {
-            self.expect_keyword(assign, "`=` after variable type", loc)?;
+            self.expect_keyword(KeywordType::Equal, "`=` after variable type", loc)?;
 
             match type_kind {
                 Either::Left(type_def) => {
-                    self.eval_const_or_var(word, type_def.clone(), prog, assign)
+                    self.eval_const_or_var(false, word, type_def.clone(), prog)
                 }
                 Either::Right(_) => {
                     todo!()
@@ -642,14 +640,14 @@ impl Parser {
 
                 let reftype = prog.get_struct_value_id(type_name).unwrap();
                 let struct_type = StructType::root(word, ref_members, reftype);
-                self.register_const_or_var(assign, word, type_name, struct_type, prog);
+                self.register_const_or_var(false, word, type_name, struct_type, prog);
             }
             Ok(())
         }
     }
 
     fn eval_const_or_var(
-        &mut self, word: &LocWord, stk: StructDef, prog: &mut Program, assign: KeywordType,
+        &mut self, is_constant: bool, word: &LocWord, stk: StructDef, prog: &mut Program,
     ) -> LazyResult<()> {
         let (mut result, eval) = match self.compile_eval_n(stk.count(), prog, word.loc).value {
             Ok(value) => value,
@@ -680,7 +678,7 @@ impl Parser {
 
             let mut eval_items = result
                 .into_iter()
-                .conditional_rev(self.inside_proc() && assign == KeywordType::Equal);
+                .conditional_rev(self.inside_proc() && !is_constant);
 
             let def_members = stk.transpose(self.inside_proc(), &mut eval_items).unwrap();
             let value = prog.get_struct_value_id(&stk_name).unwrap();
@@ -688,40 +686,33 @@ impl Parser {
             StructType::root(word, def_members, value)
         };
 
-        self.register_const_or_var(assign, word, &stk_name, struct_type, prog);
+        self.register_const_or_var(is_constant, word, &stk_name, struct_type, prog);
         Ok(())
     }
 
     fn register_const_or_var(
-        &mut self, assign: KeywordType, word: &LocWord, ref_name: &StrKey, struct_type: StructType,
+        &mut self, is_constant: bool, word: &LocWord, ref_name: &StrKey, struct_type: StructType,
         prog: &mut Program,
     ) {
-        let ctx = match assign {
-            KeywordType::Colon => {
-                prog.consts.push(struct_type);
-                ParseContext::ConstStruct
-            }
-            KeywordType::Equal => {
-                self.register_var(struct_type, prog);
-                fold_bool!(self.inside_proc(), ParseContext::LocalVar, ParseContext::GlobalVar)
-            }
-            _ => unreachable!(),
+        let ctx = if is_constant {
+            prog.register_const(struct_type);
+            ParseContext::ConstStruct
+        } else {
+            self.register_var(struct_type, prog)
         };
 
         self.name_scopes.register(word, ctx);
         self.structs.push(IndexWord::new(word, ref_name));
     }
 
-    pub fn register_var(&mut self, struct_word: StructType, prog: &mut Program) {
-        match self.current_proc_mut(prog) {
-            Some(proc) => {
-                let Some(data) = proc.get_data_mut() else {
-                    todo!();
-                };
-
-                data.local_vars.push(struct_word);
-            }
-            None => prog.global_vars.push(struct_word),
+    pub fn register_var(&mut self, struct_word: StructType, prog: &mut Program) -> ParseContext {
+        if let Some(proc) = self.current_proc_mut(prog) {
+            let data = proc.get_data_mut().unwrap();
+            data.local_vars.push(struct_word);
+            ParseContext::LocalVar
+        } else {
+            prog.global_vars.push(struct_word);
+            ParseContext::GlobalVar
         }
     }
 
