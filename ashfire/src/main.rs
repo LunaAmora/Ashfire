@@ -94,22 +94,21 @@ fn compile_pipe(target: Target, runtime_name: &str, run: bool) -> Result<()> {
     match (run, target) {
         (true, Target::Wasi) => {
             let mut runtime = cmd_piped!(runtime_name, "/dev/stdin");
-            compile_buffer(&path, "stdin", io::stdin(), runtime.stdin.take().unwrap(), target)?;
+            compile_buffer(&path, "stdin", io::stdin(), runtime.stdin().unwrap(), target)?;
 
-            info!("[CMD] {} {}", runtime_name, "/dev/stdin");
-            runtime.wait()?;
+            info!("[CMD] {runtime_name} /dev/stdin");
+            runtime.wait_with_result()?;
         }
 
         (true, Target::Wasm4) => {
             let mut w4 = cmd_piped!("w4", "run", "/dev/stdin");
-            let mut wat2wasm =
-                cmd_piped!("wat2wasm", "-", "--output=-" => w4.stdin.take().unwrap());
+            let mut wat2wasm = cmd_piped!("wat2wasm", "-", "--output=-" => w4.stdin().unwrap());
 
-            compile_buffer(&path, "stdin", io::stdin(), wat2wasm.stdin.take().unwrap(), target)?;
+            compile_buffer(&path, "stdin", io::stdin(), wat2wasm.stdin().unwrap(), target)?;
 
             info!("[CMD] | wat2wasm - --output=- | w4 run /dev/stdin");
-            wat2wasm.wait()?;
-            w4.wait()?;
+            wat2wasm.wait_with_result()?;
+            w4.wait_with_result()?;
         }
 
         (false, _) => {

@@ -5,6 +5,7 @@
 use std::{
     convert::Infallible,
     ops::{ControlFlow, FromResidual, Try},
+    process::{Child, ChildStdin, Output},
 };
 
 pub use anyhow::{self, bail, Context, Error, Result};
@@ -157,22 +158,70 @@ macro_rules! cmd_wait {
     };
 }
 
+pub struct ChildGuard(Option<Child>);
+
+impl ChildGuard {
+    pub fn new(child: Child) -> Self {
+        Self(Some(child))
+    }
+
+    pub fn take(mut self) -> Child {
+        self.0.take().unwrap()
+    }
+
+    pub fn stdin(&mut self) -> Option<ChildStdin> {
+        match &mut self.0 {
+            Some(child) => child.stdin.take(),
+            None => None,
+        }
+    }
+
+    pub fn wait_with_output(self) -> std::io::Result<Output> {
+        self.take().wait_with_output()
+    }
+
+    pub fn wait_with_result(self) -> Result<()> {
+        let out = self.wait_with_output()?;
+
+        if out.status.success() {
+            Ok(())
+        } else {
+            bail!(String::from_utf8(out.stderr).unwrap())
+        }
+    }
+}
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.0.take() {
+            if matches!(child.try_wait(), Ok(None)) {
+                if let Err(e) = child.kill() {
+                    eprintln!("Could not kill child process: {e}");
+                }
+            }
+        };
+    }
+}
+
+/// Creates a new [`Command`][std::process::Command] with the given arguments
+/// and configured pipes, spawns it and returns inside an `kill on drop` struct.
 #[macro_export]
 macro_rules! cmd_piped {
-    ($stdin:expr => $cmd:expr, $($arg:expr),* $(=> $stdout:expr)?) => {
-        std::process::Command::new($cmd)
-            $(.arg($arg))*
-            .stdin($stdin)
-            $(.stdout($stdout))*
-            .spawn()?
-    };
-
-    ($cmd:expr, $($arg:expr),* $(=> $stdout:expr)?) => {
-        std::process::Command::new($cmd)
+    ($cmd:expr, $($arg:expr),* ) => {
+        $crate::ChildGuard::new(std::process::Command::new($cmd)
             $(.arg($arg))*
             .stdin(std::process::Stdio::piped())
-            $(.stdout($stdout))*
-            .spawn()?
+            .stderr(std::process::Stdio::piped())
+            .spawn()?)
+    };
+
+    ($cmd:expr, $($arg:expr),* => $stdout:expr) => {
+        $crate::ChildGuard::new(std::process::Command::new($cmd)
+            $(.arg($arg))*
+            .stdin(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .stdout($stdout)
+            .spawn()?)
     };
 }
 
