@@ -239,9 +239,9 @@ impl Parser {
             KeywordType::While => self.push_block((OpType::While, loc).into()),
 
             KeywordType::Do => match self.pop_block(key, loc)? {
-                Op { op_type: OpType::While, .. } => (OpType::Do, loc).into(),
+                Op { op_type: OpType::While, .. } => self.push_block((OpType::Do, loc).into()),
                 Op { op_type: OpType::CaseMatch, operand, .. } => {
-                    (OpType::CaseOption, operand, loc).into()
+                    self.push_block((OpType::CaseOption, operand, loc).into())
                 }
                 op => {
                     Err(format_block("`do` can only come in a `while` or `case` block", &op, loc))?

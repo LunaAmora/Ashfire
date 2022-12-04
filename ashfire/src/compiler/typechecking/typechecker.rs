@@ -15,22 +15,7 @@ type DataStack = EvalStack<TypeFrame>;
 impl Expect<TypeFrame> for DataStack {}
 
 #[derive(Clone)]
-struct TypeBlock {
-    data_stack: DataStack,
-    start_op: usize,
-}
-
-impl TypeBlock {
-    fn new(other: &DataStack, start_op: usize) -> Self {
-        Self { data_stack: other.clone(), start_op }
-    }
-}
-
-impl From<TypeBlock> for (DataStack, usize) {
-    fn from(block: TypeBlock) -> Self {
-        (block.data_stack, block.start_op)
-    }
-}
+struct TypeBlock(DataStack, usize);
 
 #[derive(Default)]
 pub struct TypeChecker {
@@ -167,19 +152,18 @@ impl TypeChecker {
 
             OpType::IfStart => {
                 self.data_stack.expect_pop_type(BOOL, loc)?;
-                self.block_stack.push(TypeBlock::new(&self.data_stack, ip));
+                self.push_stack(ip);
                 self.data_stack.reset_max_count();
             }
 
             OpType::Else => {
-                let (old_stack, start_op) = (self.block_stack.last().cloned().unwrap()).into();
-                self.block_stack
-                    .push(TypeBlock::new(&self.data_stack, start_op));
-                self.data_stack = DataStack::new(&old_stack);
+                let TypeBlock(old_stack, start_op) = self.block_stack.last().cloned().unwrap();
+                self.push_stack(start_op);
+                self.data_stack = DataStack::new(old_stack);
             }
 
             OpType::EndIf => {
-                let (expected, start_op) = self.block_stack.pop().unwrap().into();
+                let TypeBlock(expected, start_op) = self.block_stack.pop().unwrap();
 
                 self.expect_stack_arity(
                     &expected,
@@ -190,19 +174,20 @@ impl TypeChecker {
                     ),
                 )?;
 
-                let ins = self.data_stack.min_count.abs();
-                let out = self.data_stack.stack_count + ins;
+                let ins = self.data_stack.min().abs();
+                let out = self.data_stack.count() + ins;
 
                 program
                     .block_contracts
                     .insert(start_op, (ins as usize, out as usize));
 
-                self.data_stack.min_count += expected.stack_count;
-                self.data_stack.stack_count = expected.stack_count;
+                let old_count = expected.count();
+                self.data_stack
+                    .set_count(self.data_stack.min() + old_count, old_count);
             }
 
             OpType::EndElse => {
-                let (expected, start_op) = self.block_stack.pop().unwrap().into();
+                let TypeBlock(expected, start_op) = self.block_stack.pop().unwrap();
 
                 self.expect_stack_arity(
                     &expected,
@@ -213,17 +198,17 @@ impl TypeChecker {
                     ),
                 )?;
 
-                let ins = (self.data_stack.min_count).min(expected.min_count).abs();
-                let out = (self.data_stack.stack_count).max(expected.stack_count) + ins;
+                let ins = (self.data_stack.min()).min(expected.min()).abs();
+                let out = (self.data_stack.count()).max(expected.count()) + ins;
 
                 program
                     .block_contracts
                     .insert(start_op, (ins as usize, out as usize));
 
-                let old_stack = self.block_stack.pop().unwrap().data_stack;
+                let old_stack = self.block_stack.pop().unwrap().0;
 
-                self.data_stack.min_count = old_stack.stack_count + ins;
-                self.data_stack.stack_count = old_stack.stack_count;
+                let old_count = old_stack.count();
+                self.data_stack.set_count(old_count - ins, old_count);
             }
 
             OpType::EndProc | OpType::EndInline => {
@@ -253,9 +238,58 @@ impl TypeChecker {
             OpType::BindStack => todo!(),
             OpType::PushBind => todo!(),
             OpType::PopBind => todo!(),
-            OpType::While => todo!(),
-            OpType::Do => todo!(),
-            OpType::EndWhile => todo!(),
+
+            OpType::While => {
+                self.push_stack(ip);
+                self.data_stack.reset_max_count();
+            }
+
+            OpType::Do => {
+                self.data_stack.expect_pop_type(BOOL, loc)?;
+                let TypeBlock(expected, _) = self.block_stack.last().cloned().unwrap();
+
+                self.expect_stack_arity(
+                    &expected,
+                    loc,
+                    format!(
+                        "While block is not allowed to alter {}",
+                        "the types of the arguments on the data stack"
+                    ),
+                )?;
+
+                self.push_stack(ip);
+                self.data_stack = DataStack::new(expected);
+            }
+
+            OpType::EndWhile => {
+                let TypeBlock(expected, do_op) = self.block_stack.pop().unwrap();
+
+                self.expect_stack_arity(
+                    &expected,
+                    loc,
+                    format!(
+                        "Do block is not allowed to alter {}",
+                        "the types of the arguments on the data stack"
+                    ),
+                )?;
+
+                let ins = (self.data_stack.min()).min(expected.min()).abs();
+                let out = (self.data_stack.count()).max(expected.count()) + ins;
+
+                let TypeBlock(old_stack, start_op) = self.block_stack.pop().unwrap();
+
+                let ip_dif = ip - start_op;
+                program.set_operand(start_op, ip_dif);
+                program.set_operand(ip, ip_dif);
+
+                let contr = (ins as usize, out as usize);
+                program
+                    .block_contracts
+                    .extend([(do_op, contr), (start_op, contr)]);
+
+                let old_count = old_stack.count();
+                self.data_stack.set_count(old_count - ins, old_count);
+            }
 
             OpType::Unpack => match self.data_stack.expect_pop(op.loc)?.get_type() {
                 TokenType::Data(ValueType::Ptr(n)) => {
@@ -288,6 +322,11 @@ impl TypeChecker {
             OpType::EndCase => todo!(),
         };
         Ok(())
+    }
+
+    fn push_stack(&mut self, ip: usize) {
+        self.block_stack
+            .push(TypeBlock(self.data_stack.clone(), ip));
     }
 
     fn pop_push<const N: usize>(

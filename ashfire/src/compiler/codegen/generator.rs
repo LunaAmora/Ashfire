@@ -71,14 +71,15 @@ impl Generator {
         wasm.add_fn("push_local", i1, i1, vec![Get(global, Id(stk)), Get(local, Id(0)), I32(sub)]);
 
         let mut skip = false;
-        for op in &program.ops {
+        for (ip, op) in program.ops.iter().enumerate() {
             skip = match op.op_type {
                 OpType::PrepProc | OpType::PrepInline => self.prep_proc(program, op)?,
                 OpType::EndProc => self.end_proc(program, &mut wasm)?,
                 _ => {
                     if !skip {
                         let proc = self.current_proc(program).unwrap();
-                        self.current_fn()?.append_op(program, op, proc, &mut wasm)?;
+                        self.current_fn()?
+                            .append_op(program, op, ip, proc, &mut wasm)?;
                     }
                     skip
                 }
@@ -108,7 +109,7 @@ impl Generator {
 
 impl FuncGen {
     fn append_op(
-        &mut self, prog: &Program, op: &Op, proc: &Proc, module: &mut Module,
+        &mut self, prog: &Program, op: &Op, ip: usize, proc: &Proc, module: &mut Module,
     ) -> Result<()> {
         match op.op_type {
             OpType::PushData(_) | OpType::PushGlobalMem => self.push(Const(op.operand)),
@@ -176,11 +177,8 @@ impl FuncGen {
             OpType::Equal => self.push(I32(eq)),
 
             OpType::IfStart => {
-                let (ins, outs) = prog.get_contract(op);
-                let contract =
-                    module.new_contract(&vec![WasmType::I32; ins], &vec![WasmType::I32; outs]);
-
-                self.push(Block(BlockType::If, Some(Id(contract))));
+                let contract = register_contract(prog, op.index(), module);
+                self.push(Block(BlockType::If, Some(contract)));
             }
 
             OpType::Else => self.push(Else),
@@ -190,9 +188,22 @@ impl FuncGen {
             OpType::BindStack => todo!(),
             OpType::PushBind => todo!(),
             OpType::PopBind => todo!(),
-            OpType::While => todo!(),
-            OpType::Do => todo!(),
-            OpType::EndWhile => todo!(),
+
+            OpType::While => {
+                let loop_label = Ident::Label(format!("while{}", op.operand));
+                let contract = register_contract(prog, ip, module);
+                self.push(Block(BlockType::Loop(Some(loop_label)), Some(contract)));
+            }
+
+            OpType::Do => {
+                let contract = register_contract(prog, ip, module);
+                self.push(Block(BlockType::If, Some(contract)));
+            }
+
+            OpType::EndWhile => {
+                let loop_label = Ident::Label(format!("while{}", op.operand));
+                self.extend([Br(loop_label), End, End]);
+            }
 
             OpType::Unpack => self.extend(unpack_struct(&prog.structs_types[op.index()])),
 
@@ -210,7 +221,7 @@ impl FuncGen {
 
                 for ip in start + 1..end {
                     let in_op = &prog.ops[ip];
-                    self.append_op(prog, in_op, proc, module)?;
+                    self.append_op(prog, in_op, ip, proc, module)?;
                 }
             }
 
@@ -220,6 +231,11 @@ impl FuncGen {
         }
         Ok(())
     }
+}
+
+fn register_contract(prog: &Program, index: usize, module: &mut Module) -> Ident {
+    let (ins, outs) = prog.get_contract(index);
+    Ident::Id(module.new_contract(&vec![WasmType::I32; ins], &vec![WasmType::I32; outs]))
 }
 
 impl Program {

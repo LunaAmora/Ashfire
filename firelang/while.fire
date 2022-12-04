@@ -1,0 +1,11 @@
+include lib/wasi
+include lib/std
+
+_start export::
+  2 while dup 0 = lnot do 1 -
+    "outer loop" println 
+      3 while dup 0 = lnot do 1 -
+        "inner loop" println 
+      end drop
+  end drop
+end

@@ -125,20 +125,19 @@ pub enum Instruction {
 
 impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let text = match self {
+        match self {
             Self::Block(_, _) => unimplemented!("Not possible to format"),
-            Self::Get(scope, ident) => format!("{scope:?}.get {ident}"),
-            Self::Set(scope, ident) => format!("{scope:?}.set {ident}"),
-            Self::I32(num_method) => format!("i32.{num_method:?}"),
-            Self::Const(value) => format!("i32.const {value}"),
-            Self::Call(ident) => format!("call {ident}"),
+            Self::Get(scope, ident) => write!(f, "{scope:?}.get {ident}"),
+            Self::Set(scope, ident) => write!(f, "{scope:?}.set {ident}"),
+            Self::I32(num_method) => write!(f, "i32.{num_method:?}"),
+            Self::Const(value) => write!(f, "i32.const {value}"),
+            Self::Call(ident) => write!(f, "call {ident}"),
             Self::BrIf(_) => todo!(),
-            Self::Br(_) => todo!(),
-            Self::Else => "else".to_owned(),
-            Self::Drop => "drop".to_owned(),
-            Self::End => "end".to_owned(),
-        };
-        write!(f, "{text}")
+            Self::Br(ident) => write!(f, "br {ident}"),
+            Self::Else => write!(f, "else"),
+            Self::Drop => write!(f, "drop"),
+            Self::End => write!(f, "end"),
+        }
     }
 }
 
@@ -150,12 +149,19 @@ pub enum BlockType {
 
 impl Display for BlockType {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let text = match self {
-            Self::If => "if".to_owned(),
-            Self::Loop(_) => todo!(),
-            Self::Block(_) => todo!(),
+        let (text, id) = match self {
+            Self::If => ("if", &None),
+            Self::Loop(id) => ("loop", id),
+            Self::Block(id) => ("block", id),
         };
-        write!(f, "{text}")
+
+        f.write_str(text)?;
+
+        if let Some(id) = id {
+            write!(f, " {id}")?;
+        }
+
+        Ok(())
     }
 }
 

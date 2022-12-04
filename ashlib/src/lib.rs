@@ -168,8 +168,23 @@ pub trait UncheckedStack<T>: Deref<Target = [T]> {
 #[derive(Clone)]
 pub struct EvalStack<T> {
     frames: Vec<T>,
-    pub min_count: i32,
-    pub stack_count: i32,
+    min_count: i32,
+    stack_count: i32,
+}
+
+impl<T> EvalStack<T> {
+    pub fn set_count(&mut self, min: i32, count: i32) {
+        self.min_count = min;
+        self.stack_count = count;
+    }
+
+    pub fn min(&self) -> i32 {
+        self.min_count
+    }
+
+    pub fn count(&self) -> i32 {
+        self.stack_count
+    }
 }
 
 impl<T> Deref for EvalStack<T> {
@@ -187,9 +202,9 @@ impl<T> Default for EvalStack<T> {
 }
 
 impl<T: Clone> EvalStack<T> {
-    pub fn new(other: &Self) -> Self {
+    pub fn new(other: Self) -> Self {
         Self {
-            frames: other.frames.clone(),
+            frames: other.frames,
             min_count: other.min_count,
             stack_count: 0,
         }
