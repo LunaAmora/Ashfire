@@ -405,7 +405,7 @@ impl TypeChecker {
 
                 let Some((offset, index)) = stk.members().get_offset(word) else {
                     let error = format!("The struct {} does not contain a member with name: `{}`",
-                        stk.as_str(prog), word.as_str(prog));
+                        stk.name().as_str(prog), word.as_str(prog));
                     return Err(err_loc(error, loc));
                 };
 

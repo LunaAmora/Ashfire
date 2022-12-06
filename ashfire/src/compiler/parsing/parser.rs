@@ -557,7 +557,7 @@ impl Parser {
         while let Some(tok) = self.peek() {
             if tok == TokenType::Keyword {
                 self.expect_keyword(KeywordType::End, "`end` after struct declaration", loc)?;
-                prog.structs_types.push(StructDef::new(word, members));
+                prog.structs_types.push(StructDef(word.str_key(), members));
                 success!();
             }
 
@@ -576,7 +576,7 @@ impl Parser {
 
                         members.push(StructType::unit(&member_name, *typ.value_type()));
                     } else {
-                        let value = prog.get_struct_value_id(type_def).unwrap();
+                        let value = prog.get_struct_value_id(type_def.name()).unwrap();
                         members.push(StructType::root(&member_name, ref_members.to_vec(), value));
                     }
                 }
@@ -631,9 +631,9 @@ impl Parser {
             if ref_members.len() == 1 {
                 todo!()
             } else {
-                let type_name = &type_def.str_key();
+                let type_name = *type_def.name();
 
-                let reftype = prog.get_struct_value_id(type_name).unwrap();
+                let reftype = prog.get_struct_value_id(&type_name).unwrap();
                 let struct_type = StructType::root(word, ref_members, reftype);
                 self.register_const_or_var(false, word, type_name, struct_type, prog);
             }
@@ -695,7 +695,7 @@ impl Parser {
         };
 
         let end_loc = self.skip(eval).unwrap().loc();
-        let stk_name = stk.str_key();
+        let stk_name = *stk.name();
 
         let struct_type = if result.len() == 1 {
             let eval = result.pop().unwrap();
@@ -721,12 +721,12 @@ impl Parser {
             StructType::root(word, def_members, value)
         };
 
-        self.register_const_or_var(is_constant, word, &stk_name, struct_type, prog);
+        self.register_const_or_var(is_constant, word, stk_name, struct_type, prog);
         Ok(())
     }
 
     fn register_const_or_var(
-        &mut self, is_constant: bool, word: &LocWord, ref_name: &StrKey, struct_type: StructType,
+        &mut self, is_constant: bool, word: &LocWord, ref_name: StrKey, struct_type: StructType,
         prog: &mut Program,
     ) {
         let ctx = if is_constant {

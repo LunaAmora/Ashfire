@@ -75,20 +75,20 @@ impl Program {
     pub fn get_type_def<O: Operand>(&self, word_id: O) -> Option<&StructDef> {
         self.structs_types
             .iter()
-            .find(|def| word_id.str_key().eq(def))
+            .find(|def| word_id.str_key().eq(def.name()))
     }
 
     pub fn get_type(&self, word: &StrKey) -> Option<ValueType> {
         self.structs_types
             .iter()
-            .position(|def| word.eq(def))
+            .position(|def| word.eq(def.name()))
             .map(|i| ValueType::Typ(Value(i)))
     }
 
     pub fn get_type_ptr(&self, word: &StrKey) -> Option<ValueType> {
         self.structs_types
             .iter()
-            .position(|def| word.eq(def))
+            .position(|def| word.eq(def.name()))
             .map(|i| ValueType::Ptr(Value(i)))
     }
 
@@ -145,13 +145,13 @@ impl Program {
 
         let struct_type = vars
             .iter()
-            .any(|val| word.eq(val))
+            .any(|val| val.name().eq(word))
             .then(|| self.try_get_struct_type(word, parser))
             .flatten()
             .or_return(OptionErr::default)?;
 
         OptionErr::new(if var_typ == VarWordType::Pointer {
-            let stk_id = self.get_struct_type_id(struct_type).unwrap() as i32;
+            let stk_id = self.get_struct_type_id(struct_type.name()).unwrap() as i32;
             vars.get_pointer(word, push_type, stk_id)
         } else {
             vars.get_fields(word, push_type, struct_type, var_typ == VarWordType::Store)
@@ -184,7 +184,7 @@ impl Program {
 
             let Some((diff, index)) = root.members().get_offset(&field_key) else {
                 let error = format!("The variable `{}` does not contain the field `{field_name}`",
-                    var.as_str(self));
+                    var.name().as_str(self));
                 return err_loc(error, loc).into();
             };
 

@@ -62,11 +62,11 @@ impl Program {
         let [_, any, bool, int, ptr, str, len, data] = intern_all(&mut interner, names);
 
         let structs_types = vec![
-            (any, Value::ANY).into(),
-            (bool, Value::BOOL).into(),
-            (int, Value::INT).into(),
-            (ptr, Value::PTR).into(),
-            StructDef::new(&str, vec![
+            StructDef::new(any, Value::ANY),
+            StructDef::new(bool, Value::BOOL),
+            StructDef::new(int, Value::INT),
+            StructDef::new(ptr, Value::PTR),
+            StructDef(str, vec![
                 StructType::unit(&len, ValueType::Typ(Value::INT)),
                 StructType::unit(&data, ValueType::Typ(Value::PTR)),
             ]),
@@ -178,7 +178,7 @@ impl Program {
             Value::PTR => "Pointer",
             Value::STR => "String",
             Value::ANY => "Any",
-            Value(n) => self.structs_types[n].as_str(self),
+            Value(n) => self.structs_types[n].name().as_str(self),
         }
         .to_owned()
     }
@@ -249,20 +249,20 @@ impl Program {
     pub fn get_struct_type_id(&self, word: &StrKey) -> Option<usize> {
         self.structs_types
             .iter()
-            .position(|def| word.eq(def))
+            .position(|def| word.eq(def.name()))
             .map(|u| u + 1)
     }
 
     pub fn get_struct_value_id(&self, word: &StrKey) -> Option<Value> {
         self.structs_types
             .iter()
-            .position(|id| word.eq(id))
+            .position(|id| word.eq(id.name()))
             .map(Value)
     }
 
     /// Searches for a `const` that matches the given [`StrKey`].
     pub fn get_const_by_name(&self, word: &StrKey) -> Option<&StructType> {
-        self.consts.iter().find(|cnst| word.eq(cnst))
+        self.consts.iter().find(|cnst| word.eq(cnst.name()))
     }
 
     #[cfg(debug_assertions)]

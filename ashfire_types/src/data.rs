@@ -82,19 +82,15 @@ impl From<i32> for ValueType {
 }
 
 #[derive(Clone)]
-pub struct ValueUnit {
-    name: StrKey,
-    value: i32,
-    value_type: ValueType,
-}
+pub struct ValueUnit(StrKey, i32, ValueType);
 
 impl ValueUnit {
-    pub fn new<T: Typed + Operand>(name: &StrKey, typed: T) -> Self {
+    pub fn new(name: &StrKey, typed: &IRToken) -> Self {
         let TokenType::Data(value_type) = typed.get_type() else {
             unimplemented!()
         };
 
-        Self { name: *name, value: typed.operand(), value_type }
+        Self(*name, typed.operand(), value_type)
     }
 
     pub fn size(&self) -> usize {
@@ -102,51 +98,44 @@ impl ValueUnit {
     }
 
     pub fn value(&self) -> i32 {
-        self.value
+        self.1
     }
 
     pub fn value_type(&self) -> &ValueType {
-        &self.value_type
+        &self.2
+    }
+
+    pub fn name(&self) -> &StrKey {
+        &self.0
     }
 }
 
 impl Typed for ValueUnit {
     fn get_type(&self) -> TokenType {
-        self.value_type.get_type()
-    }
-}
-
-impl Deref for ValueUnit {
-    type Target = StrKey;
-
-    fn deref(&self) -> &Self::Target {
-        &self.name
+        self.2.get_type()
     }
 }
 
 #[derive(Clone)]
-pub struct StructRef {
-    data: StructDef,
-    reftype: Value,
-}
+pub struct StructRef(StructDef, Value);
 
 impl Deref for StructRef {
     type Target = StructDef;
 
     fn deref(&self) -> &Self::Target {
-        &self.data
+        &self.0
     }
 }
 
 impl StructRef {
     pub fn get_ref_type(&self) -> Value {
-        self.reftype
+        self.1
     }
 }
 
 impl Typed for StructRef {
     fn get_type(&self) -> TokenType {
-        self.reftype.get_type()
+        self.1.get_type()
     }
 }
 
@@ -157,36 +146,31 @@ pub trait StructInfo {
 }
 
 #[derive(Clone)]
-pub struct StructDef {
-    name: StrKey,
-    members: Vec<StructType>,
-}
+pub struct StructDef(pub StrKey, pub Vec<StructType>);
 
 impl StructDef {
-    pub fn new(name: &StrKey, members: Vec<StructType>) -> Self {
-        Self { name: *name, members }
+    pub fn new(name: StrKey, value: Value) -> Self {
+        Self(name, vec![StructType::from(ValueType::Typ(value))])
     }
 
     pub fn members(&self) -> &[StructType] {
-        &self.members
+        &self.1
     }
 
     pub fn ordered_members(self, rev: bool) -> impl Iterator<Item = StructType> {
-        self.members.into_iter().conditional_rev(rev)
+        self.1.into_iter().conditional_rev(rev)
+    }
+
+    pub fn name(&self) -> &StrKey {
+        &self.0
     }
 }
 
-impl StructInfo for StructDef {
-    fn units(&self) -> Box<dyn DoubleEndedIterator<Item = &ValueUnit> + '_> {
-        self.members.units()
-    }
+impl Deref for StructDef {
+    type Target = [StructType];
 
-    fn count(&self) -> usize {
-        self.members.count()
-    }
-
-    fn size(&self) -> usize {
-        self.members.size()
+    fn deref(&self) -> &Self::Target {
+        &self.1
     }
 }
 
@@ -204,23 +188,6 @@ impl StructInfo for [StructType] {
     }
 }
 
-impl Deref for StructDef {
-    type Target = StrKey;
-
-    fn deref(&self) -> &Self::Target {
-        &self.name
-    }
-}
-
-impl From<(StrKey, Value)> for StructDef {
-    fn from(tuple: (StrKey, Value)) -> Self {
-        let (name, value_type) = (tuple.0, ValueType::Typ(tuple.1));
-        let members = vec![StructType::unit(&StrKey::default(), value_type)];
-
-        Self { name, members }
-    }
-}
-
 #[derive(Clone)]
 pub enum StructType {
     Root(StructRef),
@@ -229,11 +196,24 @@ pub enum StructType {
 
 impl StructType {
     pub fn unit(name: &StrKey, value_type: ValueType) -> Self {
-        Self::Unit(ValueUnit { name: *name, value: 0, value_type })
+        Self::Unit(ValueUnit(*name, 0, value_type))
     }
 
     pub fn root(name: &StrKey, members: Vec<Self>, reftype: Value) -> Self {
-        Self::Root(StructRef { data: StructDef::new(name, members), reftype })
+        Self::Root(StructRef(StructDef(*name, members), reftype))
+    }
+
+    pub fn name(&self) -> &StrKey {
+        match self {
+            Self::Unit(val) => val.name(),
+            Self::Root(stk) => stk.name(),
+        }
+    }
+}
+
+impl From<ValueType> for StructType {
+    fn from(value: ValueType) -> Self {
+        Self::Unit(ValueUnit(StrKey::default(), 0, value))
     }
 }
 
@@ -257,9 +237,9 @@ where
 impl Transposer<Self, IRToken> for StructType {
     fn transpose(self, rev: bool, provider: Self::Provider<'_>) -> Option<Self> {
         Some(match self {
-            Self::Unit(unit) => Self::Unit(ValueUnit::new(&unit, provider.next()?)),
+            Self::Unit(unit) => Self::Unit(ValueUnit::new(unit.name(), &provider.next()?)),
 
-            Self::Root(StructRef { data: str_def @ StructDef { name, .. }, reftype }) => str_def
+            Self::Root(StructRef(str_def @ StructDef(name, ..), reftype)) => str_def
                 .transpose(rev, provider)
                 .map(|members| Self::root(&name, members, reftype))?,
         })
@@ -291,17 +271,6 @@ impl StructInfo for StructType {
         match self {
             Self::Root(s) => s.size(),
             Self::Unit(v) => v.size(),
-        }
-    }
-}
-
-impl Deref for StructType {
-    type Target = StrKey;
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Self::Unit(val) => &val.name,
-            Self::Root(stk) => &stk.name,
         }
     }
 }
