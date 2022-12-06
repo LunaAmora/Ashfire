@@ -13,7 +13,7 @@ impl Program {
         parser
             .current_proc(self)
             .and_then(|proc| proc.bindings().position(|(key, _)| word.eq(key)))
-            .map(|index| vec![Op::new(OpType::LoadBind, index, word.loc)])
+            .map(|index| vec![Op(OpType::LoadBind, index as i32, word.loc())])
     }
 
     /// Searches for a `binding` reference that matches the given [`word`][LocWord]
@@ -22,7 +22,7 @@ impl Program {
         parser
             .current_proc(self)
             .and_then(|proc| proc.bindings().position(|(key, _)| word.eq(key)))
-            .map(|index| vec![Op::new(OpType::PushBind, index, word.loc)])
+            .map(|index| vec![Op(OpType::PushBind, index as i32, word.loc())])
     }
 
     /// Searches for a `mem` that matches the given [`word`][LocWord]
@@ -31,7 +31,7 @@ impl Program {
         parser
             .current_proc_data(self)
             .and_then(|proc| proc.local_mems.iter().find(|mem| word.eq(mem)))
-            .map(|local| vec![Op::new(OpType::PushLocalMem, local.offset(), word.loc)])
+            .map(|local| vec![Op(OpType::PushLocalMem, local.offset(), word.loc())])
     }
 
     /// Searches for a `global mem` that matches the given [`LocWord`] name.
@@ -39,15 +39,18 @@ impl Program {
         self.get_memory()
             .iter()
             .find(|mem| word.eq(mem))
-            .map(|global| vec![Op::new(OpType::PushGlobalMem, global.offset(), word.loc)])
+            .map(|global| vec![Op(OpType::PushGlobalMem, global.offset(), word.loc())])
     }
 
     /// Searches for a `const` that matches the given[`word`][LocWord]
     /// and parses it to an [`Op`].
     pub fn get_const_struct(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.get_const_by_name(word).map(|tword| match tword {
-            StructType::Root(root) => root.units().map(|val| Op::from((val, word.loc))).collect(),
-            StructType::Unit(val) => vec![Op::from((val, word.loc))],
+            StructType::Root(root) => root
+                .units()
+                .map(|val| Op::from((val, word.loc())))
+                .collect(),
+            StructType::Unit(val) => vec![Op::from((val, word.loc()))],
         })
     }
 
@@ -91,7 +94,7 @@ impl Program {
 
     pub fn get_intrinsic(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.get_intrinsic_type(word.as_str(self))
-            .map(|i| vec![Op::from((i, word.loc))])
+            .map(|i| vec![Op::from((i, word.loc()))])
     }
 
     pub fn get_proc_name(&self, word: &LocWord) -> Option<Vec<Op>> {
@@ -105,7 +108,7 @@ impl Program {
                 } else {
                     OpType::Call
                 };
-                vec![Op::new(call, index, word.loc)]
+                vec![Op(call, index as i32, word.loc())]
             })
     }
 
@@ -136,7 +139,7 @@ impl Program {
             return self
                 .try_get_field(word, vars)
                 .value?
-                .map(|(var, offset)| unpack_struct(var, push_type, offset, var_typ, word.loc))
+                .map(|(var, offset)| unpack_struct(var, push_type, offset, var_typ, word.loc()))
                 .into();
         }
 
@@ -159,7 +162,7 @@ impl Program {
         &self, word: &LocWord, vars: &'a [StructType],
     ) -> OptionErr<(&'a StructType, usize)> {
         let fields: Vec<_> = word.as_str(self).split('.').collect();
-        let loc = word.loc;
+        let loc = word.loc();
 
         let Some(first) = self.get_key(fields[0]) else {
             todo!()

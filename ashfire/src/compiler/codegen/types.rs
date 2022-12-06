@@ -91,7 +91,8 @@ impl Generator {
         }
 
         let label = &func.label.as_str(program);
-        let id = wasm.add_fn(label, &func.contract.0, &func.contract.1, func.code);
+        let (ins, outs) = &func.contract;
+        let id = wasm.add_fn(label, ins, outs, func.code);
 
         if proc.is_export() {
             wasm.add_export(label, Bind::Func(Id(id)));

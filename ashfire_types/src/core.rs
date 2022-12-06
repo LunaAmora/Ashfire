@@ -105,12 +105,6 @@ impl Typed for TokenType {
     }
 }
 
-impl From<IRToken> for TokenType {
-    fn from(tok: IRToken) -> Self {
-        tok.token_type
-    }
-}
-
 impl PartialEq<Value> for TokenType {
     fn eq(&self, other: &Value) -> bool {
         match self {
@@ -130,38 +124,30 @@ impl PartialEq<ValueType> for TokenType {
 }
 
 #[derive(Clone)]
-pub struct IRToken {
-    pub token_type: TokenType,
-    pub operand: i32,
-    pub loc: Loc,
-}
+pub struct IRToken(pub TokenType, pub i32, pub Loc);
 
 impl Typed for IRToken {
     fn get_type(&self) -> TokenType {
-        self.token_type
+        self.0
     }
 }
 
 impl Operand for IRToken {
     fn operand(&self) -> i32 {
-        self.operand
+        self.1
     }
 }
 
 impl Location for IRToken {
     fn loc(&self) -> Loc {
-        self.loc
+        self.2
     }
 }
 
 impl IRToken {
-    pub fn new<O: Operand>(token_type: TokenType, operand: O, loc: Loc) -> Self {
-        Self { token_type, operand: operand.operand(), loc }
-    }
-
     pub fn get_keyword(&self) -> Option<KeywordType> {
         if self == TokenType::Keyword {
-            FromPrimitive::from_i32(self.operand)
+            FromPrimitive::from_i32(self.1)
         } else {
             None
         }
@@ -171,7 +157,7 @@ impl IRToken {
     ///
     /// Will panic if the operand is not a valid `KeywordType`.
     pub fn as_keyword(&self) -> KeywordType {
-        FromPrimitive::from_i32(self.operand).unwrap()
+        FromPrimitive::from_i32(self.1).unwrap()
     }
 }
 
@@ -179,76 +165,49 @@ impl Deref for IRToken {
     type Target = i32;
 
     fn deref(&self) -> &Self::Target {
-        &self.operand
+        &self.1
     }
 }
 
 impl PartialEq<KeywordType> for &IRToken {
     fn eq(&self, other: &KeywordType) -> bool {
-        self.token_type == TokenType::Keyword && other == &self.as_keyword()
+        self.0 == TokenType::Keyword && other == &self.as_keyword()
     }
 }
 
 impl PartialEq<TokenType> for &IRToken {
     fn eq(&self, other: &TokenType) -> bool {
-        &self.token_type == other
+        &self.0 == other
     }
 }
 
 impl PartialEq<Value> for &IRToken {
     fn eq(&self, other: &Value) -> bool {
-        &self.token_type == other
+        &self.0 == other
     }
 }
 
 impl From<(&StructType, Loc)> for IRToken {
     fn from(value: (&StructType, Loc)) -> Self {
-        match value.0 {
-            StructType::Root(_) => todo!("Support const use on other consts"),
-            StructType::Unit(u) => (u, value.1).into(),
+        match value {
+            (StructType::Root(_), _) => todo!("Support const use on other consts"),
+            (StructType::Unit(u), loc) => Self(u.value_type().get_type(), u.value(), loc),
         }
     }
 }
 
-impl From<(&ValueUnit, Loc)> for IRToken {
-    fn from(tuple: (&ValueUnit, Loc)) -> Self {
-        Self::new(tuple.0.value_type().get_type(), tuple.0.value(), tuple.1)
-    }
-}
-
 #[derive(Clone)]
-pub struct Op {
-    pub op_type: OpType,
-    pub operand: i32,
-    pub loc: Loc,
-}
+pub struct Op(pub OpType, pub i32, pub Loc);
 
 impl Operand for Op {
     fn operand(&self) -> i32 {
-        self.operand
+        self.1
     }
 }
 
 impl Op {
-    pub fn new<O: Operand>(op_type: OpType, operand: O, loc: Loc) -> Self {
-        Self { op_type, operand: operand.operand(), loc }
-    }
-
     pub fn set_operand(&mut self, value: i32) {
-        self.operand = value;
-    }
-}
-
-impl<O: Operand> From<(OpType, O, Loc)> for Op {
-    fn from(tuple: (OpType, O, Loc)) -> Self {
-        let (op_type, operand, loc) = (tuple.0, tuple.1.operand(), tuple.2);
-        Self { op_type, operand, loc }
-    }
-}
-
-impl From<(OpType, Loc)> for Op {
-    fn from(tuple: (OpType, Loc)) -> Self {
-        Self { op_type: tuple.0, operand: 0, loc: tuple.1 }
+        self.1 = value;
     }
 }
 
@@ -258,13 +217,13 @@ impl From<(&ValueUnit, Loc)> for Op {
             unimplemented!("Conversion not supported for `ValueType::Ptr`")
         };
 
-        Self::new(OpType::PushData(*typ), tuple.0.value(), tuple.1)
+        Self(OpType::PushData(*typ), tuple.0.value(), tuple.1)
     }
 }
 
 impl From<(IntrinsicType, Loc)> for Op {
     fn from(value: (IntrinsicType, Loc)) -> Self {
-        Self::new(OpType::Intrinsic, i32::from(value.0), value.1)
+        Self(OpType::Intrinsic, i32::from(value.0), value.1)
     }
 }
 

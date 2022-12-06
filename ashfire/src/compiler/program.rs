@@ -206,7 +206,7 @@ impl Program {
     }
 
     pub fn type_display(&self, tok: IRToken) -> String {
-        match tok.token_type {
+        match tok.get_type() {
             TokenType::Keyword => format!("{:?}", tok.as_keyword()),
             TokenType::Word => self.get_word(tok).to_owned(),
             TokenType::Str => self.get_data_str(tok).to_owned(),
@@ -269,20 +269,20 @@ impl Program {
     #[allow(dead_code)]
     fn op_debug(&self, op: &Op) -> String {
         use ashfire_types::enums::OpType;
-
-        match op.op_type {
-            OpType::Intrinsic => match IntrinsicType::from(op.operand) {
+        let &Op(op_type, operand, ..) = op;
+        match op_type {
+            OpType::Intrinsic => match IntrinsicType::from(operand) {
                 IntrinsicType::Cast(n) => {
                     format!("Intrinsic Cast [{}]", self.type_name(ValueType::from(n).get_type()))
                 }
                 intrinsic => format!("Intrinsic [{intrinsic:?}]"),
             },
-            OpType::Call => format!("Call [{}]", self.get_proc(op.operand).name.as_str(self)),
-            OpType::EndProc => format!("EndProc [{}]", self.get_proc(op.operand).name.as_str(self)),
+            OpType::Call => format!("Call [{}]", self.get_proc(operand).name.as_str(self)),
+            OpType::EndProc => format!("EndProc [{}]", self.get_proc(operand).name.as_str(self)),
             OpType::CallInline => {
-                format!("Inline [{}]", self.get_proc(op.operand).name.as_str(self))
+                format!("Inline [{}]", self.get_proc(operand).name.as_str(self))
             }
-            _ => format!("{:?} [{}]", op.op_type, op.operand),
+            _ => format!("{op_type:?} [{operand}]"),
         }
     }
 }

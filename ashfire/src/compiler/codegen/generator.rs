@@ -71,8 +71,8 @@ impl Generator {
         wasm.add_fn("push_local", i1, i1, vec![Get(global, Id(stk)), Get(local, Id(0)), I32(sub)]);
 
         let mut skip = false;
-        for (ip, op) in program.ops.iter().enumerate() {
-            skip = match op.op_type {
+        for (ip, op @ Op(op_type, ..)) in program.ops.iter().enumerate() {
+            skip = match op_type {
                 OpType::PrepProc | OpType::PrepInline => self.prep_proc(program, op)?,
                 OpType::EndProc => self.end_proc(program, &mut wasm)?,
                 _ => {
@@ -111,8 +111,10 @@ impl FuncGen {
     fn append_op(
         &mut self, prog: &Program, op: &Op, ip: usize, proc: &Proc, module: &mut Module,
     ) -> Result<()> {
-        match op.op_type {
-            OpType::PushData(_) | OpType::PushGlobalMem => self.push(Const(op.operand)),
+        let &Op(op_type, operand, ..) = op;
+
+        match op_type {
+            OpType::PushData(_) | OpType::PushGlobalMem => self.push(Const(operand)),
 
             OpType::PushStr => {
                 let (size, offset) = prog.get_data(op).data();
@@ -120,23 +122,23 @@ impl FuncGen {
             }
 
             OpType::PushLocalMem => {
-                let ptr = self.bind_offset + op.operand;
+                let ptr = self.bind_offset + operand;
                 self.extend([Const(ptr), Call("push_local".into())]);
             }
 
             OpType::PushLocal => {
-                let ptr = self.bind_offset + proc.get_data().unwrap().var_mem_offset(op.operand);
+                let ptr = self.bind_offset + proc.get_data().unwrap().var_mem_offset(operand);
                 self.extend([Const(ptr), Call("push_local".into())]);
             }
 
             OpType::PushGlobal => {
-                let ptr = prog.global_vars_start() + op.operand * WORD_SIZE;
+                let ptr = prog.global_vars_start() + operand * WORD_SIZE;
                 self.push(Const(ptr));
             }
 
-            OpType::Offset => self.extend([Const(op.operand), I32(add)]),
+            OpType::Offset => self.extend([Const(operand), I32(add)]),
 
-            OpType::Intrinsic => match IntrinsicType::from(op.operand) {
+            OpType::Intrinsic => match IntrinsicType::from(operand) {
                 IntrinsicType::Div => todo!(),
                 IntrinsicType::Times => todo!(),
 
@@ -208,11 +210,11 @@ impl FuncGen {
             }
 
             OpType::PushBind => {
-                self.extend([Const(op.operand), Call("push_local".into())]);
+                self.extend([Const(operand), Call("push_local".into())]);
             }
 
             OpType::LoadBind => {
-                self.extend([Const(op.operand), Call("push_local".into()), I32(load)]);
+                self.extend([Const(operand), Call("push_local".into()), I32(load)]);
             }
 
             OpType::PopBind => {
@@ -227,7 +229,7 @@ impl FuncGen {
             }
 
             OpType::While => {
-                let loop_label = Ident::Label(format!("while{}", op.operand));
+                let loop_label = Ident::Label(format!("while{}", op.operand()));
                 let contract = register_contract(prog, ip, module);
                 self.push(Block(BlockType::Loop(Some(loop_label)), Some(contract)));
             }
@@ -238,7 +240,7 @@ impl FuncGen {
             }
 
             OpType::EndWhile => {
-                let loop_label = Ident::Label(format!("while{}", op.operand));
+                let loop_label = Ident::Label(format!("while{}", op.operand()));
                 self.extend([Br(loop_label), End, End]);
             }
 

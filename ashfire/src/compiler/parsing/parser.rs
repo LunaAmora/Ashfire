@@ -84,7 +84,7 @@ impl Parser {
     }
 
     fn define_op(&mut self, tok: &IRToken, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        let &IRToken { token_type, operand, loc } = tok;
+        let &IRToken(token_type, operand, loc) = tok;
 
         if !(matches!(token_type, TokenType::Keyword | TokenType::Word) || self.inside_proc()) {
             lazybail!(
@@ -94,14 +94,16 @@ impl Parser {
             );
         };
 
-        let op = Op::from(match token_type {
+        let op = match token_type {
             TokenType::Keyword => return self.define_keyword_op(tok.as_keyword(), loc, prog),
 
-            TokenType::Str => (OpType::PushStr, operand, loc),
+            TokenType::Str => Op(OpType::PushStr, operand, loc),
 
             TokenType::Data(data) => match data {
                 ValueType::Typ(val) => match val {
-                    Value::INT | Value::BOOL | Value::PTR => (OpType::PushData(val), operand, loc),
+                    Value::INT | Value::BOOL | Value::PTR => {
+                        Op(OpType::PushData(val), operand, loc)
+                    }
                     Value(_) => lazybail!(
                         |f| "{}Value type not valid here: `{}`",
                         f.format(Fmt::Loc(loc)),
@@ -116,7 +118,7 @@ impl Parser {
             },
 
             TokenType::Word => {
-                let word = &LocWord::new(operand, loc);
+                let word = &LocWord(operand.str_key(), loc);
 
                 choice!(
                     OptionErr,
@@ -129,7 +131,7 @@ impl Parser {
                     format!("Word was not declared on the program: `{}`", word.as_str(prog));
                 return err_loc(error, loc).into();
             }
-        });
+        };
 
         OptionErr::new(vec![op])
     }
@@ -160,8 +162,8 @@ impl Parser {
                 };
 
                 return OptionErr::new(vec![
-                    (OpType::Offset, key, word.loc).into(),
-                    (OpType::Unpack, word.loc).into(),
+                    Op(OpType::Offset, key.operand(), word.loc()),
+                    Op(OpType::Unpack, 0, word.loc()),
                 ]);
             }
             _ => return OptionErr::default(),
@@ -177,7 +179,7 @@ impl Parser {
             _ => todo!(),
         };
 
-        let word = LocWord::new(key, word.loc);
+        let word = LocWord(key, word.loc());
 
         if local {
             prog.get_local_var(&word, var_typ, self)
@@ -190,20 +192,20 @@ impl Parser {
         &mut self, key: KeywordType, loc: Loc, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
         let op = match key {
-            KeywordType::Drop => (OpType::Drop, loc).into(),
-            KeywordType::Dup => (OpType::Dup, loc).into(),
-            KeywordType::Swap => (OpType::Swap, loc).into(),
-            KeywordType::Over => (OpType::Over, loc).into(),
-            KeywordType::Rot => (OpType::Rot, loc).into(),
-            KeywordType::Equal => (OpType::Equal, loc).into(),
-            KeywordType::At => (OpType::Unpack, loc).into(),
+            KeywordType::Drop => Op(OpType::Drop, 0, loc),
+            KeywordType::Dup => Op(OpType::Dup, 0, loc),
+            KeywordType::Swap => Op(OpType::Swap, 0, loc),
+            KeywordType::Over => Op(OpType::Over, 0, loc),
+            KeywordType::Rot => Op(OpType::Rot, 0, loc),
+            KeywordType::Equal => Op(OpType::Equal, 0, loc),
+            KeywordType::At => Op(OpType::Unpack, 0, loc),
 
             KeywordType::Dot => {
                 let Some(next_token) = self.next() else {
                     todo!()
                 };
 
-                match next_token.token_type {
+                match next_token.get_type() {
                     TokenType::Keyword => {
                         expect_token_by(
                             Some(next_token),
@@ -212,12 +214,12 @@ impl Parser {
                             loc,
                         )?;
                         let word = self.expect_word("word after `.*`", loc)?;
-                        (OpType::Offset, word, loc).into()
+                        Op(OpType::Offset, word.operand(), loc)
                     }
                     TokenType::Word => {
                         return OptionErr::new(vec![
-                            (OpType::Offset, next_token, loc).into(),
-                            (OpType::Unpack, loc).into(),
+                            Op(OpType::Offset, next_token.operand(), loc),
+                            Op(OpType::Unpack, 0, loc),
                         ])
                     }
                     _ => todo!(),
@@ -236,12 +238,12 @@ impl Parser {
                 };
             }
 
-            KeywordType::While => self.push_block((OpType::While, loc).into()),
+            KeywordType::While => self.push_block(Op(OpType::While, 0, loc)),
 
             KeywordType::Do => match self.pop_block(key, loc)? {
-                Op { op_type: OpType::While, .. } => self.push_block((OpType::Do, loc).into()),
-                Op { op_type: OpType::CaseMatch, operand, .. } => {
-                    self.push_block((OpType::CaseOption, operand, loc).into())
+                Op(OpType::While, ..) => self.push_block(Op(OpType::Do, 0, loc)),
+                Op(OpType::CaseMatch, operand, ..) => {
+                    self.push_block(Op(OpType::CaseOption, operand, loc))
                 }
                 op => {
                     Err(format_block("`do` can only come in a `while` or `case` block", &op, loc))?
@@ -253,7 +255,7 @@ impl Parser {
             KeywordType::Case => todo!(),
 
             KeywordType::Colon => match self.pop_block(key, loc)? {
-                Op { op_type: OpType::CaseStart, .. } => todo!(),
+                Op(OpType::CaseStart, ..) => todo!(),
                 op => Err(format_block(
                     "`:` can only be used on word or `case` block definition",
                     &op,
@@ -261,35 +263,33 @@ impl Parser {
                 ))?,
             },
 
-            KeywordType::If => self.push_block((OpType::IfStart, prog.current_ip(), loc).into()),
+            KeywordType::If => self.push_block(Op(OpType::IfStart, prog.current_ip() as i32, loc)),
 
             KeywordType::Else => match self.pop_block(key, loc)? {
-                Op { op_type: OpType::IfStart, .. } => self.push_block((OpType::Else, loc).into()),
-                Op { op_type: OpType::CaseOption, .. } => todo!(),
+                Op(OpType::IfStart, ..) => self.push_block(Op(OpType::Else, 0, loc)),
+                Op(OpType::CaseOption, ..) => todo!(),
                 op => {
                     Err(format_block("`else` can only come in a `if` or `case` block", &op, loc))?
                 }
             },
 
             KeywordType::End => match self.pop_block(key, loc)? {
-                Op { op_type: OpType::IfStart, .. } => (OpType::EndIf, loc).into(),
-                Op { op_type: OpType::Else, .. } => (OpType::EndElse, loc).into(),
-                Op { op_type: OpType::Do, .. } => (OpType::EndWhile, loc).into(),
+                Op(OpType::IfStart, ..) => Op(OpType::EndIf, 0, loc),
+                Op(OpType::Else, ..) => Op(OpType::EndElse, 0, loc),
+                Op(OpType::Do, ..) => Op(OpType::EndWhile, 0, loc),
 
-                Op { op_type: OpType::BindStack, operand, .. } => {
-                    (OpType::PopBind, operand, loc).into()
+                Op(OpType::BindStack, operand, ..) => Op(OpType::PopBind, operand, loc),
+
+                Op(OpType::CaseOption, ..) => todo!(),
+
+                Op(OpType::PrepProc, operand, ..) => {
+                    self.exit_proc();
+                    Op(OpType::EndProc, operand, loc)
                 }
 
-                Op { op_type: OpType::CaseOption, .. } => todo!(),
-
-                Op { op_type: OpType::PrepProc, operand, .. } => {
+                Op(OpType::PrepInline, operand, ..) => {
                     self.exit_proc();
-                    (OpType::EndProc, operand, loc).into()
-                }
-
-                Op { op_type: OpType::PrepInline, operand, .. } => {
-                    self.exit_proc();
-                    (OpType::EndInline, operand, loc).into()
+                    Op(OpType::EndInline, operand, loc)
                 }
 
                 op => Err(format_block("Expected `end` to close a valid block", &op, loc))?,
@@ -335,7 +335,7 @@ impl Parser {
         let mut i = 0;
         let mut colons: u8 = 0;
         while let Some(tok) = self.get(i) {
-            match (colons, tok.token_type) {
+            match (colons, tok.get_type()) {
                 (1, TokenType::Data(ValueType::Typ(Value::INT))) => {
                     self.parse_memory(word, prog).try_success()?;
                 }
@@ -406,7 +406,7 @@ impl Parser {
                     "Missing body or contract necessary to infer the type of the word: `{}`",
                     word.as_str(prog)
                 );
-                err_loc(error, word.loc).into()
+                err_loc(error, word.loc()).into()
             }
 
             _ => invalid_context(tok.clone(), word.as_str(prog)).into(),
@@ -452,7 +452,7 @@ impl Parser {
     }
 
     fn parse_static_ctx(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        if let Ok((eval, skip)) = self.compile_eval(prog, word.loc).value {
+        if let Ok((eval, skip)) = self.compile_eval(prog, word.loc()).value {
             if &eval != Value::ANY {
                 self.skip(skip);
                 let struct_type = ValueUnit::new(word, &eval).into();
@@ -468,7 +468,7 @@ impl Parser {
     fn define_proc(
         &mut self, name: &LocWord, contract: Contract, prog: &mut Program, mode: ModeType,
     ) -> LazyResult<Op> {
-        let loc = name.loc;
+        let loc = name.loc();
 
         if self.inside_proc() {
             let error = "Cannot define a procedure inside of another procedure";
@@ -488,7 +488,7 @@ impl Parser {
             OpType::PrepProc,
             OpType::PrepInline
         );
-        Ok(self.push_block(Op::new(prep, operand, loc)))
+        Ok(self.push_block(Op(prep, operand as i32, loc)))
     }
 
     fn parse_procedure(
@@ -497,7 +497,7 @@ impl Parser {
         let mut ins = Vec::new();
         let mut outs = Vec::new();
         let mut arrow = false;
-        let loc = word.loc;
+        let loc = word.loc();
 
         self.expect_keyword(KeywordType::Colon, "`:` after procedure declaration", loc)?;
         while let Some(tok) = self.next() {
@@ -536,7 +536,7 @@ impl Parser {
     }
 
     fn parse_memory(&mut self, word: &LocWord, prog: &mut Program) -> LazyResult<()> {
-        let loc = word.loc;
+        let loc = word.loc();
 
         self.expect_keyword(KeywordType::Colon, "`:` after `mem`", loc)?;
         let value = self.expect_by(|tok| tok == Value::INT, "memory size after `:`", loc)?;
@@ -549,13 +549,13 @@ impl Parser {
     }
 
     fn parse_struct(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        let loc = word.loc;
+        let loc = word.loc();
 
         self.expect_keyword(KeywordType::Colon, "`:` after keyword `struct`", loc)?;
         let mut members = Vec::new();
 
         while let Some(tok) = self.peek() {
-            if tok.token_type == TokenType::Keyword {
+            if tok == TokenType::Keyword {
                 self.expect_keyword(KeywordType::End, "`end` after struct declaration", loc)?;
                 prog.structs_types.push(StructDef::new(word, members));
                 success!();
@@ -592,7 +592,7 @@ impl Parser {
     fn parse_var(
         &mut self, word: &LocWord, prog: &mut Program, initialize: bool,
     ) -> LazyResult<()> {
-        let loc = word.loc;
+        let loc = word.loc();
         let kind = self.expect_type_kind("variable type", prog, loc)?;
 
         if initialize {
@@ -645,14 +645,15 @@ impl Parser {
         let mut bindings = vec![];
 
         while let Some(tok) = self.peek() {
-            if tok.token_type == TokenType::Keyword {
+            if tok == TokenType::Keyword {
                 self.expect_keyword(KeywordType::In, "`in` after let bind declaration", loc)?;
 
                 bindings.reverse();
                 let proc_bindings = &mut self.current_proc_mut(prog).unwrap().bindings;
                 proc_bindings.push(Binding(bindings));
 
-                let bind_block = Op::new(OpType::BindStack, proc_bindings.len() - 1, loc);
+                let operand = (proc_bindings.len() - 1).operand();
+                let bind_block = Op(OpType::BindStack, operand, loc);
                 let result = self.push_block(bind_block);
 
                 return OptionErr::new(vec![result]);
@@ -681,17 +682,19 @@ impl Parser {
     ) -> LazyResult<()> {
         let stk = prog.get_value_def(stk).clone();
 
-        let (mut result, eval) = match self.compile_eval_n(stk.count(), prog, word.loc).value {
+        let (mut result, eval) = match self.compile_eval_n(stk.count(), prog, word.loc()).value {
             Ok(value) => value,
             Err(either) => {
                 return Err(either.either(
-                    |tok| err_loc("Failed to parse an valid struct value at compile-time", tok.loc),
+                    |tok| {
+                        err_loc("Failed to parse an valid struct value at compile-time", tok.loc())
+                    },
                     |err| err,
                 ))
             }
         };
 
-        let end_token = self.skip(eval).unwrap();
+        let end_loc = self.skip(eval).unwrap().loc();
         let stk_name = stk.str_key();
 
         let struct_type = if result.len() == 1 {
@@ -700,13 +703,13 @@ impl Parser {
 
             match members.last().unwrap() {
                 StructType::Root(_) => todo!(),
-                StructType::Unit(typ) => expect_type(&eval, typ.get_type(), end_token.loc)?,
+                StructType::Unit(typ) => expect_type(&eval, typ.get_type(), end_loc)?,
             };
 
             StructType::Unit(ValueUnit::new(word, &eval))
         } else {
             let contract: Vec<_> = stk.units().map(Typed::get_type).collect();
-            result.expect_exact(&contract, end_token.loc)?;
+            result.expect_exact(&contract, end_loc)?;
 
             let mut eval_items = result
                 .into_iter()
@@ -770,7 +773,7 @@ impl Parser {
                 prog.lex_next_token(&mut lex).value?,
                 |tok| tok == TokenType::Word,
                 "include file name",
-                token.loc,
+                token.loc(),
             )?;
 
             let include_path = prog.get_word(tok);

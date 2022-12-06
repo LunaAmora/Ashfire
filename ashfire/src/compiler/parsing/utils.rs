@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use ashfire_types::{
-    core::{IRToken, Op, TokenType},
+    core::{IRToken, Op, Operand, TokenType, Typed},
     data::ValueType,
     enums::KeywordType,
 };
@@ -19,7 +19,7 @@ impl Parser {
         let word = self.expect_word(error_text.clone(), loc)?;
 
         match self.peek() {
-            Some(tok) => match tok.token_type {
+            Some(tok) => match tok.get_type() {
                 TokenType::Keyword if tok.as_keyword() == KeywordType::Colon => {
                     self.next();
                     self.expect_type_kind(error_text, prog, loc)
@@ -46,8 +46,8 @@ impl Parser {
     pub fn check_type_kind<S: Display + 'static + Clone>(
         &mut self, tok: IRToken, error_text: S, prog: &Program,
     ) -> LazyResult<ValueType> {
-        let loc = tok.loc;
-        match tok.token_type {
+        let IRToken(token_type, operand, loc) = tok;
+        match token_type {
             TokenType::Keyword => {
                 let word_error = format!("{error_text} after `*`");
                 let ref_word = self.expect_word(word_error.clone(), loc)?;
@@ -57,7 +57,7 @@ impl Parser {
             }
 
             TokenType::Word => {
-                let name_type = LocWord::new(tok, loc);
+                let name_type = LocWord(operand.str_key(), loc);
 
                 prog.get_type(&name_type)
                     .map_or_else(|| Err(unexpected_token(name_type.into(), error_text)), Ok)
@@ -77,7 +77,7 @@ impl Parser {
         &mut self, error_text: S, loc: Loc,
     ) -> LazyResult<LocWord> {
         self.expect_by(|tok| tok == TokenType::Word, error_text, loc)
-            .map(|tok| LocWord::new(&tok, tok.loc))
+            .map(|tok| LocWord(tok.str_key(), tok.2))
     }
 
     pub fn expect_by<S: Display + 'static>(
@@ -102,7 +102,7 @@ pub fn unexpected_end<S: Display + 'static>(desc: S, loc: Loc) -> LazyError {
 }
 
 pub fn unexpected_token<S: Display + 'static>(tok: IRToken, desc: S) -> LazyError {
-    let IRToken { token_type, loc, .. } = tok;
+    let IRToken(token_type, _, loc) = tok;
 
     LazyError::new(move |f| {
         format!(
@@ -119,7 +119,7 @@ pub fn invalid_context(tok: IRToken, word: &str) -> LazyError {
 }
 
 pub fn invalid_token<S: Display + 'static>(tok: IRToken, error: S) -> LazyError {
-    let IRToken { token_type, loc, .. } = tok;
+    let IRToken(token_type, _, loc) = tok;
 
     LazyError::new(move |f| {
         format!(
@@ -132,7 +132,7 @@ pub fn invalid_token<S: Display + 'static>(tok: IRToken, error: S) -> LazyError 
 }
 
 pub fn format_block<S: Display + 'static>(error: S, op: &Op, loc: Loc) -> LazyError {
-    let (op_loc, typ) = (op.loc, op.op_type);
+    let &Op(typ, _, op_loc) = op;
     LazyError::new(move |f| {
         format!(
             concat!(

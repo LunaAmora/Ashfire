@@ -1,7 +1,7 @@
 use std::{fs::File, io::Read, path::Path, str::FromStr};
 
 use ashfire_types::{
-    core::{IRToken, TokenType, INT},
+    core::{IRToken, Operand, TokenType, INT},
     enums::KeywordType,
 };
 use firelib::{lazy::LazyCtx, lexer::*, Context, Result, ShortCircuit};
@@ -59,14 +59,14 @@ impl Program {
             .or_return(OptionErr::default)?
             .strip_suffix('\"')
             .with_err_ctx(move || err_loc("Missing closing `\"` in string literal", loc))
-            .map(|name| self.push_data(name.to_owned(), escaped_len(name)))
-            .map(|operand| IRToken::new(TokenType::Str, operand, loc))
+            .map(|name| self.push_data(name.to_owned(), escaped_len(name)).operand())
+            .map(|operand| IRToken(TokenType::Str, operand, loc))
             .map(OptionErr::new)?
     }
 
     fn define_word(&mut self, tok: &Token) -> OptionErr<IRToken> {
-        let operand = self.get_or_intern(&tok.name);
-        OptionErr::new(IRToken::new(TokenType::Word, operand, tok.loc))
+        let operand = self.get_or_intern(&tok.name).operand();
+        OptionErr::new(IRToken(TokenType::Word, operand, tok.loc))
     }
 }
 
@@ -81,7 +81,7 @@ fn parse_as_char(tok: &Token) -> OptionErr<IRToken> {
 
     parse_char(word, loc)
         .value?
-        .map(|operand| IRToken::new(INT, operand, loc))
+        .map(|operand| IRToken(INT, operand, loc))
         .into()
 }
 
@@ -123,14 +123,14 @@ fn escaped_len(name: &str) -> usize {
 fn parse_as_keyword(tok: &Token) -> Option<IRToken> {
     KeywordType::from_str(tok.name.as_str())
         .ok()
-        .map(|k| IRToken::new(TokenType::Keyword, k as i32, tok.loc))
+        .map(|k| IRToken(TokenType::Keyword, k as i32, tok.loc))
 }
 
 fn parse_as_number(tok: &Token) -> Option<IRToken> {
     tok.name
         .parse::<i32>()
         .ok()
-        .map(|operand| IRToken::new(INT, operand, tok.loc))
+        .map(|operand| IRToken(INT, operand, tok.loc))
 }
 
 fn try_parse_hex(word: &str) -> Option<i32> {

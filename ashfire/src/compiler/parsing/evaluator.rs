@@ -40,7 +40,7 @@ impl Parser {
                             "in the end of the compile-time evaluation, ",
                             "but found {}:\n{}"
                         ),
-                        f.format(Fmt::Loc(tok.loc)),
+                        f.format(Fmt::Loc(tok.loc())),
                         n,
                         fold_bool!(n > 1, "s", ""),
                         len,
@@ -68,51 +68,53 @@ pub trait Evaluator {
 
 impl Evaluator for EvalStack<IRToken> {
     fn evaluate(&mut self, tok: IRToken, prog: &Program) -> DoubleResult<()> {
-        match tok.token_type {
+        let IRToken(token_type, operand, loc) = tok;
+
+        match token_type {
             TokenType::Keyword => match tok.as_keyword() {
                 KeywordType::Drop => {
-                    self.expect_pop(tok.loc)?;
+                    self.expect_pop(loc)?;
                 }
 
-                KeywordType::Dup => self.pop_extend(|[a]| [a.clone(), a], tok.loc)?,
-                KeywordType::Swap => self.pop_extend(|[a, b]| [b, a], tok.loc)?,
-                KeywordType::Over => self.pop_extend(|[a, b]| [a.clone(), b, a], tok.loc)?,
-                KeywordType::Rot => self.pop_extend(|[a, b, c]| [b, c, a], tok.loc)?,
+                KeywordType::Dup => self.pop_extend(|[a]| [a.clone(), a], loc)?,
+                KeywordType::Swap => self.pop_extend(|[a, b]| [b, a], loc)?,
+                KeywordType::Over => self.pop_extend(|[a, b]| [a.clone(), b, a], loc)?,
+                KeywordType::Rot => self.pop_extend(|[a, b, c]| [b, c, a], loc)?,
 
                 KeywordType::Equal => self.pop_push_arity(
-                    |[a, b]| IRToken::new(BOOL, fold_bool!(*a == *b, 1, 0), tok.loc),
+                    |[a, b]| IRToken(BOOL, fold_bool!(*a == *b, 1, 0), loc),
                     ArityType::Same,
-                    tok.loc,
+                    loc,
                 )?,
 
-                _ => Err(Either::Left(IRToken::new(TokenType::Keyword, &tok, tok.loc)))?,
+                _ => Err(Either::Left(IRToken(TokenType::Keyword, *tok, loc)))?,
             },
 
             TokenType::Word => match prog.get_intrinsic_type(prog.get_word(&tok)) {
                 Some(intrinsic) => match intrinsic {
                     IntrinsicType::Plus => self.pop_push_arity(
-                        |[a, b]| IRToken::new(a.token_type, *a + *b, tok.loc),
+                        |[a, b]| IRToken(a.get_type(), *a + *b, loc),
                         ArityType::Same,
-                        tok.loc,
+                        loc,
                     )?,
 
                     IntrinsicType::Minus => self.pop_push_arity(
-                        |[a, b]| IRToken::new(a.token_type, *a - *b, tok.loc),
+                        |[a, b]| IRToken(a.get_type(), *a - *b, loc),
                         ArityType::Same,
-                        tok.loc,
+                        loc,
                     )?,
 
                     IntrinsicType::Cast(n) => self.pop_push_arity(
-                        |[a]| IRToken::new(ValueType::from(n).get_type(), a, tok.loc),
+                        |[a]| IRToken(ValueType::from(n).get_type(), *a, loc),
                         ArityType::Any,
-                        tok.loc,
+                        loc,
                     )?,
 
-                    _ => Err(Either::Left(IRToken::new(TokenType::Word, &tok, tok.loc)))?,
+                    _ => Err(Either::Left(IRToken(TokenType::Word, *tok, loc)))?,
                 },
 
                 None => match prog.get_const_by_name(&tok.str_key()) {
-                    Some(constant) => self.push((constant, tok.loc).into()),
+                    Some(constant) => self.push((constant, loc).into()),
                     None => Err(Either::Left(tok))?,
                 },
             },
@@ -120,10 +122,7 @@ impl Evaluator for EvalStack<IRToken> {
             TokenType::Str => {
                 let (size, _) = prog.get_data(&tok).data();
 
-                self.extend([
-                    IRToken::new(INT, size, tok.loc),
-                    IRToken::new(STR, tok.operand, tok.loc),
-                ]);
+                self.extend([IRToken(INT, size, loc), IRToken(STR, operand, loc)]);
             }
 
             TokenType::Data(ValueType::Typ(value)) => match value {
