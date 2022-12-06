@@ -58,18 +58,18 @@ impl Program {
     pub fn new() -> Self {
         let mut interner = Rodeo::new();
 
-        let names = ["", "int", "bool", "ptr", "str", "len", "data", "any"];
-        let [_, int, bool, ptr, str, len, data, any] = intern_all(&mut interner, names);
+        let names = ["", "any", "bool", "int", "ptr", "str", "len", "data"];
+        let [_, any, bool, int, ptr, str, len, data] = intern_all(&mut interner, names);
 
         let structs_types = vec![
-            (int, Value::Int).into(),
-            (bool, Value::Bool).into(),
-            (ptr, Value::Ptr).into(),
+            (any, Value::ANY).into(),
+            (bool, Value::BOOL).into(),
+            (int, Value::INT).into(),
+            (ptr, Value::PTR).into(),
             StructDef::new(&str, vec![
-                StructType::unit(&len, ValueType::Typ(Value::Int)),
-                StructType::unit(&data, ValueType::Typ(Value::Ptr)),
+                StructType::unit(&len, ValueType::Typ(Value::INT)),
+                StructType::unit(&data, ValueType::Typ(Value::PTR)),
             ]),
-            (any, Value::Any).into(),
         ];
 
         Self { structs_types, interner, ..Default::default() }
@@ -173,12 +173,12 @@ impl Program {
 
     fn data_name(&self, value: Value) -> String {
         match value {
-            Value::Int => "Integer",
-            Value::Bool => "Boolean",
-            Value::Ptr => "Pointer",
-            Value::Str => "String",
-            Value::Any => "Any",
-            Value::Type(n) => self.structs_types[n].as_str(self),
+            Value::INT => "Integer",
+            Value::BOOL => "Boolean",
+            Value::PTR => "Pointer",
+            Value::STR => "String",
+            Value::ANY => "Any",
+            Value(n) => self.structs_types[n].as_str(self),
         }
         .to_owned()
     }
@@ -199,9 +199,9 @@ impl Program {
     fn data_display<O: Operand>(value: Value, operand: O) -> String {
         let operand = operand.operand();
         match value {
-            Value::Bool => fold_bool!(operand != 0, "True", "False").to_owned(),
-            Value::Ptr => format!("*{operand}"),
-            Value::Str | Value::Any | Value::Int | Value::Type(_) => operand.to_string(),
+            Value::BOOL => fold_bool!(operand != 0, "True", "False").to_owned(),
+            Value::PTR => format!("*{operand}"),
+            Value(_) => operand.to_string(),
         }
     }
 
@@ -215,10 +215,10 @@ impl Program {
     }
 
     pub fn loc_fmt<L: Location>(&self, loc: L) -> String {
-        let loc = loc.loc();
+        let Loc { file_index, line, col } = loc.loc();
         self.included_sources
-            .get(loc.file_index)
-            .map_or_else(String::new, |l| format!("{}:{}:{} ", l.as_str(self), loc.line, loc.col))
+            .get(file_index)
+            .map_or_else(String::new, |l| format!("{}:{line}:{col} ", l.as_str(self)))
     }
 
     pub fn format(&self, fmt: Fmt) -> String {
@@ -257,7 +257,7 @@ impl Program {
         self.structs_types
             .iter()
             .position(|id| word.eq(id))
-            .map(Value::from)
+            .map(Value)
     }
 
     /// Searches for a `const` that matches the given [`StrKey`].

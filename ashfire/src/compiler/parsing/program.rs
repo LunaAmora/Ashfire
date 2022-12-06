@@ -62,11 +62,11 @@ impl Program {
     }
 
     pub fn get_value_def(&self, value: ValueType) -> &StructDef {
-        let ValueType::Typ(val) = value else {
+        let ValueType::Typ(Value(index)) = value else {
             todo!();
         };
 
-        &self.structs_types[usize::from(val)]
+        &self.structs_types[index]
     }
 
     pub fn get_type_def<O: Operand>(&self, word_id: O) -> Option<&StructDef> {
@@ -79,14 +79,14 @@ impl Program {
         self.structs_types
             .iter()
             .position(|def| word.eq(def))
-            .map(|i| ValueType::Typ(Value::from(i)))
+            .map(|i| ValueType::Typ(Value(i)))
     }
 
     pub fn get_type_ptr(&self, word: &StrKey) -> Option<ValueType> {
         self.structs_types
             .iter()
             .position(|def| word.eq(def))
-            .map(|i| ValueType::Ptr(Value::from(i)))
+            .map(|i| ValueType::Ptr(Value(i)))
     }
 
     pub fn get_intrinsic(&self, word: &LocWord) -> Option<Vec<Op>> {

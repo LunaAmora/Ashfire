@@ -127,7 +127,7 @@ impl Evaluator for EvalStack<IRToken> {
             }
 
             TokenType::Data(ValueType::Typ(value)) => match value {
-                Value::Int | Value::Bool | Value::Ptr => self.push(tok),
+                Value::INT | Value::BOOL | Value::PTR => self.push(tok),
                 _ => Err(Either::Left(tok))?,
             },
 

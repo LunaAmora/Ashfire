@@ -282,7 +282,7 @@ impl Program {
             todo!();
         };
 
-        if matches!(val, Value::Str) {
+        if matches!(*val, Value::STR) {
             let offset = self.get_data(var.value()).offset();
             return offset + self.data_start();
         }

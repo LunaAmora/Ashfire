@@ -85,11 +85,11 @@ impl Operand for StrKey {
     }
 }
 
-pub const INT: TokenType = TokenType::Data(ValueType::Typ(Value::Int));
-pub const BOOL: TokenType = TokenType::Data(ValueType::Typ(Value::Bool));
-pub const PTR: TokenType = TokenType::Data(ValueType::Typ(Value::Ptr));
-pub const STR: TokenType = TokenType::Data(ValueType::Typ(Value::Str));
-pub const ANY: TokenType = TokenType::Data(ValueType::Typ(Value::Any));
+pub const ANY: TokenType = TokenType::Data(ValueType::Typ(Value::ANY));
+pub const BOOL: TokenType = TokenType::Data(ValueType::Typ(Value::BOOL));
+pub const INT: TokenType = TokenType::Data(ValueType::Typ(Value::INT));
+pub const PTR: TokenType = TokenType::Data(ValueType::Typ(Value::PTR));
+pub const STR: TokenType = TokenType::Data(ValueType::Typ(Value::STR));
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TokenType {

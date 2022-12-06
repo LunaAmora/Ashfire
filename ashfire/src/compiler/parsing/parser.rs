@@ -101,12 +101,12 @@ impl Parser {
 
             TokenType::Data(data) => match data {
                 ValueType::Typ(val) => match val {
-                    Value::Type(_) => lazybail!(
+                    Value::INT | Value::BOOL | Value::PTR => (OpType::PushData(val), operand, loc),
+                    Value(_) => lazybail!(
                         |f| "{}Value type not valid here: `{}`",
                         f.format(Fmt::Loc(loc)),
                         f.format(Fmt::Typ(val.get_type()))
                     ),
-                    _ => (OpType::PushData(val), operand, loc),
                 },
                 ValueType::Ptr(ptr) => lazybail!(
                     |f| "{}Data pointer type not valid here: `{}`",
@@ -336,7 +336,7 @@ impl Parser {
         let mut colons: u8 = 0;
         while let Some(tok) = self.get(i) {
             match (colons, tok.token_type) {
-                (1, TokenType::Data(ValueType::Typ(Value::Int))) => {
+                (1, TokenType::Data(ValueType::Typ(Value::INT))) => {
                     self.parse_memory(word, prog).try_success()?;
                 }
 
@@ -453,7 +453,7 @@ impl Parser {
 
     fn parse_static_ctx(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
         if let Ok((eval, skip)) = self.compile_eval(prog, word.loc).value {
-            if &eval != Value::Any {
+            if &eval != Value::ANY {
                 self.skip(skip);
                 let struct_type = ValueUnit::new(word, &eval).into();
                 prog.register_const(struct_type);
@@ -539,7 +539,7 @@ impl Parser {
         let loc = word.loc;
 
         self.expect_keyword(KeywordType::Colon, "`:` after `mem`", loc)?;
-        let value = self.expect_by(|tok| tok == Value::Int, "memory size after `:`", loc)?;
+        let value = self.expect_by(|tok| tok == Value::INT, "memory size after `:`", loc)?;
         self.expect_keyword(KeywordType::End, "`end` after memory size", loc)?;
 
         let ctx = prog.push_mem_by_context(self, word, value.index());

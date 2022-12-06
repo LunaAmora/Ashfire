@@ -6,13 +6,14 @@ use super::core::{Operand, StrKey, TokenType, Typed, WORD_USIZE};
 use crate::core::IRToken;
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
-pub enum Value {
-    Int,
-    Bool,
-    Ptr,
-    Str,
-    Any,
-    Type(usize),
+pub struct Value(pub usize);
+
+impl Value {
+    pub const ANY: Self = Self(0);
+    pub const BOOL: Self = Self(1);
+    pub const INT: Self = Self(2);
+    pub const PTR: Self = Self(3);
+    pub const STR: Self = Self(4);
 }
 
 impl Typed for Value {
@@ -27,32 +28,6 @@ impl Operand for Value {
     }
 }
 
-impl From<usize> for Value {
-    fn from(value: usize) -> Self {
-        match value {
-            0 => Self::Int,
-            1 => Self::Bool,
-            2 => Self::Ptr,
-            3 => Self::Str,
-            4 => Self::Any,
-            i => Self::Type(i),
-        }
-    }
-}
-
-impl From<Value> for usize {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Int => 0,
-            Value::Bool => 1,
-            Value::Ptr => 2,
-            Value::Str => 3,
-            Value::Any => 4,
-            Value::Type(i) => i,
-        }
-    }
-}
-
 #[derive(Debug, Eq, Clone, Copy)]
 pub enum ValueType {
     Typ(Value),
@@ -61,16 +36,11 @@ pub enum ValueType {
 
 impl PartialEq for ValueType {
     fn eq(&self, other: &Self) -> bool {
-        let (same, &l, &r) = match (self, other) {
-            (Self::Ptr(l), Self::Ptr(r)) | (Self::Typ(l), Self::Typ(r)) => (true, l, r),
-            (Self::Ptr(l), Self::Typ(r)) | (Self::Typ(l), Self::Ptr(r)) => (false, l, r),
+        let ((Self::Ptr(l), Self::Ptr(r)) | (Self::Typ(l), Self::Typ(r))) = (*self, *other) else {
+            return false;
         };
 
-        if same {
-            l == r || (l == Value::Ptr && r == Value::Str)
-        } else {
-            l == Value::Ptr && r == Value::Str
-        }
+        l == r || (l == Value::PTR && r == Value::STR)
     }
 }
 
@@ -90,9 +60,9 @@ impl Typed for ValueType {
 
 impl Operand for ValueType {
     fn operand(&self) -> i32 {
-        match self {
-            Self::Typ(value) => 1 + usize::from(*value) as i32,
-            Self::Ptr(value) => -(1 + usize::from(*value) as i32),
+        match *self {
+            Self::Typ(Value(value)) => 1 + value as i32,
+            Self::Ptr(Value(value)) => -(1 + value as i32),
         }
     }
 
@@ -105,8 +75,8 @@ impl From<i32> for ValueType {
     fn from(value: i32) -> Self {
         match value {
             0 => unimplemented!("Not a valid value"),
-            1.. => Self::Typ(Value::from((value - 1) as usize)),
-            _ => Self::Ptr(Value::from((-value - 1) as usize)),
+            1.. => Self::Typ(Value((value - 1) as usize)),
+            _ => Self::Ptr(Value((-value - 1) as usize)),
         }
     }
 }

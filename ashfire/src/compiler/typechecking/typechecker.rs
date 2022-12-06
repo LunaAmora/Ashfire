@@ -54,16 +54,16 @@ impl TypeChecker {
         let loc = op.loc;
         match op.op_type {
             OpType::PushData(value) => match value {
-                Value::Int | Value::Bool | Value::Ptr => self.push_value(value, loc),
-                Value::Str | Value::Any | Value::Type(_) => unreachable!(),
+                Value::INT | Value::BOOL | Value::PTR => self.push_value(value, loc),
+                Value(_) => unreachable!(),
             },
 
-            OpType::PushStr => self.extend_value([Value::Int, Value::Ptr], loc),
+            OpType::PushStr => self.extend_value([Value::INT, Value::PTR], loc),
 
             OpType::PushLocalMem |
             OpType::PushGlobalMem |
             OpType::PushLocal |
-            OpType::PushGlobal => self.push_value(Value::Ptr, loc),
+            OpType::PushGlobal => self.push_value(Value::PTR, loc),
 
             OpType::Offset => match self.expect_struct_pointer(program, ip)? {
                 TokenType::Data(ValueType::Typ(offset_type)) => {
@@ -331,8 +331,7 @@ impl TypeChecker {
             }
 
             OpType::Unpack => match self.data_stack.expect_pop(op.loc)?.get_type() {
-                TokenType::Data(ValueType::Ptr(n)) => {
-                    let index = usize::from(n);
+                TokenType::Data(ValueType::Ptr(Value(index))) => {
                     let stk = &program.structs_types[index];
 
                     for typ in stk.units().map(Typed::get_type) {
@@ -401,8 +400,8 @@ impl TypeChecker {
         let op = &prog.ops[ip];
         let loc = op.loc;
         match self.data_stack.expect_pop(loc)?.get_type() {
-            TokenType::Data(ValueType::Ptr(value)) => {
-                let stk = &prog.structs_types[usize::from(value)];
+            TokenType::Data(ValueType::Ptr(Value(index))) => {
+                let stk = &prog.structs_types[index];
                 let word = &op.str_key();
 
                 let Some((offset, index)) = stk.members().get_offset(word) else {
