@@ -127,6 +127,10 @@ impl ValueUnit {
         Self { name: *name, value: typed.operand(), value_type }
     }
 
+    pub fn size(&self) -> usize {
+        WORD_USIZE
+    }
+
     pub fn value(&self) -> i32 {
         self.value
     }
@@ -316,7 +320,7 @@ impl StructInfo for StructType {
     fn size(&self) -> usize {
         match self {
             Self::Root(s) => s.size(),
-            Self::Unit(_) => WORD_USIZE,
+            Self::Unit(v) => v.size(),
         }
     }
 }

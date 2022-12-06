@@ -2,7 +2,7 @@ use ashfire_types::{
     core::*,
     data::*,
     enums::{IntrinsicType, OpType},
-    proc::Mode,
+    proc::{Binding, Mode},
 };
 use ashlib::{EvalStack, UncheckedStack};
 use firelib::{lazy::LazyCtx, lexer::Loc, Result};
@@ -20,7 +20,7 @@ struct TypeBlock(DataStack, usize);
 #[derive(Default)]
 pub struct TypeChecker {
     block_stack: Vec<TypeBlock>,
-    _bind_stack: Vec<TypeFrame>,
+    bind_stack: Vec<(TypeFrame, usize)>,
     data_stack: DataStack,
     current_proc: Option<usize>,
 }
@@ -64,13 +64,6 @@ impl TypeChecker {
             OpType::PushGlobalMem |
             OpType::PushLocal |
             OpType::PushGlobal => self.push_value(Value::Ptr, loc),
-
-            OpType::OffsetLoad => match self.expect_struct_pointer(program, ip)? {
-                TokenType::Data(ValueType::Typ(typ)) => {
-                    self.push_frame(ValueType::Ptr(typ).get_type(), loc);
-                }
-                _ => todo!(),
-            },
 
             OpType::Offset => match self.expect_struct_pointer(program, ip)? {
                 TokenType::Data(ValueType::Typ(offset_type)) => {
@@ -235,9 +228,55 @@ impl TypeChecker {
                 self.exit_proc();
             }
 
-            OpType::BindStack => todo!(),
-            OpType::PushBind => todo!(),
-            OpType::PopBind => todo!(),
+            OpType::BindStack => {
+                let proc = self.current_proc(program).unwrap();
+                let Binding(bind) = &proc.bindings[op.index()];
+                let mut binds = vec![];
+
+                for (_, typ) in bind.iter() {
+                    if let Some(id) = typ {
+                        let value = ValueType::from(*id);
+
+                        let type_def = program.get_value_def(value);
+                        let contract: Vec<_> = type_def.units().map(Typed::get_type).collect();
+
+                        self.data_stack.expect_contract_pop(&contract, loc)?;
+
+                        binds.push((TypeFrame::from((value.get_type(), loc)), type_def.size()));
+                    } else {
+                        let top = self.data_stack.expect_pop(loc)?;
+                        binds.push((top, WORD_USIZE));
+                    }
+                }
+
+                self.bind_stack.extend(binds.iter().rev());
+            }
+
+            OpType::LoadBind => {
+                let (typ, offset) = self.get_bind_type_offset(op.index());
+
+                self.push_frame(typ, loc);
+                program.set_operand(ip, offset);
+            }
+
+            OpType::PushBind => {
+                let (typ, offset) = self.get_bind_type_offset(op.index());
+
+                if let TokenType::Data(ValueType::Typ(val)) = typ {
+                    self.push_frame(ValueType::Ptr(val).get_type(), loc);
+                } else {
+                    todo!()
+                }
+
+                program.set_operand(ip, offset);
+            }
+
+            OpType::PopBind => {
+                let proc = self.current_proc(program).unwrap();
+                let binds = &proc.bindings[op.index()];
+                self.bind_stack
+                    .truncate(self.bind_stack.len() - binds.0.len());
+            }
 
             OpType::While => {
                 self.push_stack(ip);
@@ -345,6 +384,17 @@ impl TypeChecker {
 
     fn push_frame(&mut self, typ: TokenType, loc: Loc) {
         self.data_stack.push((typ, loc).into());
+    }
+
+    fn get_bind_type_offset(&mut self, operand: usize) -> (TokenType, usize) {
+        let mut offset = 0;
+        for ((_, size), _) in self.bind_stack.iter().rev().zip(0..=operand) {
+            offset += size;
+        }
+
+        let (bind, _) = self.bind_stack[self.bind_stack.len() - 1 - operand];
+
+        (bind.get_type(), offset)
     }
 
     fn expect_struct_pointer(&mut self, prog: &mut Program, ip: usize) -> LazyResult<TokenType> {

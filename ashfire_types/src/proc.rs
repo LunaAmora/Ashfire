@@ -1,11 +1,10 @@
 use super::{
-    core::{OffsetWord, StrKey, TokenType, WORD_SIZE},
+    core::{word_aligned, OffsetWord, StrKey, TokenType, WORD_SIZE},
     data::{StructInfo, StructType},
 };
 
 #[derive(Default)]
 pub struct Data {
-    pub bindings: Vec<StrKey>,
     pub local_vars: Vec<StructType>,
     pub local_mems: Vec<OffsetWord>,
     mem_size: usize,
@@ -19,11 +18,12 @@ impl Data {
     }
 
     pub fn total_size(&self) -> i32 {
-        (self.mem_size + self.local_vars.iter().fold(0, |acc, var| acc + var.size())) as i32
+        word_aligned(self.mem_size) +
+            self.local_vars.iter().fold(0, |acc, var| acc + var.size()) as i32
     }
 
     pub fn var_mem_offset(&self, index: i32) -> i32 {
-        self.mem_size as i32 + (index + 1) * WORD_SIZE
+        word_aligned(self.mem_size) + ((index + 1) * WORD_SIZE)
     }
 }
 
@@ -60,16 +60,20 @@ impl Default for Mode {
 }
 
 #[derive(Default)]
+pub struct Binding(pub Vec<(StrKey, Option<i32>)>);
+
+#[derive(Default)]
 pub struct Proc {
     pub name: StrKey,
     pub contract: Contract,
     pub mode: Mode,
+    pub bindings: Vec<Binding>,
 }
 
 impl Proc {
     pub fn new(name: &StrKey, contract: Contract, mode: ModeType) -> Self {
         let mode = Mode::from(mode);
-        Self { name: *name, contract, mode }
+        Self { name: *name, contract, mode, ..Default::default() }
     }
 
     pub fn get_data(&self) -> Option<&Data> {
@@ -84,6 +88,10 @@ impl Proc {
             Mode::Declared(data) | Mode::Exported(data) => Some(data),
             _ => None,
         }
+    }
+
+    pub fn bindings(&self) -> impl Iterator<Item = &(StrKey, Option<i32>)> {
+        self.bindings.iter().rev().flat_map(|bind| bind.0.iter())
     }
 
     pub fn is_import(&self) -> bool {

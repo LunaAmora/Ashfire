@@ -2,9 +2,9 @@ use std::io::Write;
 
 use ashfire_types::{
     core::{Op, Operand, WORD_SIZE, WORD_USIZE},
-    data::{StructInfo, Value, ValueUnit},
+    data::{StructInfo, Value, ValueType, ValueUnit},
     enums::{IntrinsicType, OpType},
-    proc::{Mode, Proc},
+    proc::{Binding, Mode, Proc},
 };
 use firelib::{Context, Result};
 use wasm_backend::{wasm_types::*, Module};
@@ -46,7 +46,7 @@ impl Generator {
 
         let stk = wasm.add_global("LOCAL_STACK", WasmType::I32, program.stack_start(), true);
 
-        let aloc_local = wasm.add_fn("aloc_local", i1, &[], vec![
+        wasm.add_fn("aloc_local", i1, &[], vec![
             Get(global, Id(stk)),
             Get(local, Id(0)),
             I32(add),
@@ -60,12 +60,12 @@ impl Generator {
             Set(global, Id(stk)),
         ]);
 
-        wasm.add_fn("bind_local", i1, &[], vec![
+        wasm.add_fn("bind_local", i2, &[], vec![
             Get(global, Id(stk)),
+            Get(local, Id(1)),
+            I32(sub),
             Get(local, Id(0)),
             I32(store),
-            Const(WORD_SIZE),
-            Call(Id(aloc_local)),
         ]);
 
         wasm.add_fn("push_local", i1, i1, vec![Get(global, Id(stk)), Get(local, Id(0)), I32(sub)]);
@@ -120,15 +120,12 @@ impl FuncGen {
             }
 
             OpType::PushLocalMem => {
-                let ptr = self.bind_count * WORD_SIZE + op.operand;
+                let ptr = self.bind_offset + op.operand;
                 self.extend([Const(ptr), Call("push_local".into())]);
             }
 
             OpType::PushLocal => {
-                let ptr = proc
-                    .get_data()
-                    .unwrap()
-                    .var_mem_offset(self.bind_count + op.operand);
+                let ptr = self.bind_offset + proc.get_data().unwrap().var_mem_offset(op.operand);
                 self.extend([Const(ptr), Call("push_local".into())]);
             }
 
@@ -137,7 +134,7 @@ impl FuncGen {
                 self.push(Const(ptr));
             }
 
-            OpType::Offset | OpType::OffsetLoad => self.extend([Const(op.operand), I32(add)]),
+            OpType::Offset => self.extend([Const(op.operand), I32(add)]),
 
             OpType::Intrinsic => match IntrinsicType::from(op.operand) {
                 IntrinsicType::Div => todo!(),
@@ -185,9 +182,49 @@ impl FuncGen {
 
             OpType::EndIf | OpType::EndElse => self.push(End),
 
-            OpType::BindStack => todo!(),
-            OpType::PushBind => todo!(),
-            OpType::PopBind => todo!(),
+            OpType::BindStack => {
+                let Binding(binds) = &proc.bindings[op.index()];
+                let mut inst = vec![];
+                let mut bind_size = 0;
+
+                for (_, typ) in binds {
+                    if let Some(id) = typ {
+                        let value = ValueType::from(*id);
+                        let type_def = prog.get_value_def(value);
+
+                        for unit in type_def.units() {
+                            bind_size += unit.size() as i32;
+                            inst.extend([Const(bind_size), Call("bind_local".into())]);
+                        }
+                    } else {
+                        bind_size += WORD_SIZE;
+                        inst.extend([Const(bind_size), Call("bind_local".into())]);
+                    }
+                }
+
+                self.extend(vec![Const(bind_size), Call("aloc_local".into())]);
+                self.extend(inst);
+                self.bind_offset += bind_size;
+            }
+
+            OpType::PushBind => {
+                self.extend([Const(op.operand), Call("push_local".into())]);
+            }
+
+            OpType::LoadBind => {
+                self.extend([Const(op.operand), Call("push_local".into()), I32(load)]);
+            }
+
+            OpType::PopBind => {
+                let Binding(binds) = &proc.bindings[op.index()];
+
+                let size = binds.iter().fold(0, |acc, (_, typ)| {
+                    acc + typ
+                        .map_or(WORD_USIZE, |id| prog.get_value_def(ValueType::from(id)).size())
+                }) as i32;
+
+                self.extend(vec![Const(size), Call("free_local".into())]);
+            }
 
             OpType::While => {
                 let loop_label = Ident::Label(format!("while{}", op.operand));
@@ -215,13 +252,14 @@ impl FuncGen {
             OpType::EndCase => todo!(),
 
             OpType::CallInline => {
-                let Mode::Inlined(start, end) = prog.get_proc(op).mode else {
+                let inlined_proc = prog.get_proc(op);
+                let Mode::Inlined(start, end) = inlined_proc.mode else {
                     unreachable!();
                 };
 
                 for ip in start + 1..end {
                     let in_op = &prog.ops[ip];
-                    self.append_op(prog, in_op, ip, proc, module)?;
+                    self.append_op(prog, in_op, ip, inlined_proc, module)?;
                 }
             }
 
@@ -240,13 +278,16 @@ fn register_contract(prog: &Program, index: usize, module: &mut Module) -> Ident
 
 impl Program {
     pub fn final_value(&self, var: &ValueUnit) -> i32 {
-        let var_value = var.value();
-        if var.value_type().get_value() == Value::Str {
-            let offset = self.get_data(var_value).offset();
+        let ValueType::Typ(val) = var.value_type() else {
+            todo!();
+        };
+
+        if matches!(val, Value::Str) {
+            let offset = self.get_data(var.value()).offset();
             return offset + self.data_start();
         }
 
-        var_value
+        var.value()
     }
 
     pub fn generate_wasm(&self, writer: impl Write, target: Target) -> Result<()> {

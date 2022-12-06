@@ -5,11 +5,15 @@ ciovec :
   buf_len int
 end
 
-fd_write import: int ptr int ptr -> ptr : end
+str_to_ciovec inline: *str -> ciovec :
+  @ swap
+end
+
+fd_write import: int *ciovec int *int -> ptr : end
 
 puts : *str :
-  iov: ciovec end
-  written: 4 end
-  @ swap !iov
-  1 *iov #ptr 1 written fd_write drop
+  str_to_ciovec 0 
+  let iov: ciovec written in 
+    1 *iov 1 *written fd_write drop
+  end
 end

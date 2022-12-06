@@ -1,7 +1,6 @@
 use std::{collections::VecDeque, path::Path};
 
 use ashfire_types::{core::*, data::*, enums::*, proc::*};
-use ashlib::Either;
 use firelib::{
     lazy::LazyCtx,
     lexer::{Lexer, Loc},
@@ -161,7 +160,7 @@ impl Parser {
                 };
 
                 return OptionErr::new(vec![
-                    (OpType::OffsetLoad, key, word.loc).into(),
+                    (OpType::Offset, key, word.loc).into(),
                     (OpType::Unpack, word.loc).into(),
                 ]);
             }
@@ -188,7 +187,7 @@ impl Parser {
     }
 
     fn define_keyword_op(
-        &mut self, key: KeywordType, loc: Loc, prog: &Program,
+        &mut self, key: KeywordType, loc: Loc, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
         let op = match key {
             KeywordType::Drop => (OpType::Drop, loc).into(),
@@ -217,7 +216,7 @@ impl Parser {
                     }
                     TokenType::Word => {
                         return OptionErr::new(vec![
-                            (OpType::OffsetLoad, next_token, loc).into(),
+                            (OpType::Offset, next_token, loc).into(),
                             (OpType::Unpack, loc).into(),
                         ])
                     }
@@ -232,6 +231,7 @@ impl Parser {
                 return match self.name_scopes.lookup(ref_word, prog) {
                     Some(ParseContext::LocalVar) => prog.get_local_var(ref_word, var_typ, self),
                     Some(ParseContext::GlobalVar) => prog.get_global_var(ref_word, var_typ, self),
+                    Some(ParseContext::Binding) => prog.get_binding_ref(ref_word, self).into(),
                     _ => todo!(),
                 };
             }
@@ -248,7 +248,8 @@ impl Parser {
                 }
             },
 
-            KeywordType::Let => todo!(),
+            KeywordType::Let => return self.parse_bindings(loc, prog),
+
             KeywordType::Case => todo!(),
 
             KeywordType::Colon => match self.pop_block(key, loc)? {
@@ -275,7 +276,10 @@ impl Parser {
                 Op { op_type: OpType::Else, .. } => (OpType::EndElse, loc).into(),
                 Op { op_type: OpType::Do, .. } => (OpType::EndWhile, loc).into(),
 
-                Op { op_type: OpType::BindStack, .. } => todo!(),
+                Op { op_type: OpType::BindStack, operand, .. } => {
+                    (OpType::PopBind, operand, loc).into()
+                }
+
                 Op { op_type: OpType::CaseOption, .. } => todo!(),
 
                 Op { op_type: OpType::PrepProc, operand, .. } => {
@@ -298,6 +302,7 @@ impl Parser {
             KeywordType::Arrow |
             KeywordType::Proc |
             KeywordType::Mem |
+            KeywordType::In |
             KeywordType::Struct => {
                 let error = format!("Keyword type is not valid here: `{key:?}`");
                 return err_loc(error, loc).into();
@@ -335,7 +340,7 @@ impl Parser {
                     self.parse_memory(word, prog).try_success()?;
                 }
 
-                (1, TokenType::Word) if prog.get_type_def(tok).is_none() => {
+                (1, TokenType::Word) if prog.get_type(&tok.str_key()).is_none() => {
                     return self.parse_struct(word, prog);
                 }
 
@@ -510,18 +515,17 @@ impl Parser {
                     .into_success()?,
 
                 _ => {
-                    let type_kind = self.check_type_kind(tok, "variable type", prog)?;
+                    let kind = self.check_type_kind(tok, "variable type", prog)?;
 
-                    match type_kind {
-                        Either::Left(type_def) => {
+                    match kind {
+                        ValueType::Typ(_) => {
+                            let type_def = prog.get_value_def(kind);
                             for typ in type_def.units().map(Typed::get_type) {
                                 typ.conditional_push(arrow, &mut outs, &mut ins);
                             }
                         }
-                        Either::Right(type_ptr) => {
-                            type_ptr
-                                .get_type()
-                                .conditional_push(arrow, &mut outs, &mut ins);
+                        ValueType::Ptr(_) => {
+                            kind.get_type().conditional_push(arrow, &mut outs, &mut ins);
                         }
                     }
                 }
@@ -558,10 +562,11 @@ impl Parser {
             }
 
             let member_name = self.expect_word("struct member name", loc)?;
-            let type_kind = self.expect_type_kind("struct member type", prog, loc)?;
+            let kind = self.expect_type_kind("struct member type", prog, loc)?;
 
-            match type_kind {
-                Either::Left(type_def) => {
+            match kind {
+                ValueType::Typ(_) => {
+                    let type_def = prog.get_value_def(kind);
                     let ref_members = type_def.members();
 
                     if ref_members.len() == 1 {
@@ -575,29 +580,27 @@ impl Parser {
                         members.push(StructType::root(&member_name, ref_members.to_vec(), value));
                     }
                 }
-                Either::Right(type_ptr) => {
-                    members.push(StructType::unit(&member_name, type_ptr));
+                ValueType::Ptr(_) => {
+                    members.push(StructType::unit(&member_name, kind));
                 }
             }
         }
 
-        err_loc("Expected struct members or `end` after struct declaration", loc).into()
+        unexpected_end("struct members or `end` after struct declaration", loc).into()
     }
 
     fn parse_var(
         &mut self, word: &LocWord, prog: &mut Program, initialize: bool,
     ) -> LazyResult<()> {
         let loc = word.loc;
-        let type_kind = self.expect_type_kind("variable type", prog, loc)?;
+        let kind = self.expect_type_kind("variable type", prog, loc)?;
 
         if initialize {
             self.expect_keyword(KeywordType::Equal, "`=` after variable type", loc)?;
 
-            match type_kind {
-                Either::Left(type_def) => {
-                    self.eval_const_or_var(false, word, type_def.clone(), prog)
-                }
-                Either::Right(_) => {
+            match kind {
+                ValueType::Typ(_) => self.eval_const_or_var(false, word, kind, prog),
+                ValueType::Ptr(_) => {
                     todo!()
                     // let name = format!("*{}", ref_word.as_str(prog));
                     // let word_id = prog.get_or_intern(&name);
@@ -614,9 +617,11 @@ impl Parser {
         } else {
             self.expect_keyword(KeywordType::End, "`end` after variable type", loc)?;
 
-            let Either::Left(type_def) = type_kind else {
-                return Err(err_loc("error", loc))
+            let ValueType::Typ(_) = kind else {
+                todo!()
             };
+
+            let type_def = prog.get_value_def(kind);
 
             let ref_members: Vec<_> = type_def
                 .clone()
@@ -636,9 +641,46 @@ impl Parser {
         }
     }
 
+    fn parse_bindings(&mut self, loc: Loc, prog: &mut Program) -> OptionErr<Vec<Op>> {
+        let mut bindings = vec![];
+
+        while let Some(tok) = self.peek() {
+            if tok.token_type == TokenType::Keyword {
+                self.expect_keyword(KeywordType::In, "`in` after let bind declaration", loc)?;
+
+                bindings.reverse();
+                let proc_bindings = &mut self.current_proc_mut(prog).unwrap().bindings;
+                proc_bindings.push(Binding(bindings));
+
+                let bind_block = Op::new(OpType::BindStack, proc_bindings.len() - 1, loc);
+                let result = self.push_block(bind_block);
+
+                return OptionErr::new(vec![result]);
+            }
+
+            let LabelKind(word, typ) = self.expect_label_kind("bind", loc, prog)?;
+            self.name_scopes.register(&word, ParseContext::Binding);
+
+            if let Some(kind) = typ {
+                match kind {
+                    ValueType::Typ(_) => {
+                        bindings.push((word.str_key(), Some(kind.operand())));
+                    }
+                    ValueType::Ptr(_) => todo!(),
+                }
+            } else {
+                bindings.push((word.str_key(), None));
+            }
+        }
+
+        unexpected_end("bind labels after let bind declaration", loc).into()
+    }
+
     fn eval_const_or_var(
-        &mut self, is_constant: bool, word: &LocWord, stk: StructDef, prog: &mut Program,
+        &mut self, is_constant: bool, word: &LocWord, stk: ValueType, prog: &mut Program,
     ) -> LazyResult<()> {
+        let stk = prog.get_value_def(stk).clone();
+
         let (mut result, eval) = match self.compile_eval_n(stk.count(), prog, word.loc).value {
             Ok(value) => value,
             Err(either) => {

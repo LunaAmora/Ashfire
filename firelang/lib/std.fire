@@ -1,8 +1,9 @@
 include core
 
-print : str :
-  buffer: str end
-  !buffer *buffer puts
+print inline: str :
+  let buffer: str in
+    *buffer puts
+  end
 end
 
 println inline: str :
@@ -10,9 +11,10 @@ println inline: str :
 end
 
 trim-left inline: *str :
-  dup
-  .*len  dec32
-  .*data inc32
+  let s in
+    s .*len  dec32
+    s .*data inc32
+  end
 end
 
 to_cster inline: str -> ptr :

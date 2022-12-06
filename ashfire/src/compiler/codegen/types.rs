@@ -124,7 +124,7 @@ pub struct FuncGen {
     label: StrKey,
     contract: (Vec<WasmType>, Vec<WasmType>),
     code: Vec<Instruction>,
-    pub bind_count: i32,
+    pub bind_offset: i32,
 }
 
 impl FuncGen {
@@ -133,7 +133,7 @@ impl FuncGen {
             label,
             contract: as_wasm(contract),
             code: Vec::new(),
-            bind_count: 0,
+            bind_offset: 0,
         }
     }
 
@@ -168,7 +168,12 @@ pub fn unpack_struct(stk: &StructDef) -> Vec<Instruction> {
             I32(load),
         ]),
         n => {
-            instructions.push(Call("bind_local".into()));
+            instructions.extend(vec![
+                Const(WORD_SIZE),
+                Call("aloc_local".into()),
+                Const(WORD_SIZE),
+                Call("bind_local".into()),
+            ]);
 
             for offset in 0..n {
                 instructions.extend(vec![

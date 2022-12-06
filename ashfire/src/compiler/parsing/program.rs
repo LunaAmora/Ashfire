@@ -7,17 +7,21 @@ use super::{parser::Parser, types::*};
 use crate::compiler::{program::*, utils::err_loc};
 
 impl Program {
-    /// Searches for a `binding` that matches the given [`word`][LocWord]
+    /// Searches for a `binding` to load that matches the given [`word`][LocWord]
     /// on the current [`Proc`].
     pub fn get_binding(&self, word: &LocWord, parser: &Parser) -> Option<Vec<Op>> {
         parser
-            .current_proc_data(self)
-            .and_then(|proc| {
-                proc.bindings
-                    .iter()
-                    .position(|bind| word.eq(bind))
-                    .map(|index| proc.bindings.len() - 1 - index)
-            })
+            .current_proc(self)
+            .and_then(|proc| proc.bindings().position(|(key, _)| word.eq(key)))
+            .map(|index| vec![Op::new(OpType::LoadBind, index, word.loc)])
+    }
+
+    /// Searches for a `binding` reference that matches the given [`word`][LocWord]
+    /// on the current [`Proc`].
+    pub fn get_binding_ref(&self, word: &LocWord, parser: &Parser) -> Option<Vec<Op>> {
+        parser
+            .current_proc(self)
+            .and_then(|proc| proc.bindings().position(|(key, _)| word.eq(key)))
             .map(|index| vec![Op::new(OpType::PushBind, index, word.loc)])
     }
 
@@ -57,13 +61,28 @@ impl Program {
             .and_then(|stk| self.get_type_def(stk))
     }
 
+    pub fn get_value_def(&self, value: ValueType) -> &StructDef {
+        let ValueType::Typ(val) = value else {
+            todo!();
+        };
+
+        &self.structs_types[usize::from(val)]
+    }
+
     pub fn get_type_def<O: Operand>(&self, word_id: O) -> Option<&StructDef> {
         self.structs_types
             .iter()
             .find(|def| word_id.str_key().eq(def))
     }
 
-    pub fn get_type_ptr(&self, word: &LocWord) -> Option<ValueType> {
+    pub fn get_type(&self, word: &StrKey) -> Option<ValueType> {
+        self.structs_types
+            .iter()
+            .position(|def| word.eq(def))
+            .map(|i| ValueType::Typ(Value::from(i)))
+    }
+
+    pub fn get_type_ptr(&self, word: &StrKey) -> Option<ValueType> {
         self.structs_types
             .iter()
             .position(|def| word.eq(def))

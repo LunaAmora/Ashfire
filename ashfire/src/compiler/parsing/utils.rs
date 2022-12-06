@@ -2,19 +2,38 @@ use std::fmt::Display;
 
 use ashfire_types::{
     core::{IRToken, Op, TokenType},
-    data::{StructDef, ValueType},
+    data::ValueType,
     enums::KeywordType,
 };
-use ashlib::Either;
 use firelib::lexer::Loc;
 
 use super::{parser::Parser, types::LocWord};
 use crate::compiler::program::{Fmt, LazyError, LazyResult, Program};
 
+pub struct LabelKind(pub LocWord, pub Option<ValueType>);
+
 impl Parser {
-    pub fn expect_type_kind<'a, S: Display + 'static + Clone>(
-        &mut self, error_text: S, prog: &'a Program, loc: Loc,
-    ) -> LazyResult<Either<&'a StructDef, ValueType>> {
+    pub fn expect_label_kind<S: Display + 'static + Clone>(
+        &mut self, error_text: S, loc: Loc, prog: &Program,
+    ) -> LazyResult<LabelKind> {
+        let word = self.expect_word(error_text.clone(), loc)?;
+
+        match self.peek() {
+            Some(tok) => match tok.token_type {
+                TokenType::Keyword if tok.as_keyword() == KeywordType::Colon => {
+                    self.next();
+                    self.expect_type_kind(error_text, prog, loc)
+                        .map(|kind| LabelKind(word, Some(kind)))
+                }
+                _ => Ok(LabelKind(word, None)),
+            },
+            None => Err(unexpected_end(error_text, loc)),
+        }
+    }
+
+    pub fn expect_type_kind<S: Display + 'static + Clone>(
+        &mut self, error_text: S, prog: &Program, loc: Loc,
+    ) -> LazyResult<ValueType> {
         let next = self.expect_by(
             |tok| equals_any!(tok, KeywordType::Ref, TokenType::Word),
             error_text.clone(),
@@ -24,28 +43,24 @@ impl Parser {
         self.check_type_kind(next, error_text, prog)
     }
 
-    pub fn check_type_kind<'a, S: Display + 'static + Clone>(
-        &mut self, tok: IRToken, error_text: S, prog: &'a Program,
-    ) -> LazyResult<Either<&'a StructDef, ValueType>> {
+    pub fn check_type_kind<S: Display + 'static + Clone>(
+        &mut self, tok: IRToken, error_text: S, prog: &Program,
+    ) -> LazyResult<ValueType> {
         let loc = tok.loc;
         match tok.token_type {
             TokenType::Keyword => {
                 let word_error = format!("{error_text} after `*`");
                 let ref_word = self.expect_word(word_error.clone(), loc)?;
 
-                prog.get_type_ptr(&ref_word).map_or_else(
-                    || Err(unexpected_token(ref_word.into(), word_error)),
-                    |type_ptr| Ok(Either::Right(type_ptr)),
-                )
+                prog.get_type_ptr(&ref_word)
+                    .map_or_else(|| Err(unexpected_token(ref_word.into(), word_error)), Ok)
             }
 
             TokenType::Word => {
                 let name_type = LocWord::new(tok, loc);
 
-                prog.get_type_def(&name_type).map_or_else(
-                    || Err(unexpected_token(name_type.into(), error_text)),
-                    |type_kind| Ok(Either::Left(type_kind)),
-                )
+                prog.get_type(&name_type)
+                    .map_or_else(|| Err(unexpected_token(name_type.into(), error_text)), Ok)
             }
 
             _ => Err(unexpected_token(tok, error_text)),
