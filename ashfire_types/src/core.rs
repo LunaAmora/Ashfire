@@ -187,15 +187,6 @@ impl PartialEq<Value> for &IRToken {
     }
 }
 
-impl From<(&StructType, Loc)> for IRToken {
-    fn from(value: (&StructType, Loc)) -> Self {
-        match value {
-            (StructType::Root(_), _) => todo!("Support const use on other consts"),
-            (StructType::Unit(u), loc) => Self(u.value_type().get_type(), u.value(), loc),
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct Op(pub OpType, pub i32, pub Loc);
 

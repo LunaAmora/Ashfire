@@ -1,6 +1,6 @@
 use ashfire_types::{
     core::*,
-    data::{Value, ValueType},
+    data::{StructType, Value, ValueType},
     enums::{IntrinsicType, KeywordType},
 };
 use ashlib::{Either, EvalStack, UncheckedStack};
@@ -114,7 +114,10 @@ impl Evaluator for EvalStack<IRToken> {
                 },
 
                 None => match prog.get_const_by_name(&tok.str_key()) {
-                    Some(constant) => self.push((constant, loc).into()),
+                    Some(StructType::Unit(unit)) => {
+                        self.push(IRToken(unit.value_type().get_type(), unit.value(), loc));
+                    }
+                    Some(_) => todo!("Support const use on other consts"),
                     None => Err(Either::Left(tok))?,
                 },
             },
