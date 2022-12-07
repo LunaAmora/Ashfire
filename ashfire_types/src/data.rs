@@ -82,7 +82,7 @@ impl From<i32> for ValueType {
 }
 
 #[derive(Clone)]
-pub struct ValueUnit(StrKey, i32, ValueType);
+pub struct ValueUnit(pub StrKey, pub i32, pub ValueType);
 
 impl ValueUnit {
     pub fn new(name: &StrKey, typed: &IRToken) -> Self {

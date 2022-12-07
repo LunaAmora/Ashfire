@@ -14,7 +14,7 @@ pub struct LabelKind(pub LocWord, pub Option<ValueType>);
 
 impl Parser {
     pub fn expect_label_kind<S: Display + 'static + Clone>(
-        &mut self, error_text: S, loc: Loc, prog: &Program,
+        &mut self, error_text: S, loc: Loc, prog: &mut Program,
     ) -> LazyResult<LabelKind> {
         let word = self.expect_word(error_text.clone(), loc)?;
 
@@ -32,7 +32,7 @@ impl Parser {
     }
 
     pub fn expect_type_kind<S: Display + 'static + Clone>(
-        &mut self, error_text: S, prog: &Program, loc: Loc,
+        &mut self, error_text: S, prog: &mut Program, loc: Loc,
     ) -> LazyResult<ValueType> {
         let next = self.expect_by(
             |tok| equals_any!(tok, KeywordType::Ref, TokenType::Word),
@@ -44,7 +44,7 @@ impl Parser {
     }
 
     pub fn check_type_kind<S: Display + 'static + Clone>(
-        &mut self, tok: IRToken, error_text: S, prog: &Program,
+        &mut self, tok: IRToken, error_text: S, prog: &mut Program,
     ) -> LazyResult<ValueType> {
         let IRToken(token_type, operand, loc) = tok;
         match token_type {
@@ -52,7 +52,8 @@ impl Parser {
                 let word_error = format!("{error_text} after `*`");
                 let ref_word = self.expect_word(word_error.clone(), loc)?;
 
-                prog.get_type_ptr(&ref_word)
+                prog.get_struct_value_id(&ref_word)
+                    .map(|val| prog.get_type_ptr(val))
                     .map_or_else(|| Err(unexpected_token(ref_word.into(), word_error)), Ok)
             }
 

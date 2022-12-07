@@ -1,0 +1,14 @@
+include lib/wasi
+include lib/std
+
+test: str = "test string" end
+hello: *str = null #*str end
+
+_start export::
+  *test !hello hello puts
+
+  // Not working yet without the cast
+  *test let bind: *str in
+    bind #*str puts
+  end
+end

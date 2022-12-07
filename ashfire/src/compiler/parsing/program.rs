@@ -85,11 +85,19 @@ impl Program {
             .map(|i| ValueType::Typ(Value(i)))
     }
 
-    pub fn get_type_ptr(&self, word: &StrKey) -> Option<ValueType> {
-        self.structs_types
-            .iter()
-            .position(|def| word.eq(def.name()))
-            .map(|i| ValueType::Ptr(Value(i)))
+    pub fn get_type_ptr(&mut self, value: Value) -> ValueType {
+        let name = format!("*{}", value.str_key().as_str(self));
+
+        if let Some(key) = self.get_key(&name) {
+            self.get_type(&key).unwrap()
+        } else {
+            let word_id = self.get_or_intern(&name);
+            let unit = ValueUnit(StrKey::default(), 0, ValueType::Ptr(value));
+            let stk = StructDef(word_id, vec![StructType::Unit(unit)]);
+
+            self.structs_types.push(stk);
+            ValueType::Typ(Value(self.structs_types.len() - 1))
+        }
     }
 
     pub fn get_intrinsic(&self, word: &LocWord) -> Option<Vec<Op>> {

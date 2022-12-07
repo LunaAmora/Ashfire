@@ -564,25 +564,18 @@ impl Parser {
             let member_name = self.expect_word("struct member name", loc)?;
             let kind = self.expect_type_kind("struct member type", prog, loc)?;
 
-            match kind {
-                ValueType::Typ(_) => {
-                    let type_def = prog.get_value_def(kind);
-                    let ref_members = type_def.members();
+            let type_def = prog.get_value_def(kind);
+            let ref_members = type_def.members();
 
-                    if ref_members.len() == 1 {
-                        let StructType::Unit(typ) = &ref_members[0] else {
-                            todo!()
-                        };
+            if ref_members.len() == 1 {
+                let StructType::Unit(typ) = &ref_members[0] else {
+                    todo!()
+                };
 
-                        members.push(StructType::unit(&member_name, *typ.value_type()));
-                    } else {
-                        let value = prog.get_struct_value_id(type_def.name()).unwrap();
-                        members.push(StructType::root(&member_name, ref_members.to_vec(), value));
-                    }
-                }
-                ValueType::Ptr(_) => {
-                    members.push(StructType::unit(&member_name, kind));
-                }
+                members.push(StructType::unit(&member_name, *typ.value_type()));
+            } else {
+                let value = prog.get_struct_value_id(type_def.name()).unwrap();
+                members.push(StructType::root(&member_name, ref_members.to_vec(), value));
             }
         }
 
@@ -597,29 +590,9 @@ impl Parser {
 
         if initialize {
             self.expect_keyword(KeywordType::Equal, "`=` after variable type", loc)?;
-
-            match kind {
-                ValueType::Typ(_) => self.eval_const_or_var(false, word, kind, prog),
-                ValueType::Ptr(_) => {
-                    todo!()
-                    // let name = format!("*{}", ref_word.as_str(prog));
-                    // let word_id = prog.get_or_intern(&name);
-
-                    // let value = ValueUnit::new(&StrKey::default(), type_ptr);
-                    // let stk = StructDef::new(&word_id, vec![StructType::Unit(value)]);
-
-                    // prog.structs_types.push(stk.clone()); //Todo: Check if the `*` type is already registered
-
-                    // self.parse_const_or_var(word, word_id, stk, prog)
-                    //     .try_success()?;
-                }
-            }
+            self.eval_const_or_var(false, word, kind, prog)
         } else {
             self.expect_keyword(KeywordType::End, "`end` after variable type", loc)?;
-
-            let ValueType::Typ(_) = kind else {
-                todo!()
-            };
 
             let type_def = prog.get_value_def(kind);
 
@@ -663,12 +636,7 @@ impl Parser {
             self.name_scopes.register(&word, ParseContext::Binding);
 
             if let Some(kind) = typ {
-                match kind {
-                    ValueType::Typ(_) => {
-                        bindings.push((word.str_key(), Some(kind.operand())));
-                    }
-                    ValueType::Ptr(_) => todo!(),
-                }
+                bindings.push((word.str_key(), Some(kind.operand())));
             } else {
                 bindings.push((word.str_key(), None));
             }
@@ -678,9 +646,9 @@ impl Parser {
     }
 
     fn eval_const_or_var(
-        &mut self, is_constant: bool, word: &LocWord, stk: ValueType, prog: &mut Program,
+        &mut self, is_constant: bool, word: &LocWord, value: ValueType, prog: &mut Program,
     ) -> LazyResult<()> {
-        let stk = prog.get_value_def(stk).clone();
+        let stk = prog.get_value_def(value).clone();
 
         let (mut result, eval) = match self.compile_eval_n(stk.count(), prog, word.loc()).value {
             Ok(value) => value,

@@ -280,14 +280,12 @@ fn register_contract(prog: &Program, index: usize, module: &mut Module) -> Ident
 
 impl Program {
     pub fn final_value(&self, var: &ValueUnit) -> i32 {
-        let ValueType::Typ(val) = var.value_type() else {
-            todo!();
+        if let ValueType::Typ(val) = var.value_type() {
+            if matches!(*val, Value::STR) {
+                let offset = self.get_data(var.value()).offset();
+                return offset + self.data_start();
+            }
         };
-
-        if matches!(*val, Value::STR) {
-            let offset = self.get_data(var.value()).offset();
-            return offset + self.data_start();
-        }
 
         var.value()
     }
