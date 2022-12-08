@@ -1,11 +1,11 @@
 use std::str::FromStr;
 
-use super::data::Value;
+use super::data::TypeId;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpType {
-    PushData(Value),
+    PushData(TypeId),
     PushStr,
     PushLocalMem,
     PushGlobalMem,
@@ -129,7 +129,7 @@ pub enum IntrinsicType {
     Store8,
     Store16,
     Store32,
-    Cast(i32),
+    Cast(usize),
 }
 
 impl FromStr for IntrinsicType {
@@ -159,8 +159,8 @@ impl FromStr for IntrinsicType {
     }
 }
 
-impl const From<i32> for IntrinsicType {
-    fn from(value: i32) -> Self {
+impl const From<usize> for IntrinsicType {
+    fn from(value: usize) -> Self {
         match value {
             0 => Self::Plus,
             1 => Self::Minus,
@@ -179,15 +179,14 @@ impl const From<i32> for IntrinsicType {
             14 => Self::Store16,
             15 => Self::Load32,
             16 => Self::Store32,
-            n if n.abs() <= CAST_BASE => Self::Cast(0), // invalid cast
-            n => Self::Cast(fold_bool!(n.is_positive(), -CAST_BASE, CAST_BASE) + n),
+            n => Self::Cast(n - CAST_BASE),
         }
     }
 }
 
-const CAST_BASE: i32 = i32::from(IntrinsicType::Cast(0));
+const CAST_BASE: usize = usize::from(IntrinsicType::Cast(0));
 
-impl const From<IntrinsicType> for i32 {
+impl const From<IntrinsicType> for usize {
     fn from(intrinsic: IntrinsicType) -> Self {
         match intrinsic {
             IntrinsicType::Plus => 0,
@@ -207,26 +206,7 @@ impl const From<IntrinsicType> for i32 {
             IntrinsicType::Store16 => 14,
             IntrinsicType::Load32 => 15,
             IntrinsicType::Store32 => 16,
-            IntrinsicType::Cast(n) => 17 * fold_bool!(n >= 0, 1, -1) + n,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{IntrinsicType, CAST_BASE};
-    const RANGE: i32 = 30;
-
-    #[test]
-    fn intrinsic_type_conversion() {
-        for n in -RANGE..=RANGE {
-            let i = i32::from(IntrinsicType::from(n));
-
-            if (-CAST_BASE..0).contains(&n) {
-                assert_eq!(i, CAST_BASE);
-            } else {
-                assert_eq!(n, i);
-            }
+            IntrinsicType::Cast(n) => 17 + n,
         }
     }
 }

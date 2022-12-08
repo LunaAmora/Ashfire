@@ -2,7 +2,7 @@ use std::io::Write;
 
 use ashfire_types::{
     core::{Op, Operand, WORD_SIZE, WORD_USIZE},
-    data::{StructInfo, Value, ValueType, ValueUnit},
+    data::{Primitive, StructInfo, TypeId},
     enums::{IntrinsicType, OpType},
     proc::{Binding, Mode, Proc},
 };
@@ -138,7 +138,7 @@ impl FuncGen {
 
             OpType::Offset => self.extend([Const(operand), I32(add)]),
 
-            OpType::Intrinsic => match IntrinsicType::from(operand) {
+            OpType::Intrinsic => match IntrinsicType::from(operand.index()) {
                 IntrinsicType::Div => todo!(),
                 IntrinsicType::Times => todo!(),
 
@@ -190,9 +190,8 @@ impl FuncGen {
                 let mut bind_size = 0;
 
                 for (_, typ) in binds {
-                    if let Some(id) = typ {
-                        let value = ValueType::from(*id);
-                        let type_def = prog.get_value_def(value);
+                    if let &Some(id) = typ {
+                        let type_def = prog.get_value_def(id);
 
                         for unit in type_def.units() {
                             bind_size += unit.size() as i32;
@@ -221,8 +220,7 @@ impl FuncGen {
                 let Binding(binds) = &proc.bindings[op.index()];
 
                 let size = binds.iter().fold(0, |acc, (_, typ)| {
-                    acc + typ
-                        .map_or(WORD_USIZE, |id| prog.get_value_def(ValueType::from(id)).size())
+                    acc + typ.map_or(WORD_USIZE, |id| prog.get_value_def(id).size())
                 }) as i32;
 
                 self.extend(vec![Const(size), Call("free_local".into())]);
@@ -279,13 +277,11 @@ fn register_contract(prog: &Program, index: usize, module: &mut Module) -> Ident
 }
 
 impl Program {
-    pub fn final_value(&self, var: &ValueUnit) -> i32 {
-        if let ValueType::Typ(val) = var.value_type() {
-            if matches!(*val, Value::STR) {
-                let offset = self.get_data(var.value()).offset();
-                return offset + self.data_start();
-            }
-        };
+    pub fn final_value(&self, var: &Primitive) -> i32 {
+        if matches!(*var.type_id(), TypeId::STR) {
+            let offset = self.get_data(var.value()).offset();
+            return offset + self.data_start();
+        }
 
         var.value()
     }

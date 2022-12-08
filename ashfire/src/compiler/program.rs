@@ -42,11 +42,11 @@ fn intern_all<const N: usize>(rodeo: &mut Rodeo, strings: [&'static str; N]) -> 
 pub struct Program {
     pub ops: Vec<Op>,
     pub procs: Vec<Proc>,
-    pub global_vars: Vec<StructType>,
-    pub structs_types: Vec<StructDef>,
+    pub global_vars: Vec<TypeDescr>,
+    pub structs_types: Vec<StructField>,
     pub block_contracts: HashMap<usize, (usize, usize)>,
     included_sources: Vec<StrKey>,
-    consts: Vec<StructType>,
+    consts: Vec<TypeDescr>,
     interner: Rodeo,
     mem_size: usize,
     memory: Vec<OffsetWord>,
@@ -62,13 +62,13 @@ impl Program {
         let [_, any, bool, int, ptr, str, len, data] = intern_all(&mut interner, names);
 
         let structs_types = vec![
-            StructDef::new(any, Value::ANY),
-            StructDef::new(bool, Value::BOOL),
-            StructDef::new(int, Value::INT),
-            StructDef::new(ptr, Value::PTR),
-            StructDef(str, vec![
-                StructType::unit(&len, ValueType::Typ(Value::INT)),
-                StructType::unit(&data, ValueType::Typ(Value::PTR)),
+            StructField::new(any, TypeId::ANY),
+            StructField::new(bool, TypeId::BOOL),
+            StructField::new(int, TypeId::INT),
+            StructField::new(ptr, TypeId::PTR),
+            StructField(str, vec![
+                TypeDescr::unit(&len, TypeId::INT),
+                TypeDescr::unit(&data, TypeId::PTR),
             ]),
         ];
 
@@ -107,7 +107,7 @@ impl Program {
         self.data.len() - 1
     }
 
-    pub fn register_const(&mut self, struct_type: StructType) {
+    pub fn register_const(&mut self, struct_type: TypeDescr) {
         self.consts.push(struct_type);
     }
 
@@ -136,6 +136,7 @@ impl Program {
     }
 
     pub fn get_key(&self, word: &str) -> Option<StrKey> {
+        // info!("get_key: ({word})");
         self.interner.get(word)
     }
 
@@ -171,14 +172,14 @@ impl Program {
         self.ops.len()
     }
 
-    fn data_name(&self, value: Value) -> String {
+    fn data_name(&self, value: TypeId) -> String {
         match value {
-            Value::INT => "Integer",
-            Value::BOOL => "Boolean",
-            Value::PTR => "Pointer",
-            Value::STR => "String",
-            Value::ANY => "Any",
-            Value(n) => self.structs_types[n].name().as_str(self),
+            TypeId::INT => "Integer",
+            TypeId::BOOL => "Boolean",
+            TypeId::PTR => "Pointer",
+            TypeId::STR => "String",
+            TypeId::ANY => "Any",
+            TypeId(n) => self.structs_types[n].name().as_str(self),
         }
         .to_owned()
     }
@@ -191,17 +192,17 @@ impl Program {
                 ValueType::Typ(value) => return self.data_name(value),
                 ValueType::Ptr(value) => return self.data_name(value) + " Pointer",
             },
-            TokenType::Str => "String",
+            TokenType::Str => "String Id",
         }
         .to_owned()
     }
 
-    fn data_display<O: Operand>(value: Value, operand: O) -> String {
+    fn data_display<O: Operand>(value: TypeId, operand: O) -> String {
         let operand = operand.operand();
         match value {
-            Value::BOOL => fold_bool!(operand != 0, "True", "False").to_owned(),
-            Value::PTR => format!("*{operand}"),
-            Value(_) => operand.to_string(),
+            TypeId::BOOL => fold_bool!(operand != 0, "True", "False").to_owned(),
+            TypeId::PTR => format!("*{operand}"),
+            TypeId(_) => operand.to_string(),
         }
     }
 
@@ -229,39 +230,48 @@ impl Program {
         }
     }
 
-    pub fn get_intrinsic_type(&self, word: &str) -> Option<IntrinsicType> {
+    pub fn get_intrinsic_type(&mut self, word: &str) -> Option<IntrinsicType> {
         IntrinsicType::from_str(word).ok().or_else(|| {
             Some(match word.as_bytes() {
-                [b'#', b'*', rest @ ..] => IntrinsicType::Cast(-self.get_cast_type(rest)?),
+                [b'#', b'*', rest @ ..] => IntrinsicType::Cast(self.get_cast_type_ptr(rest)?),
                 [b'#', rest @ ..] => IntrinsicType::Cast(self.get_cast_type(rest)?),
                 _ => return None,
             })
         })
     }
 
-    fn get_cast_type(&self, rest: &[u8]) -> Option<i32> {
-        self.get_key(std::str::from_utf8(rest).ok()?)
+    fn get_cast_type_ptr(&mut self, rest: &[u8]) -> Option<usize> {
+        let word = &std::str::from_utf8(rest).ok()?;
+        // info!("get_cast_type_ptr: ({word})");
+
+        let key = self.get_key(word)?;
+        let val = self.get_struct_value_id(&key)?;
+        Some(self.get_type_ptr(val, key).get_value().0)
+    }
+
+    fn get_cast_type(&self, rest: &[u8]) -> Option<usize> {
+        let word = &std::str::from_utf8(rest).ok()?;
+        // info!("get_cast_type: ({word})");
+        self.get_key(word)
             .as_ref()
             .map(|key| self.get_struct_type_id(key))?
-            .map(|u| u as i32)
     }
 
     pub fn get_struct_type_id(&self, word: &StrKey) -> Option<usize> {
         self.structs_types
             .iter()
             .position(|def| word.eq(def.name()))
-            .map(|u| u + 1)
     }
 
-    pub fn get_struct_value_id(&self, word: &StrKey) -> Option<Value> {
+    pub fn get_struct_value_id(&self, word: &StrKey) -> Option<TypeId> {
         self.structs_types
             .iter()
             .position(|id| word.eq(id.name()))
-            .map(Value)
+            .map(TypeId)
     }
 
     /// Searches for a `const` that matches the given [`StrKey`].
-    pub fn get_const_by_name(&self, word: &StrKey) -> Option<&StructType> {
+    pub fn get_const_by_name(&self, word: &StrKey) -> Option<&TypeDescr> {
         self.consts.iter().find(|cnst| word.eq(cnst.name()))
     }
 
@@ -271,10 +281,11 @@ impl Program {
         use ashfire_types::enums::OpType;
         let &Op(op_type, operand, ..) = op;
         match op_type {
-            OpType::Intrinsic => match IntrinsicType::from(operand) {
-                IntrinsicType::Cast(n) => {
-                    format!("Intrinsic Cast [{}]", self.type_name(ValueType::from(n).get_type()))
-                }
+            OpType::Intrinsic => match IntrinsicType::from(operand.index()) {
+                IntrinsicType::Cast(n) => todo!("{n}"),
+                // {
+                //     format!("Intrinsic Cast [{}]", self.type_name(ValueType::from(n).get_type()))
+                // }
                 intrinsic => format!("Intrinsic [{intrinsic:?}]"),
             },
             OpType::Call => format!("Call [{}]", self.get_proc(operand).name.as_str(self)),

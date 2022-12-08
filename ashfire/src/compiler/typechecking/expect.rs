@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use ashfire_types::{
     core::{Location, TokenType, Typed},
-    data::{Value, ValueType},
+    data::{TypeId, ValueType},
 };
 use ashlib::UncheckedStack;
 use firelib::{lazy::LazyFormatter, lexer::Loc};
@@ -19,14 +19,12 @@ pub enum ArityType<T: Copy> {
 /// Safe wrapper for [`UncheckedStack`] with proper errors messages.
 pub trait Expect<T: Clone + Typed + Location + 'static>: UncheckedStack<T> {
     fn expect_exact_pop(&mut self, contract: &[TokenType], loc: Loc) -> LazyResult<()> {
-        self.expect_stack_size(contract.len(), loc)?;
         self.expect_exact(contract, loc)?;
         self.truncate(contract.len());
         Ok(())
     }
 
     fn expect_contract_pop(&mut self, contract: &[TokenType], loc: Loc) -> LazyResult<()> {
-        self.expect_stack_size(contract.len(), loc)?;
         self.expect_arity(contract, loc)?;
         self.truncate(contract.len());
         Ok(())
@@ -35,7 +33,6 @@ pub trait Expect<T: Clone + Typed + Location + 'static>: UncheckedStack<T> {
     fn expect_array_pop<const N: usize>(
         &mut self, contract: [TokenType; N], loc: Loc,
     ) -> LazyResult<[T; N]> {
-        self.expect_stack_size(contract.len(), loc)?;
         self.expect_arity(&contract, loc)?;
         Ok(unsafe { self.pop_array() })
     }
@@ -138,9 +135,16 @@ pub trait Compare<T: Clone + Typed + Location + 'static>: Deref<Target = [T]> {
     }
 
     fn expect_arity<V: Typed>(&self, contract: &[V], loc: Loc) -> LazyResult<()> {
-        for (stk, contract) in self.iter().rev().zip(contract.iter().rev()) {
-            expect_type(stk, contract, loc)?;
+        if self.len() < contract.len() {
+            return Err(self.format_stack_diff(contract, loc));
         }
+
+        for (stk, contr) in self.iter().rev().zip(contract.iter().rev()) {
+            if expect_type(stk, contr, loc).is_err() {
+                return Err(self.format_stack_diff(contract, loc));
+            }
+        }
+
         Ok(())
     }
 
@@ -170,7 +174,7 @@ pub fn expect_type<T: Clone + Typed + Location + 'static, V: Typed>(
     frame: &T, expected: V, loc: Loc,
 ) -> LazyResult<()> {
     let expected_type = expected.get_type();
-    if equals_any!(expected_type, Value::ANY, ValueType::Ptr(Value::ANY), frame.get_type()) {
+    if equals_any!(expected_type, TypeId::ANY, ValueType::Ptr(TypeId::ANY), frame.get_type()) {
         return Ok(());
     }
     Err(format_type_diff(frame.clone(), expected.get_type(), loc))

@@ -8,7 +8,7 @@ use ashfire_types::{
 use firelib::lexer::Loc;
 
 use super::{parser::Parser, types::LocWord};
-use crate::compiler::program::{Fmt, LazyError, LazyResult, Program};
+use crate::compiler::program::{Fmt, InternalString, LazyError, LazyResult, Program};
 
 pub struct LabelKind(pub LocWord, pub Option<ValueType>);
 
@@ -51,9 +51,10 @@ impl Parser {
             TokenType::Keyword => {
                 let word_error = format!("{error_text} after `*`");
                 let ref_word = self.expect_word(word_error.clone(), loc)?;
+                prog.info(loc, ref_word.as_string(prog));
 
                 prog.get_struct_value_id(&ref_word)
-                    .map(|val| prog.get_type_ptr(val))
+                    .map(|x| prog.get_type_ptr(x, *ref_word))
                     .map_or_else(|| Err(unexpected_token(ref_word.into(), word_error)), Ok)
             }
 

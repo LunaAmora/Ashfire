@@ -1,6 +1,6 @@
 use ashfire_types::{
     core::*,
-    data::{StructType, Value, ValueType},
+    data::{TypeDescr, TypeId, ValueType},
     enums::{IntrinsicType, KeywordType},
 };
 use ashlib::{Either, EvalStack, UncheckedStack};
@@ -15,13 +15,13 @@ use crate::compiler::{
 type DoubleResult<T> = ashlib::DoubleResult<T, IRToken, Fmt>;
 
 impl Parser {
-    pub fn compile_eval(&self, prog: &Program, loc: Loc) -> DoubleResult<(IRToken, usize)> {
+    pub fn compile_eval(&self, prog: &mut Program, loc: Loc) -> DoubleResult<(IRToken, usize)> {
         let (mut result, skip) = self.compile_eval_n(1, prog, loc)?;
         DoubleResult::new((result.pop().unwrap(), skip))
     }
 
     pub fn compile_eval_n(
-        &self, n: usize, prog: &Program, loc: Loc,
+        &self, n: usize, prog: &mut Program, loc: Loc,
     ) -> DoubleResult<(Vec<IRToken>, usize)> {
         let mut stack = EvalStack::default();
         let mut i = 0;
@@ -63,11 +63,11 @@ impl Parser {
 impl Expect<IRToken> for EvalStack<IRToken> {}
 
 pub trait Evaluator {
-    fn evaluate(&mut self, item: IRToken, prog: &Program) -> DoubleResult<()>;
+    fn evaluate(&mut self, item: IRToken, prog: &mut Program) -> DoubleResult<()>;
 }
 
 impl Evaluator for EvalStack<IRToken> {
-    fn evaluate(&mut self, tok: IRToken, prog: &Program) -> DoubleResult<()> {
+    fn evaluate(&mut self, tok: IRToken, prog: &mut Program) -> DoubleResult<()> {
         let IRToken(token_type, operand, loc) = tok;
 
         match token_type {
@@ -90,7 +90,7 @@ impl Evaluator for EvalStack<IRToken> {
                 _ => Err(Either::Left(IRToken(TokenType::Keyword, *tok, loc)))?,
             },
 
-            TokenType::Word => match prog.get_intrinsic_type(prog.get_word(&tok)) {
+            TokenType::Word => match prog.get_intrinsic_type(&prog.get_word(&tok).to_string()) {
                 Some(intrinsic) => match intrinsic {
                     IntrinsicType::Plus => self.pop_push_arity(
                         |[a, b]| IRToken(a.get_type(), *a + *b, loc),
@@ -105,7 +105,7 @@ impl Evaluator for EvalStack<IRToken> {
                     )?,
 
                     IntrinsicType::Cast(n) => self.pop_push_arity(
-                        |[a]| IRToken(ValueType::from(n).get_type(), *a, loc),
+                        |[a]| IRToken(TypeId(n).get_type(), *a, loc),
                         ArityType::Any,
                         loc,
                     )?,
@@ -114,8 +114,8 @@ impl Evaluator for EvalStack<IRToken> {
                 },
 
                 None => match prog.get_const_by_name(&tok.str_key()) {
-                    Some(StructType::Unit(unit)) => {
-                        self.push(IRToken(unit.value_type().get_type(), unit.value(), loc));
+                    Some(TypeDescr::Primitive(unit)) => {
+                        self.push(IRToken(unit.type_id().get_type(), unit.value(), loc));
                     }
                     Some(_) => todo!("Support const use on other consts"),
                     None => Err(Either::Left(tok))?,
@@ -129,7 +129,7 @@ impl Evaluator for EvalStack<IRToken> {
             }
 
             TokenType::Data(ValueType::Typ(value)) => match value {
-                Value::INT | Value::BOOL | Value::PTR => self.push(tok),
+                TypeId::INT | TypeId::BOOL | TypeId::PTR => self.push(tok),
                 _ => Err(Either::Left(tok))?,
             },
 

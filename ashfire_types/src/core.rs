@@ -85,11 +85,11 @@ impl Operand for StrKey {
     }
 }
 
-pub const ANY: TokenType = TokenType::Data(ValueType::Typ(Value::ANY));
-pub const BOOL: TokenType = TokenType::Data(ValueType::Typ(Value::BOOL));
-pub const INT: TokenType = TokenType::Data(ValueType::Typ(Value::INT));
-pub const PTR: TokenType = TokenType::Data(ValueType::Typ(Value::PTR));
-pub const STR: TokenType = TokenType::Data(ValueType::Typ(Value::STR));
+pub const ANY: TokenType = TokenType::Data(ValueType::Typ(TypeId::ANY));
+pub const BOOL: TokenType = TokenType::Data(ValueType::Typ(TypeId::BOOL));
+pub const INT: TokenType = TokenType::Data(ValueType::Typ(TypeId::INT));
+pub const PTR: TokenType = TokenType::Data(ValueType::Typ(TypeId::PTR));
+pub const STR: TokenType = TokenType::Data(ValueType::Typ(TypeId::STR));
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TokenType {
@@ -105,8 +105,8 @@ impl Typed for TokenType {
     }
 }
 
-impl PartialEq<Value> for TokenType {
-    fn eq(&self, other: &Value) -> bool {
+impl PartialEq<TypeId> for TokenType {
+    fn eq(&self, other: &TypeId) -> bool {
         match self {
             Self::Data(ValueType::Typ(typ)) => typ == other,
             _ => false,
@@ -181,8 +181,8 @@ impl PartialEq<TokenType> for &IRToken {
     }
 }
 
-impl PartialEq<Value> for &IRToken {
-    fn eq(&self, other: &Value) -> bool {
+impl PartialEq<TypeId> for &IRToken {
+    fn eq(&self, other: &TypeId) -> bool {
         &self.0 == other
     }
 }
@@ -202,19 +202,19 @@ impl Op {
     }
 }
 
-impl From<(&ValueUnit, Loc)> for Op {
-    fn from(tuple: (&ValueUnit, Loc)) -> Self {
-        let ValueType::Typ(typ) = tuple.0.value_type() else {
-            unimplemented!("Conversion not supported for `ValueType::Ptr`")
-        };
+impl From<(&Primitive, Loc)> for Op {
+    fn from(tuple: (&Primitive, Loc)) -> Self {
+        // let ValueType::Typ(typ) = tuple.0.value_type() else {
+        //     unimplemented!("Conversion not supported for `ValueType::Ptr`")
+        // };
 
-        Self(OpType::PushData(*typ), tuple.0.value(), tuple.1)
+        Self(OpType::PushData(*tuple.0.type_id()), tuple.0.value(), tuple.1)
     }
 }
 
 impl From<(IntrinsicType, Loc)> for Op {
     fn from(value: (IntrinsicType, Loc)) -> Self {
-        Self(OpType::Intrinsic, i32::from(value.0), value.1)
+        Self(OpType::Intrinsic, usize::from(value.0).operand(), value.1)
     }
 }
 

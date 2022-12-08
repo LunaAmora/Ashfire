@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ashfire_types::{
     core::{Op, Operand, StrKey, WORD_SIZE},
-    data::{StructDef, StructInfo, ValueUnit},
+    data::{Primitive, StructField, StructInfo},
     proc::Contract,
 };
 use firelib::{Context, Result};
@@ -108,7 +108,7 @@ impl Generator {
     }
 }
 
-fn store_if_non_zero(offset: i32, var: &ValueUnit) -> Option<Vec<Instruction>> {
+fn store_if_non_zero(offset: i32, var: &Primitive) -> Option<Vec<Instruction>> {
     (var.value() > 0).then(|| store_local(offset, var.value()))
 }
 
@@ -155,7 +155,7 @@ pub fn as_wasm(contract: &Contract) -> (Vec<WasmType>, Vec<WasmType>) {
     (vec![WasmType::I32; ins], vec![WasmType::I32; outs])
 }
 
-pub fn unpack_struct(stk: &StructDef) -> Vec<Instruction> {
+pub fn unpack_struct(stk: &StructField) -> Vec<Instruction> {
     let mut instructions = vec![];
 
     match stk.count() as i32 {

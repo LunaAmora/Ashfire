@@ -101,10 +101,10 @@ impl Parser {
 
             TokenType::Data(data) => match data {
                 ValueType::Typ(val) => match val {
-                    Value::INT | Value::BOOL | Value::PTR => {
+                    TypeId::INT | TypeId::BOOL | TypeId::PTR => {
                         Op(OpType::PushData(val), operand, loc)
                     }
-                    Value(_) => lazybail!(
+                    TypeId(_) => lazybail!(
                         |f| "{}Value type not valid here: `{}`",
                         f.format(Fmt::Loc(loc)),
                         f.format(Fmt::Typ(val.get_type()))
@@ -336,7 +336,7 @@ impl Parser {
         let mut colons: u8 = 0;
         while let Some(tok) = self.get(i) {
             match (colons, tok.get_type()) {
-                (1, TokenType::Data(ValueType::Typ(Value::INT))) => {
+                (1, TokenType::Data(ValueType::Typ(TypeId::INT))) => {
                     self.parse_memory(word, prog).try_success()?;
                 }
 
@@ -453,9 +453,9 @@ impl Parser {
 
     fn parse_static_ctx(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
         if let Ok((eval, skip)) = self.compile_eval(prog, word.loc()).value {
-            if &eval != Value::ANY {
+            if &eval != TypeId::ANY {
                 self.skip(skip);
-                let struct_type = ValueUnit::new(word, &eval).into();
+                let struct_type = Primitive::new(word, &eval).into();
                 prog.register_const(struct_type);
 
                 self.name_scopes.register(word, ParseContext::ConstStruct);
@@ -519,13 +519,14 @@ impl Parser {
 
                     match kind {
                         ValueType::Typ(_) => {
-                            let type_def = prog.get_value_def(kind);
+                            let type_def = prog.get_value_def(kind.get_value().0);
                             for typ in type_def.units().map(Typed::get_type) {
                                 typ.conditional_push(arrow, &mut outs, &mut ins);
                             }
                         }
                         ValueType::Ptr(_) => {
-                            kind.get_type().conditional_push(arrow, &mut outs, &mut ins);
+                            todo!()
+                            // kind.get_type().conditional_push(arrow, &mut outs, &mut ins);
                         }
                     }
                 }
@@ -539,7 +540,7 @@ impl Parser {
         let loc = word.loc();
 
         self.expect_keyword(KeywordType::Colon, "`:` after `mem`", loc)?;
-        let value = self.expect_by(|tok| tok == Value::INT, "memory size after `:`", loc)?;
+        let value = self.expect_by(|tok| tok == TypeId::INT, "memory size after `:`", loc)?;
         self.expect_keyword(KeywordType::End, "`end` after memory size", loc)?;
 
         let ctx = prog.push_mem_by_context(self, word, value.index());
@@ -557,25 +558,26 @@ impl Parser {
         while let Some(tok) = self.peek() {
             if tok == TokenType::Keyword {
                 self.expect_keyword(KeywordType::End, "`end` after struct declaration", loc)?;
-                prog.structs_types.push(StructDef(word.str_key(), members));
+                prog.structs_types
+                    .push(StructField(word.str_key(), members));
                 success!();
             }
 
             let member_name = self.expect_word("struct member name", loc)?;
             let kind = self.expect_type_kind("struct member type", prog, loc)?;
 
-            let type_def = prog.get_value_def(kind);
+            let type_def = prog.get_value_def(kind.get_value().0);
             let ref_members = type_def.members();
 
             if ref_members.len() == 1 {
-                let StructType::Unit(typ) = &ref_members[0] else {
+                let TypeDescr::Primitive(typ) = &ref_members[0] else {
                     todo!()
                 };
 
-                members.push(StructType::unit(&member_name, *typ.value_type()));
+                members.push(TypeDescr::unit(&member_name, *typ.type_id()));
             } else {
                 let value = prog.get_struct_value_id(type_def.name()).unwrap();
-                members.push(StructType::root(&member_name, ref_members.to_vec(), value));
+                members.push(TypeDescr::root(&member_name, ref_members.to_vec(), value));
             }
         }
 
@@ -594,7 +596,7 @@ impl Parser {
         } else {
             self.expect_keyword(KeywordType::End, "`end` after variable type", loc)?;
 
-            let type_def = prog.get_value_def(kind);
+            let type_def = prog.get_value_def(kind.get_value().0);
 
             let ref_members: Vec<_> = type_def
                 .clone()
@@ -607,7 +609,7 @@ impl Parser {
                 let type_name = *type_def.name();
 
                 let reftype = prog.get_struct_value_id(&type_name).unwrap();
-                let struct_type = StructType::root(word, ref_members, reftype);
+                let struct_type = TypeDescr::root(word, ref_members, reftype);
                 self.register_const_or_var(false, word, type_name, struct_type, prog);
             }
             Ok(())
@@ -636,7 +638,7 @@ impl Parser {
             self.name_scopes.register(&word, ParseContext::Binding);
 
             if let Some(kind) = typ {
-                bindings.push((word.str_key(), Some(kind.operand())));
+                bindings.push((word.str_key(), Some(kind.get_value().index())));
             } else {
                 bindings.push((word.str_key(), None));
             }
@@ -648,7 +650,7 @@ impl Parser {
     fn eval_const_or_var(
         &mut self, is_constant: bool, word: &LocWord, value: ValueType, prog: &mut Program,
     ) -> LazyResult<()> {
-        let stk = prog.get_value_def(value).clone();
+        let stk = prog.get_value_def(value.get_value().0).clone();
 
         let (mut result, eval) = match self.compile_eval_n(stk.count(), prog, word.loc()).value {
             Ok(value) => value,
@@ -670,11 +672,11 @@ impl Parser {
             let members = stk.ordered_members(self.inside_proc());
 
             match members.last().unwrap() {
-                StructType::Root(_) => todo!(),
-                StructType::Unit(typ) => expect_type(&eval, typ.get_type(), end_loc)?,
+                TypeDescr::Structure(_) => todo!(),
+                TypeDescr::Primitive(typ) => expect_type(&eval, typ.get_type(), end_loc)?,
             };
 
-            StructType::Unit(ValueUnit::new(word, &eval))
+            TypeDescr::Primitive(Primitive::new(word, &eval))
         } else {
             let contract: Vec<_> = stk.units().map(Typed::get_type).collect();
             result.expect_exact(&contract, end_loc)?;
@@ -686,7 +688,7 @@ impl Parser {
             let def_members = stk.transpose(self.inside_proc(), &mut eval_items).unwrap();
             let value = prog.get_struct_value_id(&stk_name).unwrap();
 
-            StructType::root(word, def_members, value)
+            TypeDescr::root(word, def_members, value)
         };
 
         self.register_const_or_var(is_constant, word, stk_name, struct_type, prog);
@@ -694,7 +696,7 @@ impl Parser {
     }
 
     fn register_const_or_var(
-        &mut self, is_constant: bool, word: &LocWord, ref_name: StrKey, struct_type: StructType,
+        &mut self, is_constant: bool, word: &LocWord, ref_name: StrKey, struct_type: TypeDescr,
         prog: &mut Program,
     ) {
         let ctx = if is_constant {
@@ -708,7 +710,7 @@ impl Parser {
         self.structs.push(IndexWord::new(word, ref_name));
     }
 
-    pub fn register_var(&mut self, struct_word: StructType, prog: &mut Program) -> ParseContext {
+    pub fn register_var(&mut self, struct_word: TypeDescr, prog: &mut Program) -> ParseContext {
         if let Some(proc) = self.current_proc_mut(prog) {
             let data = proc.get_data_mut().unwrap();
             data.local_vars.push(struct_word);

@@ -114,11 +114,11 @@ pub trait StructUtils {
     fn get_offset_local(&self, word: &StrKey) -> Option<(usize, usize)>;
     fn get_pointer(&self, word: &LocWord, push_type: OpType, stk_id: i32) -> Vec<Op>;
     fn get_fields(
-        &self, word: &LocWord, push_type: OpType, stk_def: &StructDef, store: bool,
+        &self, word: &LocWord, push_type: OpType, stk_def: &StructField, store: bool,
     ) -> Vec<Op>;
 }
 
-impl StructUtils for [StructType] {
+impl StructUtils for [TypeDescr] {
     fn get_offset(&self, word: &StrKey) -> Option<(usize, usize)> {
         let i = self.iter().position(|stk| word.eq(stk.name()))?;
 
@@ -148,14 +148,15 @@ impl StructUtils for [StructType] {
             self.get_offset(word).unwrap()
         };
 
-        vec![
-            Op(push_type, index as i32, word.loc()),
-            Op::from((IntrinsicType::Cast(-stk_id), word.loc())),
-        ]
+        todo!("{stk_id}/{index}");
+        // vec![
+        //     Op(push_type, index as i32, word.loc()),
+        //     Op::from((IntrinsicType::Cast(-stk_id), word.loc())),
+        // ]
     }
 
     fn get_fields(
-        &self, word: &LocWord, push_type: OpType, stk_def: &StructDef, store: bool,
+        &self, word: &LocWord, push_type: OpType, stk_def: &StructField, store: bool,
     ) -> Vec<Op> {
         let mut result = Vec::new();
         let loc = word.loc();
@@ -171,12 +172,11 @@ impl StructUtils for [StructType] {
         let members = stk_def
             .units()
             .conditional_rev(store)
-            .map(ValueUnit::value_type)
-            .map(Operand::operand);
+            .map(|v| v.type_id().0);
 
         for (operand, type_id) in id_range.zip(members) {
             if store {
-                result.push(Op(OpType::ExpectType, type_id, loc));
+                result.push(Op(OpType::ExpectType, type_id.operand(), loc));
             }
 
             result.push(Op(push_type, operand, loc));
@@ -196,28 +196,30 @@ impl StructUtils for [StructType] {
 }
 
 pub fn unpack_struct(
-    stk: &StructType, push_type: OpType, mut offset: usize, var_typ: VarWordType, loc: Loc,
+    stk: &TypeDescr, push_type: OpType, mut offset: usize, var_typ: VarWordType, loc: Loc,
 ) -> Vec<Op> {
     let mut result = Vec::new();
     match stk {
-        StructType::Unit(unit) => {
-            let type_id = unit.value_type().operand();
+        TypeDescr::Primitive(unit) => {
+            let type_id = unit.type_id().operand();
             result.push(Op(push_type, offset as i32, loc));
 
             if var_typ == VarWordType::Store {
                 result.insert(0, Op(OpType::ExpectType, type_id, loc));
                 result.push(Op::from((IntrinsicType::Store32, loc)));
             } else if var_typ == VarWordType::Pointer {
-                result.push(Op::from((IntrinsicType::Cast(-type_id), loc)));
+                todo!("{type_id}");
+                // result.push(Op::from((IntrinsicType::Cast(-type_id), loc)));
             } else {
-                result.extend([
-                    Op::from((IntrinsicType::Load32, loc)),
-                    Op::from((IntrinsicType::Cast(type_id), loc)),
-                ]);
+                todo!("{type_id}");
+                // result.extend([
+                //     Op::from((IntrinsicType::Load32, loc)),
+                //     Op::from((IntrinsicType::Cast(type_id), loc)),
+                // ]);
             }
         }
 
-        StructType::Root(root) => {
+        TypeDescr::Structure(root) => {
             if var_typ == VarWordType::Store {
                 todo!();
             }
@@ -227,15 +229,16 @@ pub fn unpack_struct(
             }
 
             let type_id = root.get_ref_type().operand();
+            todo!("{type_id}/{offset}");
 
-            result.extend([
-                Op(push_type, offset as i32, loc),
-                Op::from((IntrinsicType::Cast(-type_id), loc)),
-            ]);
+            // result.extend([
+            //     Op(push_type, offset as i32, loc),
+            //     Op::from((IntrinsicType::Cast(-type_id), loc)),
+            // ]);
 
-            if var_typ != VarWordType::Pointer {
-                result.push(Op(OpType::Unpack, 0, loc));
-            }
+            // if var_typ != VarWordType::Pointer {
+            //     result.push(Op(OpType::Unpack, 0, loc));
+            // }
         }
     };
     result

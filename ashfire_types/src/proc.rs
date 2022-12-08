@@ -1,11 +1,11 @@
 use super::{
     core::{word_aligned, OffsetWord, StrKey, TokenType, WORD_SIZE},
-    data::{StructInfo, StructType},
+    data::{StructInfo, TypeDescr},
 };
 
 #[derive(Default)]
 pub struct Data {
-    pub local_vars: Vec<StructType>,
+    pub local_vars: Vec<TypeDescr>,
     pub local_mems: Vec<OffsetWord>,
     mem_size: usize,
 }
@@ -60,7 +60,7 @@ impl Default for Mode {
 }
 
 #[derive(Default)]
-pub struct Binding(pub Vec<(StrKey, Option<i32>)>);
+pub struct Binding(pub Vec<(StrKey, Option<usize>)>);
 
 #[derive(Default)]
 pub struct Proc {
@@ -90,7 +90,7 @@ impl Proc {
         }
     }
 
-    pub fn bindings(&self) -> impl Iterator<Item = &(StrKey, Option<i32>)> {
+    pub fn bindings(&self) -> impl Iterator<Item = &(StrKey, Option<usize>)> {
         self.bindings.iter().rev().flat_map(|bind| bind.0.iter())
     }
 

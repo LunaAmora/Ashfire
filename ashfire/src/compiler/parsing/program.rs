@@ -46,17 +46,17 @@ impl Program {
     /// and parses it to an [`Op`].
     pub fn get_const_struct(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.get_const_by_name(word).map(|tword| match tword {
-            StructType::Root(root) => root
+            TypeDescr::Structure(root) => root
                 .units()
                 .map(|val| Op::from((val, word.loc())))
                 .collect(),
-            StructType::Unit(val) => vec![Op::from((val, word.loc()))],
+            TypeDescr::Primitive(val) => vec![Op::from((val, word.loc()))],
         })
     }
 
     /// Searches for a `struct` that matches the given [`StrKey`],
     /// returning its type.
-    fn try_get_struct_type(&self, word: &StrKey, parser: &Parser) -> Option<&StructDef> {
+    fn try_get_struct_type(&self, word: &StrKey, parser: &Parser) -> Option<&StructField> {
         parser
             .structs()
             .iter()
@@ -64,15 +64,11 @@ impl Program {
             .and_then(|stk| self.get_type_def(stk))
     }
 
-    pub fn get_value_def(&self, value: ValueType) -> &StructDef {
-        let ValueType::Typ(Value(index)) = value else {
-            todo!();
-        };
-
+    pub fn get_value_def(&self, index: usize) -> &StructField {
         &self.structs_types[index]
     }
 
-    pub fn get_type_def<O: Operand>(&self, word_id: O) -> Option<&StructDef> {
+    pub fn get_type_def<O: Operand>(&self, word_id: O) -> Option<&StructField> {
         self.structs_types
             .iter()
             .find(|def| word_id.str_key().eq(def.name()))
@@ -82,26 +78,27 @@ impl Program {
         self.structs_types
             .iter()
             .position(|def| word.eq(def.name()))
-            .map(|i| ValueType::Typ(Value(i)))
+            .map(|i| ValueType::Typ(TypeId(i)))
     }
 
-    pub fn get_type_ptr(&mut self, value: Value) -> ValueType {
-        let name = format!("*{}", value.str_key().as_str(self));
-
-        if let Some(key) = self.get_key(&name) {
+    pub fn get_type_ptr(&mut self, value: TypeId, name: StrKey) -> ValueType {
+        let ptr_name = format!("*{}", name.as_str(self));
+        
+        if let Some(key) = self.get_key(&ptr_name) {
             self.get_type(&key).unwrap()
         } else {
-            let word_id = self.get_or_intern(&name);
-            let unit = ValueUnit(StrKey::default(), 0, ValueType::Ptr(value));
-            let stk = StructDef(word_id, vec![StructType::Unit(unit)]);
+            info!("adding the type: ({})", ptr_name);
+            let word_id = self.get_or_intern(&ptr_name);
+            let unit = Primitive(StrKey::default(), 0, value);
+            let stk = StructField(word_id, vec![TypeDescr::Primitive(unit)]);
 
             self.structs_types.push(stk);
-            ValueType::Typ(Value(self.structs_types.len() - 1))
+            ValueType::Typ(TypeId(self.structs_types.len() - 1))
         }
     }
 
-    pub fn get_intrinsic(&self, word: &LocWord) -> Option<Vec<Op>> {
-        self.get_intrinsic_type(word.as_str(self))
+    pub fn get_intrinsic(&mut self, word: &LocWord) -> Option<Vec<Op>> {
+        self.get_intrinsic_type(&word.as_string(self))
             .map(|i| vec![Op::from((i, word.loc()))])
     }
 
@@ -140,7 +137,7 @@ impl Program {
     }
 
     fn try_get_var(
-        &self, word: &LocWord, vars: &[StructType], push_type: OpType, var_typ: VarWordType,
+        &self, word: &LocWord, vars: &[TypeDescr], push_type: OpType, var_typ: VarWordType,
         parser: &Parser,
     ) -> OptionErr<Vec<Op>> {
         if word.as_str(self).contains('.') {
@@ -167,8 +164,8 @@ impl Program {
     }
 
     fn try_get_field<'a>(
-        &self, word: &LocWord, vars: &'a [StructType],
-    ) -> OptionErr<(&'a StructType, usize)> {
+        &self, word: &LocWord, vars: &'a [TypeDescr],
+    ) -> OptionErr<(&'a TypeDescr, usize)> {
         let fields: Vec<_> = word.as_str(self).split('.').collect();
         let loc = word.loc();
 
@@ -182,7 +179,7 @@ impl Program {
         let mut var = &vars[i];
 
         for field_name in fields {
-            let StructType::Root(root) = var else {
+            let TypeDescr::Structure(root) = var else {
                 todo!()
             };
 
