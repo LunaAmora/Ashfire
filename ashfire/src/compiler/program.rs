@@ -66,10 +66,9 @@ impl Program {
         ];
         let [_, any, any_ptr, bool, int, ptr, str, len, data] = intern_all(&mut interner, names);
 
-        let any_descr = TypeDescr::primitive(any, TypeId::ANY);
         let structs_types = vec![
-            any_descr.clone(),
-            TypeDescr::Reference(PointerType(any_ptr, TypeId::ANY_PTR, Box::new(any_descr))),
+            TypeDescr::primitive(any, TypeId::ANY),
+            TypeDescr::reference(any_ptr, TypeId::ANY_PTR, TypeId::ANY),
             TypeDescr::primitive(bool, TypeId::BOOL),
             TypeDescr::primitive(int, TypeId::INT),
             TypeDescr::primitive(ptr, TypeId::PTR),
@@ -294,11 +293,9 @@ impl Program {
         if let Some(key) = self.get_key(&ptr_name) {
             self.get_type_id_by_name(&key).unwrap()
         } else {
-            let value_descr = self.get_type_descr(value).clone(); //Todo: Unbox this
-
             let word_id = self.get_or_intern(&ptr_name);
             let type_id = TypeId(self.structs_types.len());
-            let stk = TypeDescr::Reference(PointerType(word_id, type_id, Box::new(value_descr)));
+            let stk = TypeDescr::reference(word_id, type_id, value);
 
             self.structs_types.push(stk);
             type_id

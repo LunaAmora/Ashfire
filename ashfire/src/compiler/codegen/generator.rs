@@ -286,7 +286,7 @@ fn register_contract(prog: &Program, index: usize, module: &mut Module) -> Ident
 
 impl Program {
     pub fn final_value(&self, var: &Primitive) -> i32 {
-        if matches!(*var.type_id(), TypeId::STR) {
+        if matches!(var.type_id(), TypeId::STR) {
             let offset = self.get_data(var.value()).offset();
             return offset + self.data_start();
         }

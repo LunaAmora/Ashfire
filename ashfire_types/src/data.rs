@@ -52,20 +52,20 @@ impl Primitive {
         Self(*name, typed.operand(), id)
     }
 
-    pub fn size(&self) -> usize {
-        WORD_USIZE
+    pub fn name(&self) -> &Name {
+        &self.0
     }
 
     pub fn value(&self) -> i32 {
         self.1
     }
 
-    pub fn type_id(&self) -> &TypeId {
-        &self.2
+    pub fn type_id(&self) -> TypeId {
+        self.2
     }
 
-    pub fn name(&self) -> &Name {
-        &self.0
+    pub fn size(&self) -> usize {
+        WORD_USIZE
     }
 }
 
@@ -76,7 +76,7 @@ impl Typed for Primitive {
 }
 
 #[derive(Clone)]
-pub struct PointerType(pub Name, pub TypeId, pub Box<TypeDescr>);
+pub struct PointerType(pub Name, pub TypeId, pub TypeId);
 
 impl PointerType {
     pub fn as_primitive(&self, value: i32) -> Primitive {
@@ -85,6 +85,14 @@ impl PointerType {
 
     pub fn name(&self) -> &Name {
         &self.0
+    }
+
+    pub fn type_id(&self) -> TypeId {
+        self.1
+    }
+
+    pub fn ptr_id(&self) -> TypeId {
+        self.2
     }
 
     pub fn size(&self) -> usize {
@@ -160,8 +168,8 @@ impl StructInfo for [TypeDescr] {
 
 #[derive(Clone)]
 pub enum TypeDescr {
-    Structure(StructType),
     Primitive(Primitive),
+    Structure(StructType),
     Reference(PointerType),
 }
 
@@ -174,11 +182,8 @@ impl TypeDescr {
         Self::Structure(StructType(StructFields(name, members), reftype))
     }
 
-    pub fn members(&self) -> Option<&[Self]> {
-        match self {
-            Self::Structure(StructType(fields, _)) => Some(fields),
-            _ => None,
-        }
+    pub fn reference(name: Name, type_id: TypeId, ptr_id: TypeId) -> Self {
+        Self::Reference(PointerType(name, type_id, ptr_id))
     }
 
     pub fn name(&self) -> &Name {

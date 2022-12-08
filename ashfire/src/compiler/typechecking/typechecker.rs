@@ -337,17 +337,17 @@ impl TypeChecker {
             OpType::Unpack => match self.data_stack.expect_pop(loc)?.get_type() {
                 TokenType::Data(ValueType(id @ TypeId(index))) => {
                     match &program.get_type_descr(id) {
-                        TypeDescr::Reference(PointerType(_name, _id, ptr)) => match &**ptr {
-                            TypeDescr::Structure(StructType(fields, TypeId(index))) => {
+                        TypeDescr::Reference(ptr) => match program.get_type_descr(ptr.ptr_id()) {
+                            TypeDescr::Structure(StructType(fields, TypeId(ptr_id))) => {
                                 for typ in fields.units().map(|u| u.get_type()) {
                                     self.push_frame(typ, loc);
                                 }
 
-                                program.set_operand(ip, *index);
+                                program.set_operand(ip, *ptr_id);
                             }
 
                             TypeDescr::Primitive(_) => {
-                                self.push_frame(ptr.type_id().get_type(), loc);
+                                self.push_frame(ptr.ptr_id().get_type(), loc);
                                 program.set_operand(ip, index);
                             }
 
@@ -421,42 +421,37 @@ impl TypeChecker {
 
     fn expect_struct_pointer(&mut self, prog: &mut Program, ip: usize) -> LazyResult<TokenType> {
         let &Op(_, operand, loc) = &prog.ops[ip];
-        match self.data_stack.expect_pop(loc)?.get_type() {
-            TokenType::Data(ValueType(id)) => {
-                let stk = &prog.get_type_descr(id);
+        let typ = self.data_stack.expect_pop(loc)?.get_type();
 
-                match stk {
-                    TypeDescr::Structure(_) => todo!(),
-                    TypeDescr::Primitive(_) => todo!(),
-                    TypeDescr::Reference(PointerType(_name, _id, ptr)) => {
-                        let ref_typ = prog.get_type_descr(ptr.type_id());
-                        match ref_typ {
-                            TypeDescr::Structure(StructType(fields, _)) => {
-                                let word = &operand.str_key();
+        if let TokenType::Data(ValueType(id)) = typ {
+            if let TypeDescr::Reference(ptr) = &prog.get_type_descr(id) {
+                match prog.get_type_descr(ptr.ptr_id()) {
+                    TypeDescr::Structure(StructType(fields, _)) => {
+                        let word = &operand.str_key();
 
-                                let Some((offset, index)) = fields.get_offset(word) else {
-                                    let error = format!("The struct {} does not contain a member with name: `{}`",
-                                        fields.name().as_str(prog), word.as_str(prog));
-                                    return Err(err_loc(error, loc));
-                                };
+                        let Some((offset, index)) = fields.get_offset(word) else {
+                            let error = format!("The struct {} does not contain a member with name: `{}`",
+                                fields.name().as_str(prog), word.as_str(prog));
+                            return Err(err_loc(error, loc));
+                        };
 
-                                let result = fields[index].type_id().get_type();
-                                prog.set_operand(ip, offset * WORD_USIZE);
-                                Ok(result)
-                            }
-                            TypeDescr::Primitive(_) => todo!(),
-                            TypeDescr::Reference(_) => todo!(),
-                        }
+                        let result = fields[index].type_id().get_type();
+                        prog.set_operand(ip, offset * WORD_USIZE);
+
+                        return Ok(result);
                     }
+
+                    TypeDescr::Primitive(_) => todo!(),
+                    TypeDescr::Reference(_) => todo!(),
                 }
             }
-
-            typ => lazybail!(
-                |f| "{}Cannot `.` access elements of type: `{}`",
-                f.format(Fmt::Loc(loc)),
-                f.format(Fmt::Typ(typ))
-            ),
         }
+
+        lazybail!(
+            |f| "{}Cannot `.` access elements of type: `{}`",
+            f.format(Fmt::Loc(loc)),
+            f.format(Fmt::Typ(typ))
+        )
     }
 
     fn expect_stack_arity(

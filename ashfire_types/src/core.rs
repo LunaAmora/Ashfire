@@ -205,7 +205,7 @@ impl Op {
 
 impl From<(&Primitive, Loc)> for Op {
     fn from(tuple: (&Primitive, Loc)) -> Self {
-        Self(OpType::PushData(*tuple.0.type_id()), tuple.0.value(), tuple.1)
+        Self(OpType::PushData(tuple.0.type_id()), tuple.0.value(), tuple.1)
     }
 }
 

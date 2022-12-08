@@ -512,8 +512,10 @@ impl Parser {
                 _ => {
                     let kind = self.check_type_kind(tok, "variable type", prog)?;
                     match prog.get_type_descr(kind) {
-                        TypeDescr::Reference(PointerType(_name, id, _)) => {
-                            id.get_type().conditional_push(arrow, &mut outs, &mut ins);
+                        TypeDescr::Reference(ptr) => {
+                            ptr.type_id()
+                                .get_type()
+                                .conditional_push(arrow, &mut outs, &mut ins);
                         }
 
                         type_def => {
@@ -592,9 +594,9 @@ impl Parser {
                     fields.ordered_members(self.inside_proc()).collect()
                 }
                 TypeDescr::Primitive(_) => todo!(),
-                TypeDescr::Reference(PointerType(_name, id, members)) => {
-                    let struct_type = TypeDescr::Reference(PointerType(**word, id, members));
-                    self.register_const_or_var(false, word, id, struct_type, prog);
+                TypeDescr::Reference(ptr) => {
+                    let struct_type = TypeDescr::reference(**word, ptr.type_id(), ptr.ptr_id());
+                    self.register_const_or_var(false, word, ptr.type_id(), struct_type, prog);
                     return Ok(());
                 }
             };
@@ -671,8 +673,8 @@ impl Parser {
                     expect_type(&eval, fields[0].type_id().get_type(), end_loc)?;
                 }
 
-                TypeDescr::Reference(PointerType(_, id, _)) => {
-                    expect_type(&eval, id.get_type(), end_loc)?;
+                TypeDescr::Reference(ptr) => {
+                    expect_type(&eval, ptr.type_id().get_type(), end_loc)?;
                 }
             };
 

@@ -172,10 +172,10 @@ impl StructUtils for [TypeDescr] {
             TypeDescr::Structure(StructType(fields, _)) => fields
                 .units()
                 .conditional_rev(store)
-                .map(|v| *v.type_id())
+                .map(|v| v.type_id())
                 .collect(),
-            TypeDescr::Primitive(p) => vec![*p.type_id()],
-            TypeDescr::Reference(PointerType(_, id, _)) => vec![*id],
+            TypeDescr::Primitive(prm) => vec![prm.type_id()],
+            TypeDescr::Reference(ptr) => vec![ptr.type_id()],
         };
 
         for (operand, TypeId(id)) in id_range.zip(members) {
