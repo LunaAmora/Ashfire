@@ -112,9 +112,9 @@ impl NameScopes {
 pub trait StructUtils {
     fn get_offset(&self, word: &StrKey) -> Option<(usize, usize)>;
     fn get_offset_local(&self, word: &StrKey) -> Option<(usize, usize)>;
-    fn get_pointer(&self, word: &LocWord, push_type: OpType, stk_id: i32) -> Vec<Op>;
+    fn get_pointer(&self, word: &LocWord, push_type: OpType, type_id: TypeId) -> Vec<Op>;
     fn get_fields(
-        &self, word: &LocWord, push_type: OpType, stk_def: &StructField, store: bool,
+        &self, word: &LocWord, push_type: OpType, stk_def: &TypeDescr, store: bool,
     ) -> Vec<Op>;
 }
 
@@ -141,22 +141,21 @@ impl StructUtils for [TypeDescr] {
         Some((offset - 1, i))
     }
 
-    fn get_pointer(&self, word: &LocWord, push_type: OpType, stk_id: i32) -> Vec<Op> {
+    fn get_pointer(&self, word: &LocWord, push_type: OpType, type_id: TypeId) -> Vec<Op> {
         let (index, _) = if push_type == OpType::PushLocal {
             self.get_offset_local(word).unwrap()
         } else {
             self.get_offset(word).unwrap()
         };
 
-        todo!("{stk_id}/{index}");
-        // vec![
-        //     Op(push_type, index as i32, word.loc()),
-        //     Op::from((IntrinsicType::Cast(-stk_id), word.loc())),
-        // ]
+        vec![
+            Op(push_type, index as i32, word.loc()),
+            Op::from((IntrinsicType::Cast(type_id.0), word.loc())),
+        ]
     }
 
     fn get_fields(
-        &self, word: &LocWord, push_type: OpType, stk_def: &StructField, store: bool,
+        &self, word: &LocWord, push_type: OpType, stk_def: &TypeDescr, store: bool,
     ) -> Vec<Op> {
         let mut result = Vec::new();
         let loc = word.loc();
@@ -169,14 +168,19 @@ impl StructUtils for [TypeDescr] {
             range_step_from((index + stk_def.count()) as i32 - 1, -1)
         };
 
-        let members = stk_def
-            .units()
-            .conditional_rev(store)
-            .map(|v| v.type_id().0);
+        let members = match stk_def {
+            TypeDescr::Structure(StructType(fields, _)) => fields
+                .units()
+                .conditional_rev(store)
+                .map(|v| *v.type_id())
+                .collect(),
+            TypeDescr::Primitive(p) => vec![*p.type_id()],
+            TypeDescr::Reference(PointerType(_, id, _)) => vec![*id],
+        };
 
-        for (operand, type_id) in id_range.zip(members) {
+        for (operand, TypeId(id)) in id_range.zip(members) {
             if store {
-                result.push(Op(OpType::ExpectType, type_id.operand(), loc));
+                result.push(Op(OpType::ExpectType, id.operand(), loc));
             }
 
             result.push(Op(push_type, operand, loc));
@@ -186,60 +190,11 @@ impl StructUtils for [TypeDescr] {
             } else {
                 result.extend([
                     Op::from((IntrinsicType::Load32, loc)),
-                    Op::from((IntrinsicType::Cast(type_id), loc)),
+                    Op::from((IntrinsicType::Cast(id), loc)),
                 ]);
             }
         }
 
         result
     }
-}
-
-pub fn unpack_struct(
-    stk: &TypeDescr, push_type: OpType, mut offset: usize, var_typ: VarWordType, loc: Loc,
-) -> Vec<Op> {
-    let mut result = Vec::new();
-    match stk {
-        TypeDescr::Primitive(unit) => {
-            let type_id = unit.type_id().operand();
-            result.push(Op(push_type, offset as i32, loc));
-
-            if var_typ == VarWordType::Store {
-                result.insert(0, Op(OpType::ExpectType, type_id, loc));
-                result.push(Op::from((IntrinsicType::Store32, loc)));
-            } else if var_typ == VarWordType::Pointer {
-                todo!("{type_id}");
-                // result.push(Op::from((IntrinsicType::Cast(-type_id), loc)));
-            } else {
-                todo!("{type_id}");
-                // result.extend([
-                //     Op::from((IntrinsicType::Load32, loc)),
-                //     Op::from((IntrinsicType::Cast(type_id), loc)),
-                // ]);
-            }
-        }
-
-        TypeDescr::Structure(root) => {
-            if var_typ == VarWordType::Store {
-                todo!();
-            }
-
-            if push_type == OpType::PushLocal {
-                offset += 1;
-            }
-
-            let type_id = root.get_ref_type().operand();
-            todo!("{type_id}/{offset}");
-
-            // result.extend([
-            //     Op(push_type, offset as i32, loc),
-            //     Op::from((IntrinsicType::Cast(-type_id), loc)),
-            // ]);
-
-            // if var_typ != VarWordType::Pointer {
-            //     result.push(Op(OpType::Unpack, 0, loc));
-            // }
-        }
-    };
-    result
 }

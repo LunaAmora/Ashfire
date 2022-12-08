@@ -1,7 +1,7 @@
 use std::{io::Read, path::Path};
 
 use ashfire_types::{core::*, data::*, enums::*, proc::Mode};
-use firelib::{lazy::LazyCtx, ShortCircuit};
+use firelib::{lazy::LazyCtx, lexer::Loc, ShortCircuit};
 
 use super::{parser::Parser, types::*};
 use crate::compiler::{program::*, utils::err_loc};
@@ -46,55 +46,23 @@ impl Program {
     /// and parses it to an [`Op`].
     pub fn get_const_struct(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.get_const_by_name(word).map(|tword| match tword {
-            TypeDescr::Structure(root) => root
+            TypeDescr::Structure(StructType(fields, _)) => fields
                 .units()
-                .map(|val| Op::from((val, word.loc())))
+                .map(|val| Op::from((&val, word.loc())))
                 .collect(),
             TypeDescr::Primitive(val) => vec![Op::from((val, word.loc()))],
+            TypeDescr::Reference(..) => todo!(),
         })
     }
 
     /// Searches for a `struct` that matches the given [`StrKey`],
     /// returning its type.
-    fn try_get_struct_type(&self, word: &StrKey, parser: &Parser) -> Option<&StructField> {
+    fn try_get_struct_descr(&self, word: &StrKey, parser: &Parser) -> Option<&TypeDescr> {
         parser
             .structs()
             .iter()
             .find(|stk| word.eq(stk))
-            .and_then(|stk| self.get_type_def(stk))
-    }
-
-    pub fn get_value_def(&self, index: usize) -> &StructField {
-        &self.structs_types[index]
-    }
-
-    pub fn get_type_def<O: Operand>(&self, word_id: O) -> Option<&StructField> {
-        self.structs_types
-            .iter()
-            .find(|def| word_id.str_key().eq(def.name()))
-    }
-
-    pub fn get_type(&self, word: &StrKey) -> Option<ValueType> {
-        self.structs_types
-            .iter()
-            .position(|def| word.eq(def.name()))
-            .map(|i| ValueType::Typ(TypeId(i)))
-    }
-
-    pub fn get_type_ptr(&mut self, value: TypeId, name: StrKey) -> ValueType {
-        let ptr_name = format!("*{}", name.as_str(self));
-        
-        if let Some(key) = self.get_key(&ptr_name) {
-            self.get_type(&key).unwrap()
-        } else {
-            info!("adding the type: ({})", ptr_name);
-            let word_id = self.get_or_intern(&ptr_name);
-            let unit = Primitive(StrKey::default(), 0, value);
-            let stk = StructField(word_id, vec![TypeDescr::Primitive(unit)]);
-
-            self.structs_types.push(stk);
-            ValueType::Typ(TypeId(self.structs_types.len() - 1))
-        }
+            .map(|name| self.get_type_descr(name.1))
     }
 
     pub fn get_intrinsic(&mut self, word: &LocWord) -> Option<Vec<Op>> {
@@ -141,26 +109,78 @@ impl Program {
         parser: &Parser,
     ) -> OptionErr<Vec<Op>> {
         if word.as_str(self).contains('.') {
-            return self
+            let (var, offset) = self
                 .try_get_field(word, vars)
                 .value?
-                .map(|(var, offset)| unpack_struct(var, push_type, offset, var_typ, word.loc()))
-                .into();
+                .or_return(OptionErr::default)?;
+            return self.unpack_struct(var, push_type, offset, var_typ, word.loc());
         }
 
-        let struct_type = vars
+        let type_descr = vars
             .iter()
             .any(|val| val.name().eq(word))
-            .then(|| self.try_get_struct_type(word, parser))
+            .then(|| self.try_get_struct_descr(word, parser))
             .flatten()
             .or_return(OptionErr::default)?;
 
         OptionErr::new(if var_typ == VarWordType::Pointer {
-            let stk_id = self.get_struct_type_id(struct_type.name()).unwrap() as i32;
+            let value = type_descr.type_id();
+            let stk_id = self.try_get_type_ptr(value).unwrap();
+
             vars.get_pointer(word, push_type, stk_id)
         } else {
-            vars.get_fields(word, push_type, struct_type, var_typ == VarWordType::Store)
+            vars.get_fields(word, push_type, type_descr, var_typ == VarWordType::Store)
         })
+    }
+
+    fn unpack_struct(
+        &self, stk: &TypeDescr, push_type: OpType, mut offset: usize, var_typ: VarWordType,
+        loc: Loc,
+    ) -> OptionErr<Vec<Op>> {
+        let mut result = Vec::new();
+        match stk {
+            TypeDescr::Primitive(Primitive(.., typ @ TypeId(id))) => {
+                result.push(Op(push_type, offset as i32, loc));
+
+                if var_typ == VarWordType::Store {
+                    result.insert(0, Op(OpType::ExpectType, id.operand(), loc));
+                    result.push(Op::from((IntrinsicType::Store32, loc)));
+                } else if var_typ == VarWordType::Pointer {
+                    let TypeId(ptr_id) = self.try_get_type_ptr(*typ).unwrap();
+                    result.push(Op::from((IntrinsicType::Cast(ptr_id), loc)));
+                } else {
+                    result.extend([
+                        Op::from((IntrinsicType::Load32, loc)),
+                        Op::from((IntrinsicType::Cast(*id), loc)),
+                    ]);
+                }
+            }
+
+            TypeDescr::Structure(StructType(_, type_id)) => {
+                if var_typ == VarWordType::Store {
+                    todo!();
+                }
+
+                if push_type == OpType::PushLocal {
+                    offset += 1;
+                }
+
+                let TypeId(ptr_id) = self.try_get_type_ptr(*type_id).unwrap();
+
+                result.extend([
+                    Op(push_type, offset as i32, loc),
+                    Op::from((IntrinsicType::Cast(ptr_id), loc)),
+                ]);
+
+                if var_typ != VarWordType::Pointer {
+                    result.push(Op(OpType::Unpack, 0, loc));
+                }
+            }
+
+            TypeDescr::Reference(_) => todo!(),
+        };
+
+        OptionErr::new(result)
     }
 
     fn try_get_field<'a>(
@@ -179,7 +199,7 @@ impl Program {
         let mut var = &vars[i];
 
         for field_name in fields {
-            let TypeDescr::Structure(root) = var else {
+            let TypeDescr::Structure(StructType(fields, _)) = var else {
                 todo!()
             };
 
@@ -187,14 +207,14 @@ impl Program {
                 todo!()
             };
 
-            let Some((diff, index)) = root.members().get_offset(&field_key) else {
+            let Some((diff, index)) = fields.get_offset(&field_key) else {
                 let error = format!("The variable `{}` does not contain the field `{field_name}`",
                     var.name().as_str(self));
                 return err_loc(error, loc).into();
             };
 
             offset += diff;
-            var = &root.members()[index];
+            var = &fields[index];
         }
 
         OptionErr::new((var, offset))

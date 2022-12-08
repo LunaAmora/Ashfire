@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ashfire_types::{
     core::{Op, Operand, StrKey, WORD_SIZE},
-    data::{Primitive, StructField, StructInfo},
+    data::{Primitive, StructInfo, TypeDescr},
     proc::Contract,
 };
 use firelib::{Context, Result};
@@ -62,7 +62,7 @@ impl Generator {
             .local_vars
             .units()
             .zip(0..)
-            .filter_map(|(var, i)| store_if_non_zero(data.var_mem_offset(i), var))
+            .filter_map(|(var, i)| store_if_non_zero(data.var_mem_offset(i), &var))
             .flatten();
 
         func.extend(data_instructions);
@@ -155,7 +155,7 @@ pub fn as_wasm(contract: &Contract) -> (Vec<WasmType>, Vec<WasmType>) {
     (vec![WasmType::I32; ins], vec![WasmType::I32; outs])
 }
 
-pub fn unpack_struct(stk: &StructField) -> Vec<Instruction> {
+pub fn unpack_struct(stk: &TypeDescr) -> Vec<Instruction> {
     let mut instructions = vec![];
 
     match stk.count() as i32 {

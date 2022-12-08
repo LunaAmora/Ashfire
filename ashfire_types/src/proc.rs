@@ -1,7 +1,8 @@
 use super::{
     core::{word_aligned, OffsetWord, StrKey, TokenType, WORD_SIZE},
-    data::{StructInfo, TypeDescr},
+    data::TypeDescr,
 };
+use crate::data::StructInfo;
 
 #[derive(Default)]
 pub struct Data {

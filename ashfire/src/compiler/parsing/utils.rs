@@ -2,15 +2,15 @@ use std::fmt::Display;
 
 use ashfire_types::{
     core::{IRToken, Op, Operand, TokenType, Typed},
-    data::ValueType,
+    data::TypeId,
     enums::KeywordType,
 };
 use firelib::lexer::Loc;
 
 use super::{parser::Parser, types::LocWord};
-use crate::compiler::program::{Fmt, InternalString, LazyError, LazyResult, Program};
+use crate::compiler::program::{Fmt, LazyError, LazyResult, Program};
 
-pub struct LabelKind(pub LocWord, pub Option<ValueType>);
+pub struct LabelKind(pub LocWord, pub Option<TypeId>);
 
 impl Parser {
     pub fn expect_label_kind<S: Display + 'static + Clone>(
@@ -33,7 +33,7 @@ impl Parser {
 
     pub fn expect_type_kind<S: Display + 'static + Clone>(
         &mut self, error_text: S, prog: &mut Program, loc: Loc,
-    ) -> LazyResult<ValueType> {
+    ) -> LazyResult<TypeId> {
         let next = self.expect_by(
             |tok| equals_any!(tok, KeywordType::Ref, TokenType::Word),
             error_text.clone(),
@@ -45,23 +45,22 @@ impl Parser {
 
     pub fn check_type_kind<S: Display + 'static + Clone>(
         &mut self, tok: IRToken, error_text: S, prog: &mut Program,
-    ) -> LazyResult<ValueType> {
+    ) -> LazyResult<TypeId> {
         let IRToken(token_type, operand, loc) = tok;
         match token_type {
             TokenType::Keyword => {
                 let word_error = format!("{error_text} after `*`");
                 let ref_word = self.expect_word(word_error.clone(), loc)?;
-                prog.info(loc, ref_word.as_string(prog));
 
-                prog.get_struct_value_id(&ref_word)
-                    .map(|x| prog.get_type_ptr(x, *ref_word))
+                prog.get_type_id_by_name(&ref_word)
+                    .map(|x| prog.get_type_ptr(x))
                     .map_or_else(|| Err(unexpected_token(ref_word.into(), word_error)), Ok)
             }
 
             TokenType::Word => {
                 let name_type = LocWord(operand.str_key(), loc);
 
-                prog.get_type(&name_type)
+                prog.get_type_id_by_name(&name_type)
                     .map_or_else(|| Err(unexpected_token(name_type.into(), error_text)), Ok)
             }
 

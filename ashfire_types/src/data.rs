@@ -10,45 +10,27 @@ pub struct TypeId(pub usize);
 
 impl TypeId {
     pub const ANY: Self = Self(0);
-    pub const BOOL: Self = Self(1);
-    pub const INT: Self = Self(2);
-    pub const PTR: Self = Self(3);
-    pub const STR: Self = Self(4);
+    pub const ANY_PTR: Self = Self(1);
+    pub const BOOL: Self = Self(2);
+    pub const INT: Self = Self(3);
+    pub const PTR: Self = Self(4);
+    pub const STR: Self = Self(5);
 }
 
 impl Typed for TypeId {
     fn get_type(&self) -> TokenType {
-        TokenType::Data(ValueType::Typ(*self))
-    }
-}
-
-impl Operand for TypeId {
-    fn operand(&self) -> i32 {
-        self.0.operand()
+        TokenType::Data(ValueType(*self))
     }
 }
 
 #[derive(Debug, Eq, Clone, Copy)]
-pub enum ValueType {
-    Typ(TypeId),
-    Ptr(TypeId),
-}
+pub struct ValueType(pub TypeId);
 
 impl PartialEq for ValueType {
     fn eq(&self, other: &Self) -> bool {
-        let ((Self::Ptr(l), Self::Ptr(r)) | (Self::Typ(l), Self::Typ(r))) = (*self, *other) else {
-            return false;
-        };
+        let (Self(l), Self(r)) = (*self, *other);
 
         l == r || (l == TypeId::PTR && r == TypeId::STR)
-    }
-}
-
-impl ValueType {
-    pub fn get_value(self) -> TypeId {
-        match self {
-            Self::Typ(val) | Self::Ptr(val) => val,
-        }
     }
 }
 
@@ -58,39 +40,16 @@ impl Typed for ValueType {
     }
 }
 
-// impl Operand for ValueType {
-//     fn operand(&self) -> i32 {
-//         match *self {
-//             Self::Typ(Value(value)) => 1 + value as i32,
-//             Self::Ptr(Value(value)) => -(1 + value as i32),
-//         }
-//     }
-
-//     fn index(&self) -> usize {
-//         unimplemented!()
-//     }
-// }
-
-// impl From<i32> for ValueType {
-//     fn from(value: i32) -> Self {
-//         match value {
-//             0 => unimplemented!("Not a valid value"),
-//             1.. => Self::Typ(Value((value - 1) as usize)),
-//             _ => Self::Ptr(Value((-value - 1) as usize)),
-//         }
-//     }
-// }
-
 #[derive(Clone)]
 pub struct Primitive(pub Name, pub i32, pub TypeId);
 
 impl Primitive {
     pub fn new(name: &Name, typed: &IRToken) -> Self {
-        let TokenType::Data(value_type) = typed.get_type() else {
+        let TokenType::Data(ValueType(id)) = typed.get_type() else {
             unimplemented!()
         };
 
-        Self(*name, typed.operand(), value_type.get_value())
+        Self(*name, typed.operand(), id)
     }
 
     pub fn size(&self) -> usize {
@@ -117,19 +76,34 @@ impl Typed for Primitive {
 }
 
 #[derive(Clone)]
-pub struct StructType(StructField, TypeId);
+pub struct PointerType(pub Name, pub TypeId, pub Box<TypeDescr>);
 
-impl Deref for StructType {
-    type Target = StructField;
+impl PointerType {
+    pub fn as_primitive(&self, value: i32) -> Primitive {
+        Primitive(self.0, value, self.1)
+    }
 
-    fn deref(&self) -> &Self::Target {
+    pub fn name(&self) -> &Name {
         &self.0
+    }
+
+    pub fn size(&self) -> usize {
+        WORD_USIZE
     }
 }
 
+impl Typed for PointerType {
+    fn get_type(&self) -> TokenType {
+        self.1.get_type()
+    }
+}
+
+#[derive(Clone)]
+pub struct StructType(pub StructFields, pub TypeId);
+
 impl StructType {
-    pub fn get_ref_type(&self) -> TypeId {
-        self.1
+    fn name(&self) -> &Name {
+        self.0.name()
     }
 }
 
@@ -140,21 +114,17 @@ impl Typed for StructType {
 }
 
 pub trait StructInfo {
-    fn units(&self) -> Box<dyn DoubleEndedIterator<Item = &Primitive> + '_>;
+    fn units(&self) -> Box<dyn DoubleEndedIterator<Item = Primitive> + '_>;
     fn count(&self) -> usize;
     fn size(&self) -> usize;
 }
 
 #[derive(Clone)]
-pub struct StructField(pub Name, pub Vec<TypeDescr>);
+pub struct StructFields(pub Name, pub Vec<TypeDescr>);
 
-impl StructField {
+impl StructFields {
     pub fn new(name: Name, value: TypeId) -> Self {
         Self(name, vec![TypeDescr::from(value)])
-    }
-
-    pub fn members(&self) -> &[TypeDescr] {
-        &self.1
     }
 
     pub fn ordered_members(self, rev: bool) -> impl Iterator<Item = TypeDescr> {
@@ -166,7 +136,7 @@ impl StructField {
     }
 }
 
-impl Deref for StructField {
+impl Deref for StructFields {
     type Target = [TypeDescr];
 
     fn deref(&self) -> &Self::Target {
@@ -175,7 +145,7 @@ impl Deref for StructField {
 }
 
 impl StructInfo for [TypeDescr] {
-    fn units(&self) -> Box<dyn DoubleEndedIterator<Item = &Primitive> + '_> {
+    fn units(&self) -> Box<dyn DoubleEndedIterator<Item = Primitive> + '_> {
         Box::new(self.iter().flat_map(StructInfo::units))
     }
 
@@ -192,21 +162,38 @@ impl StructInfo for [TypeDescr] {
 pub enum TypeDescr {
     Structure(StructType),
     Primitive(Primitive),
+    Reference(PointerType),
 }
 
 impl TypeDescr {
-    pub fn unit(name: &Name, value_type: TypeId) -> Self {
-        Self::Primitive(Primitive(*name, 0, value_type))
+    pub fn primitive(name: Name, value_type: TypeId) -> Self {
+        Self::Primitive(Primitive(name, 0, value_type))
     }
 
-    pub fn root(name: &Name, members: Vec<Self>, reftype: TypeId) -> Self {
-        Self::Structure(StructType(StructField(*name, members), reftype))
+    pub fn structure(name: Name, members: Vec<Self>, reftype: TypeId) -> Self {
+        Self::Structure(StructType(StructFields(name, members), reftype))
+    }
+
+    pub fn members(&self) -> Option<&[Self]> {
+        match self {
+            Self::Structure(StructType(fields, _)) => Some(fields),
+            _ => None,
+        }
     }
 
     pub fn name(&self) -> &Name {
         match self {
             Self::Primitive(val) => val.name(),
             Self::Structure(stk) => stk.name(),
+            Self::Reference(ptr) => ptr.name(),
+        }
+    }
+
+    pub fn type_id(&self) -> TypeId {
+        match self {
+            Self::Structure(stk) => stk.1,
+            Self::Reference(ptr) => ptr.1,
+            Self::Primitive(typ) => typ.2,
         }
     }
 }
@@ -230,58 +217,52 @@ where
     I: Iterator<Item = TypeDescr>,
 {
     fn transpose(self, rev: bool, provider: Self::Provider<'_>) -> Option<Vec<TypeDescr>> {
-        self.map(|member| member.transpose(rev, provider)).collect()
-    }
-}
+        self.map(|descr| {
+            Some(match descr {
+                TypeDescr::Primitive(unit) => {
+                    TypeDescr::Primitive(Primitive::new(unit.name(), &provider.next()?))
+                }
 
-impl Transposer<Self, IRToken> for TypeDescr {
-    fn transpose(self, rev: bool, provider: Self::Provider<'_>) -> Option<Self> {
-        Some(match self {
-            Self::Primitive(unit) => {
-                Self::Primitive(Primitive::new(unit.name(), &provider.next()?))
-            }
+                TypeDescr::Reference(ptr) => {
+                    TypeDescr::Primitive(ptr.as_primitive(provider.next()?.operand()))
+                }
 
-            Self::Structure(StructType(str_def @ StructField(name, ..), reftype)) => str_def
-                .transpose(rev, provider)
-                .map(|members| Self::root(&name, members, reftype))?,
+                TypeDescr::Structure(StructType(field @ StructFields(name, _), reftype)) => field
+                    .transpose(rev, provider)
+                    .map(|members| TypeDescr::structure(name, members, reftype))?,
+            })
         })
+        .collect()
     }
 }
 
-impl Transposer<Vec<TypeDescr>, IRToken> for StructField {
+impl Transposer<Vec<TypeDescr>, IRToken> for StructFields {
     fn transpose(self, rev: bool, provider: Self::Provider<'_>) -> Option<Vec<TypeDescr>> {
         self.ordered_members(rev).transpose(rev, provider)
     }
 }
 
 impl StructInfo for TypeDescr {
-    fn units(&self) -> Box<dyn DoubleEndedIterator<Item = &Primitive> + '_> {
+    fn units(&self) -> Box<dyn DoubleEndedIterator<Item = Primitive> + '_> {
         match self {
-            Self::Structure(s) => s.units(),
-            Self::Primitive(v) => Box::new(once(v)),
+            Self::Structure(StructType(fields, _)) => fields.units(),
+            Self::Primitive(prim) => Box::new(once(prim.clone())),
+            Self::Reference(ptr) => Box::new(once(ptr.as_primitive(0))),
         }
     }
 
     fn count(&self) -> usize {
         match self {
-            Self::Structure(s) => s.count(),
-            Self::Primitive(_) => 1,
+            Self::Structure(StructType(fields, _)) => fields.count(),
+            _ => 1,
         }
     }
 
     fn size(&self) -> usize {
         match self {
-            Self::Structure(s) => s.size(),
+            Self::Structure(StructType(fields, _)) => fields.size(),
             Self::Primitive(v) => v.size(),
-        }
-    }
-}
-
-impl Typed for TypeDescr {
-    fn get_type(&self) -> TokenType {
-        match self {
-            Self::Structure(stk) => stk.get_type(),
-            Self::Primitive(typ) => typ.get_type(),
+            Self::Reference(_) => WORD_USIZE,
         }
     }
 }

@@ -65,8 +65,8 @@ impl TypeChecker {
             OpType::PushGlobal => self.push_value(TypeId::PTR, loc),
 
             OpType::Offset => match self.expect_struct_pointer(program, ip)? {
-                TokenType::Data(ValueType::Typ(offset_type)) => {
-                    self.push_frame(ValueType::Ptr(offset_type).get_type(), loc);
+                TokenType::Data(ValueType(offset_id)) => {
+                    self.push_frame(program.get_type_ptr(offset_id).get_type(), loc);
                 }
                 _ => todo!(),
             },
@@ -234,8 +234,15 @@ impl TypeChecker {
 
                 for (_, typ) in bind.iter() {
                     if let &Some(id) = typ {
-                        let type_def = program.get_value_def(id);
-                        let contract: Vec<_> = type_def.units().map(Typed::get_type).collect();
+                        let type_def = program.get_type_descr(TypeId(id));
+
+                        let contract: Vec<_> = match type_def {
+                            TypeDescr::Structure(StructType(fields, _)) => {
+                                fields.units().map(|u| u.get_type()).collect()
+                            }
+                            TypeDescr::Primitive(prim) => vec![prim.get_type()],
+                            TypeDescr::Reference(ptr) => vec![ptr.get_type()],
+                        };
 
                         self.data_stack.expect_contract_pop(&contract, loc)?;
 
@@ -259,9 +266,8 @@ impl TypeChecker {
             OpType::PushBind => {
                 let (typ, offset) = self.get_bind_type_offset(operand.index());
 
-                if let TokenType::Data(val) = typ {
-                    let name = program.get_value_def(val.get_value().0).0;
-                    self.push_frame(program.get_type_ptr(val.get_value(), name).get_type(), loc);
+                if let TokenType::Data(ValueType(id)) = typ {
+                    self.push_frame(program.get_type_ptr(id).get_type(), loc);
                 } else {
                     todo!()
                 }
@@ -329,24 +335,31 @@ impl TypeChecker {
             }
 
             OpType::Unpack => match self.data_stack.expect_pop(loc)?.get_type() {
-                TokenType::Data(ValueType::Ptr(TypeId(index))) => {
-                    let stk = &program.structs_types[index];
+                TokenType::Data(ValueType(id @ TypeId(index))) => {
+                    match &program.get_type_descr(id) {
+                        TypeDescr::Reference(PointerType(_name, _id, ptr)) => match &**ptr {
+                            TypeDescr::Structure(StructType(fields, TypeId(index))) => {
+                                for typ in fields.units().map(|u| u.get_type()) {
+                                    self.push_frame(typ, loc);
+                                }
 
-                    for typ in stk.units().map(Typed::get_type) {
-                        self.push_frame(typ, loc);
+                                program.set_operand(ip, *index);
+                            }
+
+                            TypeDescr::Primitive(_) => {
+                                self.push_frame(ptr.type_id().get_type(), loc);
+                                program.set_operand(ip, index);
+                            }
+
+                            TypeDescr::Reference(_) => todo!(),
+                        },
+                        stk => {
+                            for typ in stk.units().map(|u| u.get_type()) {
+                                self.push_frame(typ, loc);
+                            }
+                            program.set_operand(ip, index);
+                        }
                     }
-
-                    program.set_operand(ip, index);
-                }
-
-                TokenType::Data(ValueType::Typ(TypeId(index))) => {
-                    let stk = &program.structs_types[index];
-
-                    for typ in stk.units().map(Typed::get_type) {
-                        self.push_frame(typ, loc);
-                    }
-
-                    program.set_operand(ip, index);
                 }
 
                 top => {
@@ -409,35 +422,33 @@ impl TypeChecker {
     fn expect_struct_pointer(&mut self, prog: &mut Program, ip: usize) -> LazyResult<TokenType> {
         let &Op(_, operand, loc) = &prog.ops[ip];
         match self.data_stack.expect_pop(loc)?.get_type() {
-            TokenType::Data(ValueType::Ptr(TypeId(index))) => {
-                let stk = &prog.structs_types[index];
-                let word = &operand.str_key();
+            TokenType::Data(ValueType(id)) => {
+                let stk = &prog.get_type_descr(id);
 
-                let Some((offset, index)) = stk.members().get_offset(word) else {
-                    let error = format!("The struct {} does not contain a member with name: `{}`",
-                        stk.name().as_str(prog), word.as_str(prog));
-                    return Err(err_loc(error, loc));
-                };
+                match stk {
+                    TypeDescr::Structure(_) => todo!(),
+                    TypeDescr::Primitive(_) => todo!(),
+                    TypeDescr::Reference(PointerType(_name, _id, ptr)) => {
+                        let ref_typ = prog.get_type_descr(ptr.type_id());
+                        match ref_typ {
+                            TypeDescr::Structure(StructType(fields, _)) => {
+                                let word = &operand.str_key();
 
-                let result = stk.members()[index].get_type();
-                prog.set_operand(ip, offset * WORD_USIZE);
-                Ok(result)
-            }
+                                let Some((offset, index)) = fields.get_offset(word) else {
+                                    let error = format!("The struct {} does not contain a member with name: `{}`",
+                                        fields.name().as_str(prog), word.as_str(prog));
+                                    return Err(err_loc(error, loc));
+                                };
 
-            TokenType::Data(ValueType::Typ(TypeId(index))) => {
-                todo!("{}", index)
-                // let stk = &prog.structs_types[index];
-                // let word = &operand.str_key();
-
-                // let Some((offset, index)) = stk.members().get_offset(word) else {
-                //     let error = format!("The struct {} does not contain a member with name: `{}`",
-                //         stk.name().as_str(prog), word.as_str(prog));
-                //     return Err(err_loc(error, loc));
-                // };
-
-                // let result = stk.members()[index].get_type();
-                // prog.set_operand(ip, offset * WORD_USIZE);
-                // Ok(result)
+                                let result = fields[index].type_id().get_type();
+                                prog.set_operand(ip, offset * WORD_USIZE);
+                                Ok(result)
+                            }
+                            TypeDescr::Primitive(_) => todo!(),
+                            TypeDescr::Reference(_) => todo!(),
+                        }
+                    }
+                }
             }
 
             typ => lazybail!(

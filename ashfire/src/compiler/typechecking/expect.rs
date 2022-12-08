@@ -1,9 +1,6 @@
 use std::ops::Deref;
 
-use ashfire_types::{
-    core::{Location, TokenType, Typed},
-    data::{TypeId, ValueType},
-};
+use ashfire_types::core::{Location, TokenType, Typed, ANY, ANY_PTR};
 use ashlib::UncheckedStack;
 use firelib::{lazy::LazyFormatter, lexer::Loc};
 use itertools::Itertools;
@@ -156,7 +153,7 @@ pub trait Compare<T: Clone + Typed + Location + 'static>: Deref<Target = [T]> {
         LazyError::new(move |f| {
             format!(
                 concat!(
-                    "Found stack at the end of the context does not match the expected types:\n",
+                    "Found stack does not match the expected types:\n",
                     "[INFO] {}Expected types: {}\n",
                     "[INFO] {}Actual types:   {}\n{}"
                 ),
@@ -174,7 +171,8 @@ pub fn expect_type<T: Clone + Typed + Location + 'static, V: Typed>(
     frame: &T, expected: V, loc: Loc,
 ) -> LazyResult<()> {
     let expected_type = expected.get_type();
-    if equals_any!(expected_type, TypeId::ANY, ValueType::Ptr(TypeId::ANY), frame.get_type()) {
+    // Todo: Improve this equality check
+    if equals_any!(expected_type, ANY, ANY_PTR, frame.get_type()) {
         return Ok(());
     }
     Err(format_type_diff(frame.clone(), expected.get_type(), loc))

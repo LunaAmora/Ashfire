@@ -7,8 +7,7 @@ hello: *str = null #*str end
 _start export::
   *test !hello hello puts
 
-  // Not working yet without the cast
   *test let bind: *str in
-    bind #*str puts
+    bind puts
   end
 end

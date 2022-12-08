@@ -2,7 +2,7 @@ use std::io::Write;
 
 use ashfire_types::{
     core::{Op, Operand, WORD_SIZE, WORD_USIZE},
-    data::{Primitive, StructInfo, TypeId},
+    data::{Primitive, StructInfo, StructType, TypeDescr, TypeId},
     enums::{IntrinsicType, OpType},
     proc::{Binding, Mode, Proc},
 };
@@ -99,7 +99,7 @@ impl Generator {
             }
 
             for var in program.global_vars.units() {
-                wasm.add_data_value(program.final_value(var));
+                wasm.add_data_value(program.final_value(&var));
             }
         }
 
@@ -191,10 +191,18 @@ impl FuncGen {
 
                 for (_, typ) in binds {
                     if let &Some(id) = typ {
-                        let type_def = prog.get_value_def(id);
+                        let type_def = prog.get_type_descr(TypeId(id));
 
-                        for unit in type_def.units() {
-                            bind_size += unit.size() as i32;
+                        let sizes: Vec<_> = match type_def {
+                            TypeDescr::Structure(StructType(fields, _)) => {
+                                fields.units().map(|unit| unit.size()).collect()
+                            }
+                            TypeDescr::Primitive(prim) => vec![prim.size()],
+                            TypeDescr::Reference(ptr) => vec![ptr.size()],
+                        };
+
+                        for size in sizes {
+                            bind_size += size as i32;
                             inst.extend([Const(bind_size), Call("bind_local".into())]);
                         }
                     } else {
@@ -220,7 +228,7 @@ impl FuncGen {
                 let Binding(binds) = &proc.bindings[op.index()];
 
                 let size = binds.iter().fold(0, |acc, (_, typ)| {
-                    acc + typ.map_or(WORD_USIZE, |id| prog.get_value_def(id).size())
+                    acc + typ.map_or(WORD_USIZE, |id| prog.get_type_descr(TypeId(id)).size())
                 }) as i32;
 
                 self.extend(vec![Const(size), Call("free_local".into())]);
@@ -242,7 +250,7 @@ impl FuncGen {
                 self.extend([Br(loop_label), End, End]);
             }
 
-            OpType::Unpack => self.extend(unpack_struct(&prog.structs_types[op.index()])),
+            OpType::Unpack => self.extend(unpack_struct(prog.get_type_descr(TypeId(op.index())))),
 
             OpType::ExpectType => {}
 

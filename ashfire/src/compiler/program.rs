@@ -1,4 +1,7 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::HashMap,
+    str::{from_utf8, FromStr},
+};
 
 use ashfire_types::{
     core::*,
@@ -43,8 +46,8 @@ pub struct Program {
     pub ops: Vec<Op>,
     pub procs: Vec<Proc>,
     pub global_vars: Vec<TypeDescr>,
-    pub structs_types: Vec<StructField>,
     pub block_contracts: HashMap<usize, (usize, usize)>,
+    structs_types: Vec<TypeDescr>,
     included_sources: Vec<StrKey>,
     consts: Vec<TypeDescr>,
     interner: Rodeo,
@@ -58,18 +61,26 @@ impl Program {
     pub fn new() -> Self {
         let mut interner = Rodeo::new();
 
-        let names = ["", "any", "bool", "int", "ptr", "str", "len", "data"];
-        let [_, any, bool, int, ptr, str, len, data] = intern_all(&mut interner, names);
+        let names = [
+            "", "any", "*any", "bool", "int", "ptr", "str", "len", "data",
+        ];
+        let [_, any, any_ptr, bool, int, ptr, str, len, data] = intern_all(&mut interner, names);
 
+        let any_descr = TypeDescr::primitive(any, TypeId::ANY);
         let structs_types = vec![
-            StructField::new(any, TypeId::ANY),
-            StructField::new(bool, TypeId::BOOL),
-            StructField::new(int, TypeId::INT),
-            StructField::new(ptr, TypeId::PTR),
-            StructField(str, vec![
-                TypeDescr::unit(&len, TypeId::INT),
-                TypeDescr::unit(&data, TypeId::PTR),
-            ]),
+            any_descr.clone(),
+            TypeDescr::Reference(PointerType(any_ptr, TypeId::ANY_PTR, Box::new(any_descr))),
+            TypeDescr::primitive(bool, TypeId::BOOL),
+            TypeDescr::primitive(int, TypeId::INT),
+            TypeDescr::primitive(ptr, TypeId::PTR),
+            TypeDescr::structure(
+                str,
+                vec![
+                    TypeDescr::primitive(len, TypeId::INT),
+                    TypeDescr::primitive(data, TypeId::PTR),
+                ],
+                TypeId::STR,
+            ),
         ];
 
         Self { structs_types, interner, ..Default::default() }
@@ -136,12 +147,11 @@ impl Program {
     }
 
     pub fn get_key(&self, word: &str) -> Option<StrKey> {
-        // info!("get_key: ({word})");
         self.interner.get(word)
     }
 
-    pub fn get_word<O: Operand>(&self, index: O) -> &str {
-        self.interner.resolve(&index.str_key())
+    pub fn get_word<O: Operand>(&self, index: O) -> String {
+        self.interner.resolve(&index.str_key()).to_owned()
     }
 
     pub fn get_data<O: Operand>(&self, index: O) -> &OffsetData {
@@ -189,8 +199,7 @@ impl Program {
             TokenType::Keyword => "Keyword",
             TokenType::Word => "Word or Intrinsic",
             TokenType::Data(data) => match data {
-                ValueType::Typ(value) => return self.data_name(value),
-                ValueType::Ptr(value) => return self.data_name(value) + " Pointer",
+                ValueType(value) => return self.data_name(value),
             },
             TokenType::Str => "String Id",
         }
@@ -209,9 +218,9 @@ impl Program {
     pub fn type_display(&self, tok: IRToken) -> String {
         match tok.get_type() {
             TokenType::Keyword => format!("{:?}", tok.as_keyword()),
-            TokenType::Word => self.get_word(tok).to_owned(),
+            TokenType::Word => self.get_word(tok),
             TokenType::Str => self.get_data_str(tok).to_owned(),
-            TokenType::Data(data) => Self::data_display(data.get_value(), tok),
+            TokenType::Data(ValueType(id)) => Self::data_display(id, tok),
         }
     }
 
@@ -241,18 +250,14 @@ impl Program {
     }
 
     fn get_cast_type_ptr(&mut self, rest: &[u8]) -> Option<usize> {
-        let word = &std::str::from_utf8(rest).ok()?;
-        // info!("get_cast_type_ptr: ({word})");
-
-        let key = self.get_key(word)?;
-        let val = self.get_struct_value_id(&key)?;
-        Some(self.get_type_ptr(val, key).get_value().0)
+        let key = self.get_key(from_utf8(rest).ok()?)?;
+        let type_id = self.get_type_id_by_name(&key)?;
+        let TypeId(id) = self.get_type_ptr(type_id);
+        Some(id)
     }
 
     fn get_cast_type(&self, rest: &[u8]) -> Option<usize> {
-        let word = &std::str::from_utf8(rest).ok()?;
-        // info!("get_cast_type: ({word})");
-        self.get_key(word)
+        self.get_key(from_utf8(rest).ok()?)
             .as_ref()
             .map(|key| self.get_struct_type_id(key))?
     }
@@ -263,11 +268,49 @@ impl Program {
             .position(|def| word.eq(def.name()))
     }
 
-    pub fn get_struct_value_id(&self, word: &StrKey) -> Option<TypeId> {
+    pub fn get_type_descr(&self, index: TypeId) -> &TypeDescr {
+        &self.structs_types[index.0]
+    }
+
+    pub fn get_type_id_by_name(&self, word: &StrKey) -> Option<TypeId> {
         self.structs_types
             .iter()
-            .position(|id| word.eq(id.name()))
+            .position(|def| word.eq(def.name()))
             .map(TypeId)
+    }
+
+    pub fn try_get_type_ptr(&self, value: TypeId) -> Option<TypeId> {
+        let name = self.get_type_descr(value).name();
+        let ptr_name = format!("*{}", name.as_str(self));
+
+        self.get_key(&ptr_name)
+            .and_then(|key| self.get_type_id_by_name(&key))
+    }
+
+    pub fn get_type_ptr(&mut self, value: TypeId) -> TypeId {
+        let name = self.get_type_descr(value).name();
+        let ptr_name = format!("*{}", name.as_str(self));
+
+        if let Some(key) = self.get_key(&ptr_name) {
+            self.get_type_id_by_name(&key).unwrap()
+        } else {
+            let value_descr = self.get_type_descr(value).clone(); //Todo: Unbox this
+
+            let word_id = self.get_or_intern(&ptr_name);
+            let type_id = TypeId(self.structs_types.len());
+            let stk = TypeDescr::Reference(PointerType(word_id, type_id, Box::new(value_descr)));
+
+            self.structs_types.push(stk);
+            type_id
+        }
+    }
+
+    pub fn register_struct(&mut self, stk: StructFields) -> TypeId {
+        let type_id = TypeId(self.structs_types.len());
+        let descr = TypeDescr::Structure(StructType(stk, type_id));
+        self.structs_types.push(descr);
+        self.get_type_ptr(type_id); // Todo: Remove this Hack to auto register an ptr type
+        type_id
     }
 
     /// Searches for a `const` that matches the given [`StrKey`].
@@ -282,10 +325,9 @@ impl Program {
         let &Op(op_type, operand, ..) = op;
         match op_type {
             OpType::Intrinsic => match IntrinsicType::from(operand.index()) {
-                IntrinsicType::Cast(n) => todo!("{n}"),
-                // {
-                //     format!("Intrinsic Cast [{}]", self.type_name(ValueType::from(n).get_type()))
-                // }
+                IntrinsicType::Cast(n) => {
+                    format!("Intrinsic Cast [{}]", self.type_name(TypeId(n).get_type()))
+                }
                 intrinsic => format!("Intrinsic [{intrinsic:?}]"),
             },
             OpType::Call => format!("Call [{}]", self.get_proc(operand).name.as_str(self)),

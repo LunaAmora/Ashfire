@@ -85,11 +85,12 @@ impl Operand for StrKey {
     }
 }
 
-pub const ANY: TokenType = TokenType::Data(ValueType::Typ(TypeId::ANY));
-pub const BOOL: TokenType = TokenType::Data(ValueType::Typ(TypeId::BOOL));
-pub const INT: TokenType = TokenType::Data(ValueType::Typ(TypeId::INT));
-pub const PTR: TokenType = TokenType::Data(ValueType::Typ(TypeId::PTR));
-pub const STR: TokenType = TokenType::Data(ValueType::Typ(TypeId::STR));
+pub const ANY: TokenType = TokenType::Data(ValueType(TypeId::ANY));
+pub const ANY_PTR: TokenType = TokenType::Data(ValueType(TypeId::ANY_PTR));
+pub const BOOL: TokenType = TokenType::Data(ValueType(TypeId::BOOL));
+pub const INT: TokenType = TokenType::Data(ValueType(TypeId::INT));
+pub const PTR: TokenType = TokenType::Data(ValueType(TypeId::PTR));
+pub const STR: TokenType = TokenType::Data(ValueType(TypeId::STR));
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TokenType {
@@ -108,7 +109,7 @@ impl Typed for TokenType {
 impl PartialEq<TypeId> for TokenType {
     fn eq(&self, other: &TypeId) -> bool {
         match self {
-            Self::Data(ValueType::Typ(typ)) => typ == other,
+            Self::Data(ValueType(typ)) => typ == other,
             _ => false,
         }
     }
@@ -204,10 +205,6 @@ impl Op {
 
 impl From<(&Primitive, Loc)> for Op {
     fn from(tuple: (&Primitive, Loc)) -> Self {
-        // let ValueType::Typ(typ) = tuple.0.value_type() else {
-        //     unimplemented!("Conversion not supported for `ValueType::Ptr`")
-        // };
-
         Self(OpType::PushData(*tuple.0.type_id()), tuple.0.value(), tuple.1)
     }
 }
@@ -258,20 +255,10 @@ impl OffsetWord {
     }
 }
 
-pub type IndexWord = Offset<StrKey, usize>;
-
-impl Operand for IndexWord {
-    fn operand(&self) -> i32 {
-        self.1 as i32
-    }
-
-    fn index(&self) -> usize {
-        self.1
-    }
-}
+pub type IndexWord = Offset<StrKey, TypeId>;
 
 impl IndexWord {
-    pub fn new<O: Operand>(name: &StrKey, index: O) -> Self {
-        Self(*name, index.index())
+    pub fn new(name: &StrKey, index: TypeId) -> Self {
+        Self(*name, index)
     }
 }
