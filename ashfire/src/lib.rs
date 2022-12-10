@@ -58,6 +58,6 @@ mod tests {
     }
 
     fn compile(code: &'static str) -> Result<()> {
-        compile_buffer(&lib_folder().unwrap(), "buffer", code.as_bytes(), io::sink(), Target::Wasi)
+        compile_buffer(&lib_folder()?, "buffer", code.as_bytes(), io::sink(), Target::Wasi)
     }
 }

@@ -116,7 +116,9 @@ impl Program {
             .or_return(OptionErr::default)?;
 
         OptionErr::new(if var_typ == VarWordType::Pointer {
-            let stk_id = self.try_get_type_ptr(type_id).unwrap();
+            let Some(stk_id) = self.try_get_type_ptr(type_id) else {
+                todo!("must register the ptr type earlier");
+            };
 
             vars.get_pointer(word, push_type, stk_id)
         } else {
@@ -138,7 +140,10 @@ impl Program {
                     result.insert(0, Op(OpType::ExpectType, id.operand(), loc));
                     result.push(Op::from((IntrinsicType::Store32, loc)));
                 } else if var_typ == VarWordType::Pointer {
-                    let TypeId(ptr_id) = self.try_get_type_ptr(*typ).unwrap();
+                    let Some(TypeId(ptr_id)) = self.try_get_type_ptr(*typ) else {
+                        todo!("must register the ptr type earlier");
+                    };
+
                     result.push(Op::from((IntrinsicType::Cast(ptr_id), loc)));
                 } else {
                     result.extend([
@@ -157,7 +162,9 @@ impl Program {
                     offset += 1;
                 }
 
-                let TypeId(ptr_id) = self.try_get_type_ptr(*type_id).unwrap();
+                let Some(TypeId(ptr_id)) = self.try_get_type_ptr(*type_id) else {
+                    todo!("must register the ptr type earlier");
+                };
 
                 result.extend([
                     Op(push_type, offset as i32, loc),

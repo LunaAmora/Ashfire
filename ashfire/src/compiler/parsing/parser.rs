@@ -727,7 +727,10 @@ impl Parser {
 
     pub fn register_var(&mut self, struct_word: TypeDescr, prog: &mut Program) -> ParseContext {
         if let Some(proc) = self.current_proc_mut(prog) {
-            let data = proc.get_data_mut().unwrap();
+            let Some(data) = proc.get_data_mut() else {
+                todo!("Cannot use variables inside inlined procedures")
+            };
+
             data.local_vars.push(struct_word);
             ParseContext::LocalVar
         } else {
@@ -763,13 +766,10 @@ impl Parser {
 
             let include_path = prog.get_word(tok);
 
-            let include = get_dir(path)
-                .with_ctx(|_| "failed to get file directory path".to_owned())?
-                .join(include_path)
-                .with_extension("fire");
+            let include = path.get_dir()?.join(include_path).with_extension("fire");
 
-            if prog.contains_source(include.with_extension("").to_str().unwrap()) ||
-                prog.contains_source(include.to_str().unwrap())
+            if prog.has_source(include.with_extension("").try_to_str()?) ||
+                prog.has_source(include.try_to_str()?)
             {
                 continue;
             }

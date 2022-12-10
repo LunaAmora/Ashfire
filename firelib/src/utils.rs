@@ -1,12 +1,26 @@
-use std::{collections::VecDeque, iter::Rev, path::Path};
+use std::{iter::Rev, path::Path};
 
-use anyhow::{bail, Result};
+use anyhow::{Context, Result};
 use itertools::Either;
 
+pub trait PathUtils {
+    fn get_dir(&self) -> Result<&Path>;
+    fn try_to_str(&self) -> Result<&str>;
+}
+
+impl PathUtils for Path {
 /// Gets the directory of the [`Path`],
 /// or [`None`] if is empty.
-pub fn get_dir(current: &Path) -> Option<&Path> {
-    current.ancestors().nth(1)
+    fn get_dir(&self) -> Result<&Path> {
+        self.ancestors().nth(1).with_context(|| {
+            format!("Failed to get file directory path: {}", self.to_string_lossy())
+        })
+    }
+
+    fn try_to_str(&self) -> Result<&str> {
+        self.to_str()
+            .with_context(|| format!("The path is not valid UTF-8: `{}`", self.to_string_lossy()))
+    }
 }
 
 pub type EitherRev<T> = Either<Rev<T>, T>;

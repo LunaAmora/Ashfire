@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use ashfire_types::{
-    core::{IRToken, Op, Operand, TokenType, Typed, Location},
+    core::{IRToken, Location, Op, Operand, TokenType, Typed},
     data::TypeId,
     enums::KeywordType,
 };

@@ -4,7 +4,7 @@ use ashfire_types::{
     core::{IRToken, Operand, TokenType, INT},
     enums::KeywordType,
 };
-use firelib::{lazy::LazyCtx, lexer::*, Context, Result, ShortCircuit};
+use firelib::{lazy::LazyCtx, lexer::*, utils::PathUtils, Context, Result, ShortCircuit};
 
 use super::{
     program::{Fmt, OptionErr, Program},
@@ -31,7 +31,7 @@ impl Program {
     pub fn new_file_lexer(&mut self, path: &Path) -> Result<Lexer> {
         let file = File::open(path).with_context(|| format!("Could not read file `{path:?}`"))?;
 
-        let buf_id = self.push_source(path.to_str().unwrap());
+        let buf_id = self.push_source(path.try_to_str()?);
         Ok(new_lexer(buf_id, file))
     }
 

@@ -89,7 +89,7 @@ fn compile_command(
 }
 
 fn compile_pipe(target: Target, runtime_name: &str, run: bool) -> Result<()> {
-    let path = lib_folder().unwrap();
+    let path = lib_folder()?;
 
     match (run, target) {
         (true, Target::Wasi) => {

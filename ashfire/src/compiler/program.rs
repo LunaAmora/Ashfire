@@ -85,7 +85,7 @@ impl Program {
         Self { structs_types, interner, ..Default::default() }
     }
 
-    pub fn contains_source(&self, source: &str) -> bool {
+    pub fn has_source(&self, source: &str) -> bool {
         let Some(key) = self.interner.get(source) else {
             return false;
         };
@@ -270,6 +270,10 @@ impl Program {
         self.get_type_index(word).map(TypeId)
     }
 
+    pub fn get_type_id_by_str(&self, word: &str) -> Option<TypeId> {
+        self.get_key(word).and_then(|key| self.get_type_id(key))
+    }
+
     pub fn get_type_descr(&self, type_id: TypeId) -> &TypeDescr {
         &self.structs_types[type_id.0]
     }
@@ -277,25 +281,23 @@ impl Program {
     pub fn try_get_type_ptr(&self, type_id: TypeId) -> Option<TypeId> {
         let name = self.get_type_descr(type_id).name();
         let ptr_name = format!("*{}", name.as_str(self));
-
-        self.get_key(&ptr_name)
-            .and_then(|key| self.get_type_id(key))
+        self.get_type_id_by_str(&ptr_name)
     }
 
     pub fn get_type_ptr(&mut self, type_id: TypeId) -> TypeId {
         let name = self.get_type_descr(type_id).name();
         let ptr_name = format!("*{}", name.as_str(self));
 
-        if let Some(key) = self.get_key(&ptr_name) {
-            self.get_type_id(key).unwrap()
-        } else {
-            let word_id = self.get_or_intern(&ptr_name);
-            let new_type_id = TypeId(self.structs_types.len());
-            let stk = TypeDescr::reference(word_id, new_type_id, type_id);
-
-            self.structs_types.push(stk);
-            new_type_id
+        if let Some(id) = self.get_type_id_by_str(&ptr_name) {
+            return id;
         }
+
+        let word_id = self.get_or_intern(&ptr_name);
+        let new_type_id = TypeId(self.structs_types.len());
+        let stk = TypeDescr::reference(word_id, new_type_id, type_id);
+
+        self.structs_types.push(stk);
+        new_type_id
     }
 
     pub fn register_struct(&mut self, stk: StructFields) -> TypeId {

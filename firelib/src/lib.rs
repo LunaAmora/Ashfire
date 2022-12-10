@@ -186,7 +186,7 @@ impl ChildGuard {
         if out.status.success() {
             Ok(())
         } else {
-            bail!(String::from_utf8(out.stderr).unwrap())
+            bail!("{}", String::from_utf8_lossy(&out.stderr))
         }
     }
 }
