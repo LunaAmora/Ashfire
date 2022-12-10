@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use ashfire_types::{
-    core::{IRToken, Op, Operand, TokenType, Typed},
+    core::{IRToken, Op, Operand, TokenType, Typed, Location},
     data::TypeId,
     enums::KeywordType,
 };
@@ -52,15 +52,15 @@ impl Parser {
                 let word_error = format!("{error_text} after `*`");
                 let ref_word = self.expect_word(word_error.clone(), loc)?;
 
-                prog.get_type_id_by_name(&ref_word)
+                prog.get_type_id(ref_word.name())
                     .map(|x| prog.get_type_ptr(x))
                     .map_or_else(|| Err(unexpected_token(ref_word.into(), word_error)), Ok)
             }
 
             TokenType::Word => {
-                let name_type = LocWord(operand.str_key(), loc);
+                let name_type = LocWord(operand.name(), loc);
 
-                prog.get_type_id_by_name(&name_type)
+                prog.get_type_id(name_type.name())
                     .map_or_else(|| Err(unexpected_token(name_type.into(), error_text)), Ok)
             }
 
@@ -78,7 +78,7 @@ impl Parser {
         &mut self, error_text: S, loc: Loc,
     ) -> LazyResult<LocWord> {
         self.expect_by(|tok| tok == TokenType::Word, error_text, loc)
-            .map(|tok| LocWord(tok.str_key(), tok.2))
+            .map(|tok| LocWord(tok.name(), tok.loc()))
     }
 
     pub fn expect_by<S: Display + 'static>(

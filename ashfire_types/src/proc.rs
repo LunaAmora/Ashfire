@@ -1,5 +1,5 @@
 use super::{
-    core::{word_aligned, OffsetWord, StrKey, TokenType, WORD_SIZE},
+    core::{word_aligned, Name, OffsetWord, TokenType, WORD_SIZE},
     data::TypeDescr,
 };
 use crate::data::StructInfo;
@@ -12,10 +12,10 @@ pub struct Data {
 }
 
 impl Data {
-    pub fn push_mem(&mut self, word: &StrKey, size: usize) {
+    pub fn push_mem(&mut self, word: Name, size: usize) {
         self.mem_size += size;
         self.local_mems
-            .push(OffsetWord::new(*word, self.mem_size as i32));
+            .push(OffsetWord::new(word, self.mem_size as i32));
     }
 
     pub fn total_size(&self) -> i32 {
@@ -61,20 +61,20 @@ impl Default for Mode {
 }
 
 #[derive(Default)]
-pub struct Binding(pub Vec<(StrKey, Option<usize>)>);
+pub struct Binding(pub Vec<(Name, Option<usize>)>);
 
 #[derive(Default)]
 pub struct Proc {
-    pub name: StrKey,
+    pub name: Name,
     pub contract: Contract,
     pub mode: Mode,
     pub bindings: Vec<Binding>,
 }
 
 impl Proc {
-    pub fn new(name: &StrKey, contract: Contract, mode: ModeType) -> Self {
+    pub fn new(name: Name, contract: Contract, mode: ModeType) -> Self {
         let mode = Mode::from(mode);
-        Self { name: *name, contract, mode, ..Default::default() }
+        Self { name, contract, mode, ..Default::default() }
     }
 
     pub fn get_data(&self) -> Option<&Data> {
@@ -91,7 +91,7 @@ impl Proc {
         }
     }
 
-    pub fn bindings(&self) -> impl Iterator<Item = &(StrKey, Option<usize>)> {
+    pub fn bindings(&self) -> impl Iterator<Item = &(Name, Option<usize>)> {
         self.bindings.iter().rev().flat_map(|bind| bind.0.iter())
     }
 

@@ -427,7 +427,7 @@ impl TypeChecker {
             if let TypeDescr::Reference(ptr) = &prog.get_type_descr(id) {
                 match prog.get_type_descr(ptr.ptr_id()) {
                     TypeDescr::Structure(StructType(fields, _)) => {
-                        let word = &operand.str_key();
+                        let word = operand.name();
 
                         let Some((offset, index)) = fields.get_offset(word) else {
                             let error = format!("The struct {} does not contain a member with name: `{}`",

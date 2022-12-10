@@ -2,7 +2,7 @@ use std::{iter::once, ops::Deref};
 
 use firelib::utils::BoolUtils;
 
-use super::core::{Operand, StrKey as Name, TokenType, Typed, WORD_USIZE};
+use super::core::{Name, Operand, TokenType, Typed, WORD_USIZE};
 use crate::core::IRToken;
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
@@ -44,16 +44,16 @@ impl Typed for ValueType {
 pub struct Primitive(pub Name, pub i32, pub TypeId);
 
 impl Primitive {
-    pub fn new(name: &Name, typed: &IRToken) -> Self {
+    pub fn new(name: Name, typed: &IRToken) -> Self {
         let TokenType::Data(ValueType(id)) = typed.get_type() else {
             unimplemented!()
         };
 
-        Self(*name, typed.operand(), id)
+        Self(name, typed.operand(), id)
     }
 
-    pub fn name(&self) -> &Name {
-        &self.0
+    pub fn name(&self) -> Name {
+        self.0
     }
 
     pub fn value(&self) -> i32 {
@@ -83,8 +83,8 @@ impl PointerType {
         Primitive(self.0, value, self.1)
     }
 
-    pub fn name(&self) -> &Name {
-        &self.0
+    pub fn name(&self) -> Name {
+        self.0
     }
 
     pub fn type_id(&self) -> TypeId {
@@ -110,7 +110,7 @@ impl Typed for PointerType {
 pub struct StructType(pub StructFields, pub TypeId);
 
 impl StructType {
-    fn name(&self) -> &Name {
+    fn name(&self) -> Name {
         self.0.name()
     }
 }
@@ -131,16 +131,12 @@ pub trait StructInfo {
 pub struct StructFields(pub Name, pub Vec<TypeDescr>);
 
 impl StructFields {
-    pub fn new(name: Name, value: TypeId) -> Self {
-        Self(name, vec![TypeDescr::from(value)])
-    }
-
     pub fn ordered_members(self, rev: bool) -> impl Iterator<Item = TypeDescr> {
         self.1.into_iter().conditional_rev(rev)
     }
 
-    pub fn name(&self) -> &Name {
-        &self.0
+    pub fn name(&self) -> Name {
+        self.0
     }
 }
 
@@ -186,7 +182,7 @@ impl TypeDescr {
         Self::Reference(PointerType(name, type_id, ptr_id))
     }
 
-    pub fn name(&self) -> &Name {
+    pub fn name(&self) -> Name {
         match self {
             Self::Primitive(val) => val.name(),
             Self::Structure(stk) => stk.name(),
@@ -200,12 +196,6 @@ impl TypeDescr {
             Self::Reference(ptr) => ptr.1,
             Self::Primitive(typ) => typ.2,
         }
-    }
-}
-
-impl From<TypeId> for TypeDescr {
-    fn from(value: TypeId) -> Self {
-        Self::Primitive(Primitive(Name::default(), 0, value))
     }
 }
 
@@ -269,11 +259,5 @@ impl StructInfo for TypeDescr {
             Self::Primitive(v) => v.size(),
             Self::Reference(_) => WORD_USIZE,
         }
-    }
-}
-
-impl From<Primitive> for TypeDescr {
-    fn from(value: Primitive) -> Self {
-        Self::Primitive(value)
     }
 }

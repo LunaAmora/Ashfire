@@ -64,8 +64,13 @@ impl Parser {
         result
     }
 
-    pub fn structs(&self) -> &[IndexWord] {
-        &self.structs
+    /// Searches for a `struct` that matches the given [`Name`],
+    /// returning its [`TypeId`].
+    pub fn find_type_id(&self, word: Name) -> Option<TypeId> {
+        self.structs
+            .iter()
+            .find(|stk| word.eq(stk))
+            .map(Offset::offset)
     }
 
     /// Parse each [`IRToken`] from this [`Parser`] to an [`Op`],
@@ -113,7 +118,7 @@ impl Parser {
             },
 
             TokenType::Word => {
-                let word = &LocWord(operand.str_key(), loc);
+                let word = &LocWord(operand.name(), loc);
 
                 choice!(
                     OptionErr,
@@ -132,7 +137,7 @@ impl Parser {
     }
 
     fn lookup_context(&self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        let Some(ctx) = self.name_scopes.lookup(word, prog) else {
+        let Some(ctx) = self.name_scopes.lookup(word.name(), prog) else {
             return self.lookup_modfied_var(word, prog);
         };
 
@@ -168,7 +173,7 @@ impl Parser {
             todo!()
         };
 
-        let local = match self.name_scopes.lookup(&key, prog) {
+        let local = match self.name_scopes.lookup(key, prog) {
             Some(ParseContext::LocalVar) => true,
             Some(ParseContext::GlobalVar) => false,
             _ => todo!(),
@@ -225,7 +230,7 @@ impl Parser {
                 let ref_word = &self.expect_word("type after `*`", loc)?;
                 let var_typ = VarWordType::Pointer;
 
-                return match self.name_scopes.lookup(ref_word, prog) {
+                return match self.name_scopes.lookup(ref_word.name(), prog) {
                     Some(ParseContext::LocalVar) => prog.get_local_var(ref_word, var_typ, self),
                     Some(ParseContext::GlobalVar) => prog.get_global_var(ref_word, var_typ, self),
                     Some(ParseContext::Binding) => prog.get_binding_ref(ref_word, self).into(),
@@ -335,7 +340,7 @@ impl Parser {
                     self.parse_memory(word, prog).try_success()?;
                 }
 
-                (1, TokenType::Word) if prog.get_type_id_by_name(&tok.str_key()).is_none() => {
+                (1, TokenType::Word) if prog.get_type_index(tok.name()).is_none() => {
                     return self.parse_struct(word, prog);
                 }
 
@@ -450,10 +455,11 @@ impl Parser {
         if let Ok((eval, skip)) = self.compile_eval(prog, word.loc()).value {
             if &eval != TypeId::ANY {
                 self.skip(skip);
-                let struct_type = Primitive::new(word, &eval).into();
-                prog.register_const(struct_type);
+                let primitive = Primitive::new(word.name(), &eval);
+                prog.register_const(TypeDescr::Primitive(primitive));
 
-                self.name_scopes.register(word, ParseContext::ConstStruct);
+                self.name_scopes
+                    .register(word.name(), ParseContext::ConstStruct);
                 success!();
             }
         }
@@ -470,13 +476,14 @@ impl Parser {
             return Err(err_loc(error, loc));
         };
 
-        let proc = Proc::new(name, contract, mode);
+        let proc = Proc::new(name.name(), contract, mode);
 
         let operand = prog.procs.len();
         self.enter_proc(operand);
         prog.procs.push(proc);
 
-        self.name_scopes.register(name, ParseContext::ProcName);
+        self.name_scopes
+            .register(name.name(), ParseContext::ProcName);
 
         let prep = fold_bool!(
             matches!(mode, ModeType::Declare | ModeType::Export),
@@ -538,8 +545,8 @@ impl Parser {
         let value = self.expect_by(|tok| tok == TypeId::INT, "memory size after `:`", loc)?;
         self.expect_keyword(KeywordType::End, "`end` after memory size", loc)?;
 
-        let ctx = prog.push_mem_by_context(self, word, value.index());
-        self.name_scopes.register(word, ctx);
+        let ctx = prog.push_mem_by_context(self, word.name(), value.index());
+        self.name_scopes.register(word.name(), ctx);
 
         Ok(())
     }
@@ -553,20 +560,20 @@ impl Parser {
         while let Some(tok) = self.peek() {
             if tok == TokenType::Keyword {
                 self.expect_keyword(KeywordType::End, "`end` after struct declaration", loc)?;
-                prog.register_struct(StructFields(word.str_key(), members));
+                prog.register_struct(StructFields(word.name(), members));
                 success!();
             }
 
-            let member_name = self.expect_word("struct member name", loc)?;
+            let LocWord(member_name, _) = self.expect_word("struct member name", loc)?;
             let kind = self.expect_type_kind("struct member type", prog, loc)?;
 
             match prog.get_type_descr(kind) {
                 TypeDescr::Structure(StructType(fields, _)) => {
-                    let value = prog.get_type_id_by_name(fields.name()).unwrap();
-                    members.push(TypeDescr::structure(*member_name, fields.to_vec(), value));
+                    let value = prog.get_type_id(fields.name()).unwrap();
+                    members.push(TypeDescr::structure(member_name, fields.to_vec(), value));
                 }
                 TypeDescr::Primitive(Primitive(.., id)) => {
-                    members.push(TypeDescr::primitive(*member_name, *id));
+                    members.push(TypeDescr::primitive(member_name, *id));
                 }
                 TypeDescr::Reference(_) => todo!(),
             }
@@ -595,7 +602,8 @@ impl Parser {
                 }
                 TypeDescr::Primitive(_) => todo!(),
                 TypeDescr::Reference(ptr) => {
-                    let struct_type = TypeDescr::reference(**word, ptr.type_id(), ptr.ptr_id());
+                    let struct_type =
+                        TypeDescr::reference(word.name(), ptr.type_id(), ptr.ptr_id());
                     self.register_const_or_var(false, word, ptr.type_id(), struct_type, prog);
                     return Ok(());
                 }
@@ -604,10 +612,9 @@ impl Parser {
             if ref_members.len() == 1 {
                 todo!()
             } else {
-                let reftype = type_def.type_id();
-
-                let struct_type = TypeDescr::structure(**word, ref_members, reftype);
-                self.register_const_or_var(false, word, reftype, struct_type, prog);
+                let struct_type =
+                    TypeDescr::structure(word.name(), ref_members, type_def.type_id());
+                self.register_const_or_var(false, word, type_def.type_id(), struct_type, prog);
             }
             Ok(())
         }
@@ -631,13 +638,13 @@ impl Parser {
                 return OptionErr::new(vec![result]);
             }
 
-            let LabelKind(word, typ) = self.expect_label_kind("bind", loc, prog)?;
-            self.name_scopes.register(&word, ParseContext::Binding);
+            let LabelKind(LocWord(word, _), typ) = self.expect_label_kind("bind", loc, prog)?;
+            self.name_scopes.register(word, ParseContext::Binding);
 
             if let Some(TypeId(id)) = typ {
-                bindings.push((word.str_key(), Some(id)));
+                bindings.push((word, Some(id)));
             } else {
-                bindings.push((word.str_key(), None));
+                bindings.push((word, None));
             }
         }
 
@@ -648,8 +655,9 @@ impl Parser {
         &mut self, is_constant: bool, word: &LocWord, reftype: TypeId, prog: &mut Program,
     ) -> LazyResult<()> {
         let stk = prog.get_type_descr(reftype).clone();
+        let &LocWord(name, loc) = word;
 
-        let (mut result, eval) = match self.compile_eval_n(stk.count(), prog, word.loc()).value {
+        let (mut result, eval) = match self.compile_eval_n(stk.count(), prog, loc).value {
             Ok(value) => value,
             Err(either) => {
                 return Err(either.either(
@@ -678,7 +686,7 @@ impl Parser {
                 }
             };
 
-            TypeDescr::Primitive(Primitive::new(word, &eval))
+            TypeDescr::Primitive(Primitive::new(name, &eval))
         } else {
             let contract: Vec<_> = stk.units().map(|u| u.get_type()).collect();
             result.expect_exact(&contract, end_loc)?;
@@ -695,7 +703,7 @@ impl Parser {
                 TypeDescr::Reference(_) => todo!(),
             };
 
-            TypeDescr::structure(**word, def_members, reftype)
+            TypeDescr::structure(name, def_members, reftype)
         };
 
         self.register_const_or_var(is_constant, word, reftype, struct_type, prog);
@@ -713,8 +721,8 @@ impl Parser {
             self.register_var(struct_type, prog)
         };
 
-        self.name_scopes.register(word, ctx);
-        self.structs.push(IndexWord::new(word, reftype));
+        self.name_scopes.register(word.name(), ctx);
+        self.structs.push(IndexWord::new(word.name(), reftype));
     }
 
     pub fn register_var(&mut self, struct_word: TypeDescr, prog: &mut Program) -> ParseContext {

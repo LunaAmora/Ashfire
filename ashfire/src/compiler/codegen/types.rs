@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ashfire_types::{
-    core::{Op, Operand, StrKey, WORD_SIZE},
+    core::{Name, Op, Operand, WORD_SIZE},
     data::{Primitive, StructInfo, TypeDescr},
     proc::Contract,
 };
@@ -122,14 +122,14 @@ fn store_local(offset: i32, var_value: i32) -> Vec<Instruction> {
 }
 
 pub struct FuncGen {
-    label: StrKey,
+    label: Name,
     contract: (Vec<WasmType>, Vec<WasmType>),
     code: Vec<Instruction>,
     pub bind_offset: i32,
 }
 
 impl FuncGen {
-    pub fn new(label: StrKey, contract: &Contract) -> Self {
+    pub fn new(label: Name, contract: &Contract) -> Self {
         Self {
             label,
             contract: as_wasm(contract),

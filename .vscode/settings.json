@@ -9,7 +9,6 @@
         "-Aclippy::missing_const_for_fn",
 
         "-Wclippy::pedantic",
-        "-Aclippy::trivially_copy_pass_by_ref",
         "-Aclippy::missing_errors_doc",
         "-Aclippy::missing_panics_doc",
 

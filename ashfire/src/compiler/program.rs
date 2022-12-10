@@ -21,7 +21,7 @@ pub trait InternalString {
     fn as_string(&self, prog: &Program) -> String;
 }
 
-impl InternalString for StrKey {
+impl InternalString for Name {
     fn as_str<'a>(&self, prog: &'a Program) -> &'a str {
         prog.interner.resolve(self)
     }
@@ -31,7 +31,7 @@ impl InternalString for StrKey {
     }
 }
 
-fn intern_all<const N: usize>(rodeo: &mut Rodeo, strings: [&'static str; N]) -> [StrKey; N] {
+fn intern_all<const N: usize>(rodeo: &mut Rodeo, strings: [&'static str; N]) -> [Name; N] {
     strings
         .iter()
         .map(|s| rodeo.get_or_intern_static(s))
@@ -48,7 +48,7 @@ pub struct Program {
     pub global_vars: Vec<TypeDescr>,
     pub block_contracts: HashMap<usize, (usize, usize)>,
     structs_types: Vec<TypeDescr>,
-    included_sources: Vec<StrKey>,
+    included_sources: Vec<Name>,
     consts: Vec<TypeDescr>,
     interner: Rodeo,
     mem_size: usize,
@@ -99,8 +99,8 @@ impl Program {
         self.included_sources.len() - 1
     }
 
-    pub fn push_mem(&mut self, word: &StrKey, size: usize) {
-        let value = OffsetWord::new(*word, self.mem_size as i32);
+    pub fn push_mem(&mut self, word: Name, size: usize) {
+        let value = OffsetWord::new(word, self.mem_size as i32);
         self.memory.push(value);
         self.mem_size += size;
     }
@@ -141,16 +141,16 @@ impl Program {
         self.global_vars_start() + self.global_vars_size()
     }
 
-    pub fn get_or_intern(&mut self, word: &str) -> StrKey {
+    pub fn get_or_intern(&mut self, word: &str) -> Name {
         self.interner.get_or_intern(word)
     }
 
-    pub fn get_key(&self, word: &str) -> Option<StrKey> {
+    pub fn get_key(&self, word: &str) -> Option<Name> {
         self.interner.get(word)
     }
 
     pub fn get_word<O: Operand>(&self, index: O) -> String {
-        self.interner.resolve(&index.str_key()).to_owned()
+        self.interner.resolve(&index.name()).to_owned()
     }
 
     pub fn get_data<O: Operand>(&self, index: O) -> &OffsetData {
@@ -205,7 +205,7 @@ impl Program {
         .to_owned()
     }
 
-    fn data_display<O: Operand>(value: TypeId, operand: O) -> String {
+    fn data_display(value: TypeId, operand: i32) -> String {
         let operand = operand.operand();
         match value {
             TypeId::BOOL => fold_bool!(operand != 0, "True", "False").to_owned(),
@@ -219,7 +219,7 @@ impl Program {
             TokenType::Keyword => format!("{:?}", tok.as_keyword()),
             TokenType::Word => self.get_word(tok),
             TokenType::Str => self.get_data_str(tok).to_owned(),
-            TokenType::Data(ValueType(id)) => Self::data_display(id, tok),
+            TokenType::Data(ValueType(id)) => Self::data_display(id, tok.operand()),
         }
     }
 
@@ -250,55 +250,51 @@ impl Program {
 
     fn get_cast_type_ptr(&mut self, rest: &[u8]) -> Option<usize> {
         let key = self.get_key(from_utf8(rest).ok()?)?;
-        let type_id = self.get_type_id_by_name(&key)?;
+        let type_id = self.get_type_id(key)?;
         let TypeId(id) = self.get_type_ptr(type_id);
         Some(id)
     }
 
     fn get_cast_type(&self, rest: &[u8]) -> Option<usize> {
         self.get_key(from_utf8(rest).ok()?)
-            .as_ref()
-            .map(|key| self.get_struct_type_id(key))?
+            .map(|key| self.get_type_index(key))?
     }
 
-    pub fn get_struct_type_id(&self, word: &StrKey) -> Option<usize> {
+    pub fn get_type_index(&self, word: Name) -> Option<usize> {
         self.structs_types
             .iter()
-            .position(|def| word.eq(def.name()))
+            .position(|def| word.eq(&def.name()))
     }
 
-    pub fn get_type_descr(&self, index: TypeId) -> &TypeDescr {
-        &self.structs_types[index.0]
+    pub fn get_type_id(&self, word: Name) -> Option<TypeId> {
+        self.get_type_index(word).map(TypeId)
     }
 
-    pub fn get_type_id_by_name(&self, word: &StrKey) -> Option<TypeId> {
-        self.structs_types
-            .iter()
-            .position(|def| word.eq(def.name()))
-            .map(TypeId)
+    pub fn get_type_descr(&self, type_id: TypeId) -> &TypeDescr {
+        &self.structs_types[type_id.0]
     }
 
-    pub fn try_get_type_ptr(&self, value: TypeId) -> Option<TypeId> {
-        let name = self.get_type_descr(value).name();
+    pub fn try_get_type_ptr(&self, type_id: TypeId) -> Option<TypeId> {
+        let name = self.get_type_descr(type_id).name();
         let ptr_name = format!("*{}", name.as_str(self));
 
         self.get_key(&ptr_name)
-            .and_then(|key| self.get_type_id_by_name(&key))
+            .and_then(|key| self.get_type_id(key))
     }
 
-    pub fn get_type_ptr(&mut self, value: TypeId) -> TypeId {
-        let name = self.get_type_descr(value).name();
+    pub fn get_type_ptr(&mut self, type_id: TypeId) -> TypeId {
+        let name = self.get_type_descr(type_id).name();
         let ptr_name = format!("*{}", name.as_str(self));
 
         if let Some(key) = self.get_key(&ptr_name) {
-            self.get_type_id_by_name(&key).unwrap()
+            self.get_type_id(key).unwrap()
         } else {
             let word_id = self.get_or_intern(&ptr_name);
-            let type_id = TypeId(self.structs_types.len());
-            let stk = TypeDescr::reference(word_id, type_id, value);
+            let new_type_id = TypeId(self.structs_types.len());
+            let stk = TypeDescr::reference(word_id, new_type_id, type_id);
 
             self.structs_types.push(stk);
-            type_id
+            new_type_id
         }
     }
 
@@ -310,9 +306,9 @@ impl Program {
         type_id
     }
 
-    /// Searches for a `const` that matches the given [`StrKey`].
-    pub fn get_const_by_name(&self, word: &StrKey) -> Option<&TypeDescr> {
-        self.consts.iter().find(|cnst| word.eq(cnst.name()))
+    /// Searches for a `const` that matches the given [`Name`].
+    pub fn get_const_by_name(&self, word: Name) -> Option<&TypeDescr> {
+        self.consts.iter().find(|cnst| word.eq(&cnst.name()))
     }
 
     #[cfg(debug_assertions)]

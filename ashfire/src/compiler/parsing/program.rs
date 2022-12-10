@@ -45,24 +45,14 @@ impl Program {
     /// Searches for a `const` that matches the given[`word`][LocWord]
     /// and parses it to an [`Op`].
     pub fn get_const_struct(&self, word: &LocWord) -> Option<Vec<Op>> {
-        self.get_const_by_name(word).map(|tword| match tword {
-            TypeDescr::Structure(StructType(fields, _)) => fields
-                .units()
-                .map(|val| Op::from((&val, word.loc())))
-                .collect(),
-            TypeDescr::Primitive(val) => vec![Op::from((val, word.loc()))],
-            TypeDescr::Reference(..) => todo!(),
+        let &LocWord(name, loc) = word;
+        self.get_const_by_name(name).map(|tword| match tword {
+            TypeDescr::Structure(StructType(fields, _)) => {
+                fields.units().map(|val| Op::from((&val, loc))).collect()
+            }
+            TypeDescr::Primitive(val) => vec![Op::from((val, loc))],
+            TypeDescr::Reference(_) => todo!(),
         })
-    }
-
-    /// Searches for a `struct` that matches the given [`StrKey`],
-    /// returning its type.
-    fn try_get_struct_descr(&self, word: &StrKey, parser: &Parser) -> Option<&TypeDescr> {
-        parser
-            .structs()
-            .iter()
-            .find(|stk| word.eq(stk))
-            .map(|name| self.get_type_descr(name.1))
     }
 
     pub fn get_intrinsic(&mut self, word: &LocWord) -> Option<Vec<Op>> {
@@ -108,27 +98,29 @@ impl Program {
         &self, word: &LocWord, vars: &[TypeDescr], push_type: OpType, var_typ: VarWordType,
         parser: &Parser,
     ) -> OptionErr<Vec<Op>> {
+        let &LocWord(name, loc) = word;
+
         if word.as_str(self).contains('.') {
             let (var, offset) = self
                 .try_get_field(word, vars)
                 .value?
                 .or_return(OptionErr::default)?;
-            return self.unpack_struct(var, push_type, offset, var_typ, word.loc());
+            return self.unpack_struct(var, push_type, offset, var_typ, loc);
         }
 
-        let type_descr = vars
+        let type_id = vars
             .iter()
-            .any(|val| val.name().eq(word))
-            .then(|| self.try_get_struct_descr(word, parser))
+            .any(|val| name == val.name())
+            .then(|| parser.find_type_id(name))
             .flatten()
             .or_return(OptionErr::default)?;
 
         OptionErr::new(if var_typ == VarWordType::Pointer {
-            let value = type_descr.type_id();
-            let stk_id = self.try_get_type_ptr(value).unwrap();
+            let stk_id = self.try_get_type_ptr(type_id).unwrap();
 
             vars.get_pointer(word, push_type, stk_id)
         } else {
+            let type_descr = self.get_type_descr(type_id);
             vars.get_fields(word, push_type, type_descr, var_typ == VarWordType::Store)
         })
     }
@@ -193,7 +185,7 @@ impl Program {
             todo!()
         };
 
-        let (mut offset, i) = vars.get_offset(&first).or_return(OptionErr::default)?;
+        let (mut offset, i) = vars.get_offset(first).or_return(OptionErr::default)?;
 
         let fields = fields.into_iter().skip(1);
         let mut var = &vars[i];
@@ -207,7 +199,7 @@ impl Program {
                 todo!()
             };
 
-            let Some((diff, index)) = fields.get_offset(&field_key) else {
+            let Some((diff, index)) = fields.get_offset(field_key) else {
                 let error = format!("The variable `{}` does not contain the field `{field_name}`",
                     var.name().as_str(self));
                 return err_loc(error, loc).into();
@@ -221,7 +213,7 @@ impl Program {
     }
 
     pub fn push_mem_by_context(
-        &mut self, parser: &Parser, word: &StrKey, size: usize,
+        &mut self, parser: &Parser, word: Name, size: usize,
     ) -> ParseContext {
         let Some(proc) = parser.current_proc_mut(self) else {
             self.push_mem(word, size);

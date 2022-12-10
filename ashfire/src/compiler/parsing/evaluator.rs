@@ -113,7 +113,7 @@ impl Evaluator for EvalStack<IRToken> {
                     _ => Err(Either::Left(IRToken(TokenType::Word, *tok, loc)))?,
                 },
 
-                None => match prog.get_const_by_name(&tok.str_key()) {
+                None => match prog.get_const_by_name(tok.name()) {
                     Some(TypeDescr::Primitive(unit)) => {
                         self.push(IRToken(unit.type_id().get_type(), unit.value(), loc));
                     }

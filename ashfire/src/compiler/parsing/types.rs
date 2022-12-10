@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::Deref};
+use std::collections::HashMap;
 
 use ashfire_types::{
     core::*,
@@ -15,7 +15,17 @@ use crate::compiler::{
 
 impl Compare<IRToken> for Vec<IRToken> {}
 
-pub struct LocWord(pub StrKey, pub Loc);
+pub struct LocWord(pub Name, pub Loc);
+
+impl Operand for LocWord {
+    fn name(&self) -> Name {
+        self.0
+    }
+
+    fn operand(&self) -> i32 {
+        self.0.operand()
+    }
+}
 
 impl Location for LocWord {
     fn loc(&self) -> Loc {
@@ -23,17 +33,25 @@ impl Location for LocWord {
     }
 }
 
-impl Deref for LocWord {
-    type Target = StrKey;
+impl InternalString for LocWord {
+    fn as_str<'a>(&self, prog: &'a Program) -> &'a str {
+        self.0.as_str(prog)
+    }
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    fn as_string(&self, prog: &Program) -> String {
+        self.0.as_string(prog)
+    }
+}
+
+impl PartialEq<Name> for LocWord {
+    fn eq(&self, other: &Name) -> bool {
+        self.0 == *other
     }
 }
 
 impl From<LocWord> for IRToken {
-    fn from(value: LocWord) -> Self {
-        Self(TokenType::Word, value.operand(), value.1)
+    fn from(word: LocWord) -> Self {
+        Self(TokenType::Word, word.0.operand(), word.1)
     }
 }
 
@@ -57,7 +75,7 @@ pub enum ParseContext {
 
 pub struct Scope {
     op: Op,
-    names: HashMap<StrKey, ParseContext>,
+    names: HashMap<Name, ParseContext>,
 }
 
 impl Scope {
@@ -69,35 +87,35 @@ impl Scope {
 #[derive(Default)]
 pub struct NameScopes {
     scopes: Vec<Scope>,
-    names: HashMap<StrKey, ParseContext>,
+    names: HashMap<Name, ParseContext>,
 }
 
 impl NameScopes {
-    pub fn lookup(&self, name: &StrKey, prog: &Program) -> Option<&ParseContext> {
+    pub fn lookup(&self, name: Name, prog: &Program) -> Option<&ParseContext> {
         //Todo: there must be a better way to support `.` accessing structs
         let word = name.as_str(prog);
         if word.contains('.') {
             let name = word.split('.').next().unwrap();
             if let Some(key) = prog.get_key(name) {
-                return self.lookup(&key, prog);
+                return self.lookup(key, prog);
             }
         }
 
         for scope in self.scopes.iter().rev() {
-            let ctx = scope.names.get(name);
+            let ctx = scope.names.get(&name);
             if ctx.is_some() {
                 return ctx;
             }
         }
 
-        self.names.get(name)
+        self.names.get(&name)
     }
 
-    pub fn register(&mut self, name: &StrKey, ctx: ParseContext) {
+    pub fn register(&mut self, name: Name, ctx: ParseContext) {
         self.scopes
             .last_mut()
             .map_or_else(|| &mut self.names, |scope| &mut scope.names)
-            .insert(*name, ctx);
+            .insert(name, ctx);
     }
 
     pub fn push(&mut self, op: Op) {
@@ -110,8 +128,8 @@ impl NameScopes {
 }
 
 pub trait StructUtils {
-    fn get_offset(&self, word: &StrKey) -> Option<(usize, usize)>;
-    fn get_offset_local(&self, word: &StrKey) -> Option<(usize, usize)>;
+    fn get_offset(&self, word: Name) -> Option<(usize, usize)>;
+    fn get_offset_local(&self, word: Name) -> Option<(usize, usize)>;
     fn get_pointer(&self, word: &LocWord, push_type: OpType, type_id: TypeId) -> Vec<Op>;
     fn get_fields(
         &self, word: &LocWord, push_type: OpType, stk_def: &TypeDescr, store: bool,
@@ -119,8 +137,8 @@ pub trait StructUtils {
 }
 
 impl StructUtils for [TypeDescr] {
-    fn get_offset(&self, word: &StrKey) -> Option<(usize, usize)> {
-        let i = self.iter().position(|stk| word.eq(stk.name()))?;
+    fn get_offset(&self, word: Name) -> Option<(usize, usize)> {
+        let i = self.iter().position(|stk| word.eq(&stk.name()))?;
 
         let mut offset = 0;
         for (var, _) in self.iter().zip(0..i) {
@@ -130,8 +148,8 @@ impl StructUtils for [TypeDescr] {
         Some((offset, i))
     }
 
-    fn get_offset_local(&self, word: &StrKey) -> Option<(usize, usize)> {
-        let i = self.iter().position(|stk| word.eq(stk.name()))?;
+    fn get_offset_local(&self, word: Name) -> Option<(usize, usize)> {
+        let i = self.iter().position(|stk| word.eq(&stk.name()))?;
 
         let mut offset = 0;
         for (var, _) in self.iter().zip(0..=i) {
@@ -142,15 +160,16 @@ impl StructUtils for [TypeDescr] {
     }
 
     fn get_pointer(&self, word: &LocWord, push_type: OpType, type_id: TypeId) -> Vec<Op> {
+        let &LocWord(name, loc) = word;
         let (index, _) = if push_type == OpType::PushLocal {
-            self.get_offset_local(word).unwrap()
+            self.get_offset_local(name).unwrap()
         } else {
-            self.get_offset(word).unwrap()
+            self.get_offset(name).unwrap()
         };
 
         vec![
-            Op(push_type, index as i32, word.loc()),
-            Op::from((IntrinsicType::Cast(type_id.0), word.loc())),
+            Op(push_type, index as i32, loc),
+            Op::from((IntrinsicType::Cast(type_id.0), loc)),
         ]
     }
 
@@ -158,8 +177,8 @@ impl StructUtils for [TypeDescr] {
         &self, word: &LocWord, push_type: OpType, stk_def: &TypeDescr, store: bool,
     ) -> Vec<Op> {
         let mut result = Vec::new();
-        let loc = word.loc();
-        let (index, _) = self.get_offset(word).unwrap();
+        let &LocWord(name, loc) = word;
+        let (index, _) = self.get_offset(name).unwrap();
 
         let is_local = push_type == OpType::PushLocal;
         let id_range = if store == is_local {

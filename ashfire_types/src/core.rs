@@ -6,7 +6,7 @@ use num::FromPrimitive;
 
 use super::{data::*, enums::*};
 
-pub type StrKey = lasso::Spur;
+pub type Name = lasso::Spur;
 
 pub const WORD_SIZE: i32 = 4;
 pub const WORD_USIZE: usize = 4;
@@ -48,8 +48,8 @@ pub trait Operand {
         self.operand() as usize
     }
 
-    fn str_key(&self) -> StrKey {
-        StrKey::try_from_usize(self.index()).unwrap()
+    fn name(&self) -> Name {
+        Name::try_from_usize(self.index()).unwrap()
     }
 }
 
@@ -71,7 +71,7 @@ impl Operand for usize {
     }
 }
 
-impl Operand for StrKey {
+impl Operand for Name {
     fn index(&self) -> usize {
         self.into_usize()
     }
@@ -80,7 +80,7 @@ impl Operand for StrKey {
         self.index() as i32
     }
 
-    fn str_key(&self) -> StrKey {
+    fn name(&self) -> Name {
         *self
     }
 }
@@ -215,7 +215,7 @@ impl From<(IntrinsicType, Loc)> for Op {
     }
 }
 
-pub struct Offset<T, O = i32>(pub T, pub O);
+pub struct Offset<T, O = i32>(T, O);
 
 impl<T, O: Copy> Offset<T, O> {
     pub fn offset(&self) -> O {
@@ -234,7 +234,7 @@ impl<T, O> Deref for Offset<T, O> {
 pub type OffsetData = Offset<OffsetWord>;
 
 impl OffsetData {
-    pub fn new(name: StrKey, size: i32, offset: i32) -> Self {
+    pub fn new(name: Name, size: i32, offset: i32) -> Self {
         Self(OffsetWord::new(name, size), offset)
     }
 
@@ -247,18 +247,18 @@ impl OffsetData {
     }
 }
 
-pub type OffsetWord = Offset<StrKey>;
+pub type OffsetWord = Offset<Name>;
 
 impl OffsetWord {
-    pub fn new(name: StrKey, offset: i32) -> Self {
+    pub fn new(name: Name, offset: i32) -> Self {
         Self(name, offset)
     }
 }
 
-pub type IndexWord = Offset<StrKey, TypeId>;
+pub type IndexWord = Offset<Name, TypeId>;
 
 impl IndexWord {
-    pub fn new(name: &StrKey, index: TypeId) -> Self {
-        Self(*name, index)
+    pub fn new(name: Name, index: TypeId) -> Self {
+        Self(name, index)
     }
 }
