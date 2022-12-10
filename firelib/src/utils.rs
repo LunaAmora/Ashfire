@@ -9,8 +9,8 @@ pub trait PathUtils {
 }
 
 impl PathUtils for Path {
-/// Gets the directory of the [`Path`],
-/// or [`None`] if is empty.
+    /// Gets the directory of the [`Path`],
+    /// or [`None`] if is empty.
     fn get_dir(&self) -> Result<&Path> {
         self.ancestors().nth(1).with_context(|| {
             format!("Failed to get file directory path: {}", self.to_string_lossy())
@@ -48,25 +48,6 @@ pub trait BoolUtils: Sized {
 }
 
 impl<T> BoolUtils for T {}
-
-pub trait RangeRef<T> {
-    fn get_range_ref<const N: usize>(&self, index: usize) -> Result<[&T; N]>;
-}
-
-impl<T> RangeRef<T> for VecDeque<T> {
-    fn get_range_ref<const N: usize>(&self, index: usize) -> Result<[&T; N]> {
-        let end_range = index + N;
-        let len = self.len();
-        let range = index..end_range;
-
-        if len > (end_range + 1) {
-            let range: Vec<&T> = self.range(range).collect();
-            return Ok(range.try_into().ok().unwrap());
-        }
-
-        bail!("Range of elements out of bounds: `{range:?}` from length `{len}`")
-    }
-}
 
 pub fn strip_trailing_newline(input: &str) -> &str {
     input
