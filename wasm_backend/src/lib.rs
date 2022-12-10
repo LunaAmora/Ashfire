@@ -130,7 +130,7 @@ impl Module {
 
                     writer.write_all(
                         format!(
-                            "(import \"{}\" \"{}\" (func ${label} {contr}))\n",
+                            "(import \"{}\" \"{}\" (func ${label}{contr}))\n",
                             import.module, import.label
                         )
                         .as_bytes(),
