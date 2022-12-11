@@ -61,14 +61,14 @@ impl Default for Mode {
 }
 
 #[derive(Default)]
-pub struct Binding(pub Vec<(Name, Option<usize>)>);
+pub struct Binds(pub Vec<(Name, Option<usize>)>);
 
 #[derive(Default)]
 pub struct Proc {
     pub name: Name,
     pub contract: Contract,
     pub mode: Mode,
-    pub bindings: Vec<Binding>,
+    pub binds: Vec<Binds>,
 }
 
 impl Proc {
@@ -92,7 +92,7 @@ impl Proc {
     }
 
     pub fn bindings(&self) -> impl Iterator<Item = &(Name, Option<usize>)> {
-        self.bindings.iter().rev().flat_map(|bind| bind.0.iter())
+        self.binds.iter().rev().flat_map(|Binds(bind)| bind.iter())
     }
 
     pub fn is_import(&self) -> bool {

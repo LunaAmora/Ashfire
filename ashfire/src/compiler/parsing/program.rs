@@ -31,7 +31,7 @@ impl Program {
         parser
             .current_proc_data(self)
             .and_then(|proc| proc.local_mems.iter().find(|mem| word.eq(mem)))
-            .map(|local| vec![Op(OpType::PushLocalMem, local.offset(), word.loc())])
+            .map(|local| vec![Op(OpType::PushLocalMem, local.get_value(), word.loc())])
     }
 
     /// Searches for a `global mem` that matches the given [`LocWord`] name.
@@ -39,7 +39,7 @@ impl Program {
         self.get_memory()
             .iter()
             .find(|mem| word.eq(mem))
-            .map(|global| vec![Op(OpType::PushGlobalMem, global.offset(), word.loc())])
+            .map(|global| vec![Op(OpType::PushGlobalMem, global.get_value(), word.loc())])
     }
 
     /// Searches for a `const` that matches the given[`word`][LocWord]
@@ -140,7 +140,7 @@ impl Program {
                     result.insert(0, Op(OpType::ExpectType, id.operand(), loc));
                     result.push(Op::from((IntrinsicType::Store32, loc)));
                 } else if var_typ == VarWordType::Pointer {
-                    let Some(TypeId(ptr_id)) = self.try_get_type_ptr(*typ) else {
+                    let Some(ptr_id) = self.try_get_type_ptr(*typ) else {
                         todo!("must register the ptr type earlier");
                     };
 
@@ -148,7 +148,7 @@ impl Program {
                 } else {
                     result.extend([
                         Op::from((IntrinsicType::Load32, loc)),
-                        Op::from((IntrinsicType::Cast(*id), loc)),
+                        Op::from((IntrinsicType::Cast(*typ), loc)),
                     ]);
                 }
             }
@@ -162,7 +162,7 @@ impl Program {
                     offset += 1;
                 }
 
-                let Some(TypeId(ptr_id)) = self.try_get_type_ptr(*type_id) else {
+                let Some(ptr_id) = self.try_get_type_ptr(*type_id) else {
                     todo!("must register the ptr type earlier");
                 };
 

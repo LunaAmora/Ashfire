@@ -129,7 +129,7 @@ pub enum IntrinsicType {
     Store8,
     Store16,
     Store32,
-    Cast(usize),
+    Cast(TypeId),
 }
 
 impl FromStr for IntrinsicType {
@@ -179,12 +179,12 @@ impl const From<usize> for IntrinsicType {
             14 => Self::Store16,
             15 => Self::Load32,
             16 => Self::Store32,
-            n => Self::Cast(n - CAST_BASE),
+            n => Self::Cast(TypeId(n - CAST_BASE)),
         }
     }
 }
 
-const CAST_BASE: usize = usize::from(IntrinsicType::Cast(0));
+const CAST_BASE: usize = usize::from(IntrinsicType::Cast(TypeId(0)));
 
 impl const From<IntrinsicType> for usize {
     fn from(intrinsic: IntrinsicType) -> Self {
@@ -206,7 +206,7 @@ impl const From<IntrinsicType> for usize {
             IntrinsicType::Store16 => 14,
             IntrinsicType::Load32 => 15,
             IntrinsicType::Store32 => 16,
-            IntrinsicType::Cast(n) => 17 + n,
+            IntrinsicType::Cast(TypeId(n)) => 17 + n,
         }
     }
 }

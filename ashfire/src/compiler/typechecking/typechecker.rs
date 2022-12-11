@@ -2,7 +2,7 @@ use ashfire_types::{
     core::*,
     data::*,
     enums::{IntrinsicType, OpType},
-    proc::{Binding, Mode},
+    proc::{Binds, Mode},
 };
 use ashlib::{EvalStack, UncheckedStack};
 use firelib::{lazy::LazyCtx, lexer::Loc, Result};
@@ -97,11 +97,9 @@ impl TypeChecker {
                     self.data_stack.expect_array_pop([ANY, ANY], loc)?;
                 }
 
-                IntrinsicType::Cast(n) => {
+                IntrinsicType::Cast(type_id) => {
                     self.data_stack.expect_pop(loc)?;
-
-                    let cast = TypeId(n).get_type();
-                    self.push_frame(cast, loc);
+                    self.push_frame(type_id.get_type(), loc);
                 }
             },
 
@@ -229,10 +227,10 @@ impl TypeChecker {
 
             OpType::BindStack => {
                 let proc = self.current_proc(program).unwrap();
-                let Binding(bind) = &proc.bindings[operand.index()];
+                let Binds(bindings) = &proc.binds[operand.index()];
                 let mut binds = vec![];
 
-                for (_, typ) in bind.iter() {
+                for (_, typ) in bindings.iter() {
                     if let &Some(id) = typ {
                         let type_def = program.get_type_descr(TypeId(id));
 
@@ -277,9 +275,9 @@ impl TypeChecker {
 
             OpType::PopBind => {
                 let proc = self.current_proc(program).unwrap();
-                let Binding(binds) = &proc.bindings[operand.index()];
+                let Binds(bindings) = &proc.binds[operand.index()];
                 self.bind_stack
-                    .truncate(self.bind_stack.len() - binds.len());
+                    .truncate(self.bind_stack.len() - bindings.len());
             }
 
             OpType::While => {

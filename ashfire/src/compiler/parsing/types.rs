@@ -169,7 +169,7 @@ impl StructUtils for [TypeDescr] {
 
         vec![
             Op(push_type, index as i32, loc),
-            Op::from((IntrinsicType::Cast(type_id.0), loc)),
+            Op::from((IntrinsicType::Cast(type_id), loc)),
         ]
     }
 
@@ -197,7 +197,7 @@ impl StructUtils for [TypeDescr] {
             TypeDescr::Reference(ptr) => vec![ptr.type_id()],
         };
 
-        for (operand, TypeId(id)) in id_range.zip(members) {
+        for (operand, type_id @ TypeId(id)) in id_range.zip(members) {
             if store {
                 result.push(Op(OpType::ExpectType, id.operand(), loc));
             }
@@ -209,7 +209,7 @@ impl StructUtils for [TypeDescr] {
             } else {
                 result.extend([
                     Op::from((IntrinsicType::Load32, loc)),
-                    Op::from((IntrinsicType::Cast(id), loc)),
+                    Op::from((IntrinsicType::Cast(type_id), loc)),
                 ]);
             }
         }

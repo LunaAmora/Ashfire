@@ -104,8 +104,8 @@ impl Evaluator for EvalStack<IRToken> {
                         loc,
                     )?,
 
-                    IntrinsicType::Cast(n) => self.pop_push_arity(
-                        |[a]| IRToken(TypeId(n).get_type(), *a, loc),
+                    IntrinsicType::Cast(type_id) => self.pop_push_arity(
+                        |[a]| IRToken(type_id.get_type(), *a, loc),
                         ArityType::Any,
                         loc,
                     )?,

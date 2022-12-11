@@ -172,7 +172,7 @@ impl Deref for IRToken {
 
 impl PartialEq<KeywordType> for &IRToken {
     fn eq(&self, other: &KeywordType) -> bool {
-        self.0 == TokenType::Keyword && other == &self.as_keyword()
+        self.get_keyword().map_or(false, |key| other == &key)
     }
 }
 
@@ -204,26 +204,28 @@ impl Op {
 }
 
 impl From<(&Primitive, Loc)> for Op {
-    fn from(tuple: (&Primitive, Loc)) -> Self {
-        Self(OpType::PushData(tuple.0.type_id()), tuple.0.value(), tuple.1)
+    fn from(value: (&Primitive, Loc)) -> Self {
+        let (prim, loc) = value;
+        Self(OpType::PushData(prim.type_id()), prim.value(), loc)
     }
 }
 
 impl From<(IntrinsicType, Loc)> for Op {
     fn from(value: (IntrinsicType, Loc)) -> Self {
-        Self(OpType::Intrinsic, usize::from(value.0).operand(), value.1)
+        let (intrinsic, loc) = value;
+        Self(OpType::Intrinsic, usize::from(intrinsic).operand(), loc)
     }
 }
 
-pub struct Offset<T, O = i32>(T, O);
+pub struct Wrapper<T, O>(T, O);
 
-impl<T, O: Copy> Offset<T, O> {
-    pub fn offset(&self) -> O {
+impl<T, O: Copy> Wrapper<T, O> {
+    pub fn get_value(&self) -> O {
         self.1
     }
 }
 
-impl<T, O> Deref for Offset<T, O> {
+impl<T, O> Deref for Wrapper<T, O> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -231,7 +233,7 @@ impl<T, O> Deref for Offset<T, O> {
     }
 }
 
-pub type OffsetData = Offset<OffsetWord>;
+pub type OffsetData = Wrapper<OffsetWord, i32>;
 
 impl OffsetData {
     pub fn new(name: Name, size: i32, offset: i32) -> Self {
@@ -239,15 +241,15 @@ impl OffsetData {
     }
 
     pub fn data(&self) -> (i32, i32) {
-        (self.size(), self.offset())
+        (self.size(), self.get_value())
     }
 
     pub fn size(&self) -> i32 {
-        self.0.offset()
+        self.0.get_value()
     }
 }
 
-pub type OffsetWord = Offset<Name>;
+pub type OffsetWord = Wrapper<Name, i32>;
 
 impl OffsetWord {
     pub fn new(name: Name, offset: i32) -> Self {
@@ -255,10 +257,10 @@ impl OffsetWord {
     }
 }
 
-pub type IndexWord = Offset<Name, TypeId>;
+pub type TypedWord = Wrapper<Name, TypeId>;
 
-impl IndexWord {
-    pub fn new(name: Name, index: TypeId) -> Self {
-        Self(name, index)
+impl TypedWord {
+    pub fn new(name: Name, type_id: TypeId) -> Self {
+        Self(name, type_id)
     }
 }

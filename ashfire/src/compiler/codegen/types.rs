@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ashfire_types::{
     core::{Name, Op, Operand, WORD_SIZE},
     data::{Primitive, StructInfo, TypeDescr},
-    proc::Contract,
+    proc::{Contract, Proc},
 };
 use firelib::{Context, Result};
 use wasm_backend::{wasm_types::*, Module};
@@ -39,18 +39,19 @@ impl Generator {
         }
     }
 
-    pub fn prep_proc(&mut self, program: &Program, op: &Op) -> Result<bool> {
+    pub fn prep_proc<'a>(&mut self, program: &'a Program, op: &Op) -> Result<Option<&'a Proc>> {
         if self.current_func.is_some() {
             bail!("Cannot start an Wasm function block without closing the current one");
         }
 
         let proc = self.visit_proc(program, op.index());
         let Some(data) = proc.get_data() else {
-            return Ok(true);
+            return Ok(None);
         };
 
-        self.current_func = Some(FuncGen::new(proc.name, &proc.contract));
-        let func = self.current_fn()?;
+        let func = self
+            .current_func
+            .insert(FuncGen::new(proc.name, &proc.contract));
 
         let proc_size = data.total_size();
 
@@ -70,13 +71,13 @@ impl Generator {
         let range = 0..proc.contract.ins().len();
         func.extend(range.map(|i| Get(local, Id(i))));
 
-        Ok(false)
+        Ok(Some(proc))
     }
 
-    pub fn end_proc(&mut self, program: &Program, wasm: &mut Module) -> Result<bool> {
+    pub fn end_proc(&mut self, program: &Program, wasm: &mut Module) -> Result<()> {
         let proc = self.current_proc(program).unwrap();
         let Some(data) = proc.get_data() else {
-            return Ok(true);
+            return Ok(());
         };
 
         let mut func = self
@@ -98,7 +99,7 @@ impl Generator {
             wasm.add_export(label, Bind::Func(Id(id)));
         }
 
-        Ok(false)
+        Ok(())
     }
 
     pub fn current_fn(&mut self) -> Result<&mut FuncGen> {

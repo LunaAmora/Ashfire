@@ -4,7 +4,7 @@ use ashfire_types::{
     core::{Op, Operand, WORD_SIZE, WORD_USIZE},
     data::{Primitive, StructInfo, StructType, TypeDescr, TypeId},
     enums::{IntrinsicType, OpType},
-    proc::{Binding, Mode, Proc},
+    proc::{Binds, Mode, Proc},
 };
 use firelib::{Context, Result};
 use wasm_backend::{wasm_types::*, Module};
@@ -70,19 +70,15 @@ impl Generator {
 
         wasm.add_fn("push_local", i1, i1, vec![Get(global, Id(stk)), Get(local, Id(0)), I32(sub)]);
 
-        let mut skip = false;
+        let mut proc = None;
         for (ip, op @ Op(op_type, ..)) in program.ops.iter().enumerate() {
-            skip = match op_type {
-                OpType::PrepProc | OpType::PrepInline => self.prep_proc(program, op)?,
-                OpType::EndProc => self.end_proc(program, &mut wasm)?,
-                _ => {
-                    if !skip {
-                        let proc = self.current_proc(program).unwrap();
-                        self.current_fn()?
-                            .append_op(program, op, ip, proc, &mut wasm)?;
-                    }
-                    skip
-                }
+            match (op_type, proc) {
+                (OpType::PrepProc | OpType::PrepInline, _) => proc = self.prep_proc(program, op)?,
+                (OpType::EndProc, _) => self.end_proc(program, &mut wasm)?,
+                (_, Some(proc)) => self
+                    .current_fn()?
+                    .append_op(program, op, ip, proc, &mut wasm)?,
+                _ => (),
             }
         }
 
@@ -185,11 +181,11 @@ impl FuncGen {
             OpType::EndIf | OpType::EndElse => self.push(End),
 
             OpType::BindStack => {
-                let Binding(binds) = &proc.bindings[op.index()];
+                let Binds(bindings) = &proc.binds[op.index()];
                 let mut inst = vec![];
                 let mut bind_size = 0;
 
-                for (_, typ) in binds {
+                for (_, typ) in bindings {
                     if let &Some(id) = typ {
                         let type_def = prog.get_type_descr(TypeId(id));
 
@@ -225,9 +221,9 @@ impl FuncGen {
             }
 
             OpType::PopBind => {
-                let Binding(binds) = &proc.bindings[op.index()];
+                let Binds(bindings) = &proc.binds[op.index()];
 
-                let size = binds.iter().fold(0, |acc, (_, typ)| {
+                let size = bindings.iter().fold(0, |acc, (_, typ)| {
                     acc + typ.map_or(WORD_USIZE, |id| prog.get_type_descr(TypeId(id)).size())
                 }) as i32;
 
@@ -287,7 +283,7 @@ fn register_contract(prog: &Program, index: usize, module: &mut Module) -> Ident
 impl Program {
     pub fn final_value(&self, var: &Primitive) -> i32 {
         if matches!(var.type_id(), TypeId::STR) {
-            let offset = self.get_data(var.value()).offset();
+            let offset = self.get_data(var.value()).get_value();
             return offset + self.data_start();
         }
 

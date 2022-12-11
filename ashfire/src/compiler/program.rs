@@ -37,7 +37,6 @@ fn intern_all<const N: usize>(rodeo: &mut Rodeo, strings: [&'static str; N]) -> 
         .map(|s| rodeo.get_or_intern_static(s))
         .collect::<Vec<_>>()
         .try_into()
-        .ok()
         .unwrap()
 }
 
@@ -248,16 +247,16 @@ impl Program {
         })
     }
 
-    fn get_cast_type_ptr(&mut self, rest: &[u8]) -> Option<usize> {
-        let key = self.get_key(from_utf8(rest).ok()?)?;
-        let type_id = self.get_type_id(key)?;
-        let TypeId(id) = self.get_type_ptr(type_id);
-        Some(id)
+    fn name_from_utf8(&self, rest: &[u8]) -> Option<Name> {
+        from_utf8(rest).ok().and_then(|str| self.get_key(str))
     }
 
-    fn get_cast_type(&self, rest: &[u8]) -> Option<usize> {
-        self.get_key(from_utf8(rest).ok()?)
-            .map(|key| self.get_type_index(key))?
+    fn get_cast_type(&self, rest: &[u8]) -> Option<TypeId> {
+        self.name_from_utf8(rest).map(|key| self.get_type_id(key))?
+    }
+
+    fn get_cast_type_ptr(&mut self, rest: &[u8]) -> Option<TypeId> {
+        self.get_cast_type(rest).map(|id| self.get_type_ptr(id))
     }
 
     pub fn get_type_index(&self, word: Name) -> Option<usize> {
@@ -320,8 +319,8 @@ impl Program {
         let &Op(op_type, operand, ..) = op;
         match op_type {
             OpType::Intrinsic => match IntrinsicType::from(operand.index()) {
-                IntrinsicType::Cast(n) => {
-                    format!("Intrinsic Cast [{}]", self.type_name(TypeId(n).get_type()))
+                IntrinsicType::Cast(type_id) => {
+                    format!("Intrinsic Cast [{}]", self.type_name(type_id.get_type()))
                 }
                 intrinsic => format!("Intrinsic [{intrinsic:?}]"),
             },

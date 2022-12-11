@@ -19,7 +19,7 @@ use crate::compiler::{
 pub struct Parser {
     ir_tokens: VecDeque<IRToken>,
     name_scopes: NameScopes,
-    structs: Vec<IndexWord>,
+    structs: Vec<TypedWord>,
     current_proc: Option<usize>,
 }
 
@@ -70,7 +70,7 @@ impl Parser {
         self.structs
             .iter()
             .find(|stk| word.eq(stk))
-            .map(Offset::offset)
+            .map(Wrapper::get_value)
     }
 
     /// Parse each [`IRToken`] from this [`Parser`] to an [`Op`],
@@ -628,8 +628,8 @@ impl Parser {
                 self.expect_keyword(KeywordType::In, "`in` after let bind declaration", loc)?;
 
                 bindings.reverse();
-                let proc_bindings = &mut self.current_proc_mut(prog).unwrap().bindings;
-                proc_bindings.push(Binding(bindings));
+                let proc_bindings = &mut self.current_proc_mut(prog).unwrap().binds;
+                proc_bindings.push(Binds(bindings));
 
                 let operand = (proc_bindings.len() - 1).operand();
                 let bind_block = Op(OpType::BindStack, operand, loc);
@@ -641,11 +641,7 @@ impl Parser {
             let LabelKind(LocWord(word, _), typ) = self.expect_label_kind("bind", loc, prog)?;
             self.name_scopes.register(word, ParseContext::Binding);
 
-            if let Some(TypeId(id)) = typ {
-                bindings.push((word, Some(id)));
-            } else {
-                bindings.push((word, None));
-            }
+            bindings.push((word, typ.map(|TypeId(id)| id)));
         }
 
         unexpected_end("bind labels after let bind declaration", loc).into()
@@ -722,7 +718,7 @@ impl Parser {
         };
 
         self.name_scopes.register(word.name(), ctx);
-        self.structs.push(IndexWord::new(word.name(), reftype));
+        self.structs.push(TypedWord::new(word.name(), reftype));
     }
 
     pub fn register_var(&mut self, struct_word: TypeDescr, prog: &mut Program) -> ParseContext {

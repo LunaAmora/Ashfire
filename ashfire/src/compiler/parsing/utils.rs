@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use ashfire_types::{
-    core::{IRToken, Location, Op, Operand, TokenType, Typed},
+    core::{IRToken, Location, Op, Operand, TokenType},
     data::TypeId,
     enums::KeywordType,
 };
@@ -18,17 +18,18 @@ impl Parser {
     ) -> LazyResult<LabelKind> {
         let word = self.expect_word(error_text.clone(), loc)?;
 
-        match self.peek() {
-            Some(tok) => match tok.get_type() {
-                TokenType::Keyword if tok.as_keyword() == KeywordType::Colon => {
+        let maybe_typed = match self.peek() {
+            Some(tok) => match tok.get_keyword() {
+                Some(KeywordType::Colon) => {
                     self.next();
-                    self.expect_type_kind(error_text, prog, loc)
-                        .map(|kind| LabelKind(word, Some(kind)))
+                    self.expect_type_kind(error_text, prog, loc).map(Some)?
                 }
-                _ => Ok(LabelKind(word, None)),
+                _ => None,
             },
-            None => Err(unexpected_end(error_text, loc)),
-        }
+            None => return Err(unexpected_end(error_text, loc)),
+        };
+
+        Ok(LabelKind(word, maybe_typed))
     }
 
     pub fn expect_type_kind<S: Display + 'static + Clone>(
