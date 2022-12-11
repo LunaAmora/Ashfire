@@ -1,9 +1,9 @@
 use std::io::Write;
 
 use ashfire_types::{
-    core::{Op, Operand, WORD_SIZE, WORD_USIZE},
+    core::{Op, WORD_SIZE, WORD_USIZE},
     data::{Primitive, StructInfo, StructType, TypeDescr, TypeId},
-    enums::{IntrinsicType, OpType},
+    enums::{ControlOp, IndexOp, IntrinsicType, OpType, StackOp},
     proc::{Binds, Mode, Proc},
 };
 use firelib::{Context, Result};
@@ -71,13 +71,19 @@ impl Generator {
         wasm.add_fn("push_local", i1, i1, vec![Get(global, Id(stk)), Get(local, Id(0)), I32(sub)]);
 
         let mut proc = None;
-        for (ip, op @ Op(op_type, ..)) in program.ops.iter().enumerate() {
+        for (ip, &Op(op_type, ..)) in program.ops.iter().enumerate() {
             match (op_type, proc) {
-                (OpType::PrepProc | OpType::PrepInline, _) => proc = self.prep_proc(program, op)?,
-                (OpType::EndProc, _) => self.end_proc(program, &mut wasm)?,
+                (OpType::ControlOp(ControlOp::PrepProc | ControlOp::PrepInline, proc_ip), _) => {
+                    proc = self.prep_proc(program, proc_ip)?;
+                }
+
+                (OpType::ControlOp(ControlOp::EndProc, _), _) => {
+                    self.end_proc(program, &mut wasm)?;
+                }
+
                 (_, Some(proc)) => self
                     .current_fn()?
-                    .append_op(program, op, ip, proc, &mut wasm)?,
+                    .append_op(program, op_type, ip, proc, &mut wasm)?,
                 _ => (),
             }
         }
@@ -105,36 +111,74 @@ impl Generator {
 
 impl FuncGen {
     fn append_op(
-        &mut self, prog: &Program, op: &Op, ip: usize, proc: &Proc, module: &mut Module,
+        &mut self, prog: &Program, op_type: OpType, ip: usize, proc: &Proc, module: &mut Module,
     ) -> Result<()> {
-        let &Op(op_type, operand, ..) = op;
-
         match op_type {
-            OpType::PushData(_) | OpType::PushGlobalMem => self.push(Const(operand)),
+            OpType::PushData(_, operand) => self.push(Const(operand)),
 
-            OpType::PushStr => {
-                let (size, offset) = prog.get_data(op).data();
-                self.extend([Const(size), Const(offset + prog.data_start())]);
-            }
+            OpType::IndexOp(op, index) => match op {
+                IndexOp::PushStr => {
+                    let (size, offset) = prog.get_data(index).data();
+                    self.extend([Const(size as i32), Const(offset + prog.data_start())]);
+                }
 
-            OpType::PushLocalMem => {
-                let ptr = self.bind_offset + operand;
-                self.extend([Const(ptr), Call("push_local".into())]);
-            }
+                IndexOp::PushLocalMem => {
+                    let ptr = self.bind_offset + index as i32;
+                    self.extend([Const(ptr), Call("push_local".into())]);
+                }
 
-            OpType::PushLocal => {
-                let ptr = self.bind_offset + proc.get_data().unwrap().var_mem_offset(operand);
-                self.extend([Const(ptr), Call("push_local".into())]);
-            }
+                IndexOp::PushGlobalMem => self.push(Const(index as i32)),
 
-            OpType::PushGlobal => {
-                let ptr = prog.global_vars_start() + operand * WORD_SIZE;
-                self.push(Const(ptr));
-            }
+                IndexOp::PushLocal => {
+                    let ptr = self.bind_offset + proc.get_data().unwrap().var_mem_offset(index);
+                    self.extend([Const(ptr), Call("push_local".into())]);
+                }
 
-            OpType::Offset => self.extend([Const(operand), I32(add)]),
+                IndexOp::PushGlobal => {
+                    let ptr = prog.global_vars_start() + index as i32 * WORD_SIZE;
+                    self.push(Const(ptr));
+                }
 
-            OpType::Intrinsic => match IntrinsicType::from(operand.index()) {
+                IndexOp::Offset => self.extend([Const(index as i32), I32(add)]),
+
+                IndexOp::Call => {
+                    let label = prog.get_proc(index).name.as_str(prog);
+                    self.push(Call(label.into()));
+                }
+
+                IndexOp::Unpack => self.extend(unpack_struct(prog.get_type_descr(TypeId(index)))),
+
+                IndexOp::CallInline => {
+                    let inlined_proc = prog.get_proc(index);
+                    let Mode::Inlined(start, end) = inlined_proc.mode else {
+                        unreachable!();
+                    };
+
+                    for ip in start + 1..end {
+                        let in_op = prog.ops[ip].0;
+                        self.append_op(prog, in_op, ip, inlined_proc, module)?;
+                    }
+                }
+
+                IndexOp::PushBind => {
+                    self.extend([Const(index as i32), Call("push_local".into())]);
+                }
+
+                IndexOp::LoadBind => {
+                    self.extend([Const(index as i32), Call("push_local".into()), I32(load)]);
+                }
+            },
+
+            OpType::StackOp(op) => match op {
+                StackOp::Drop => self.push(Drop),
+                StackOp::Dup => self.push(Call("dup".into())),
+                StackOp::Swap => self.push(Call("swap".into())),
+                StackOp::Over => self.push(Call("over".into())),
+                StackOp::Rot => self.push(Call("rot".into())),
+                StackOp::Equal => self.push(I32(eq)),
+            },
+
+            OpType::Intrinsic(intrinsic) => match intrinsic {
                 IntrinsicType::Div => todo!(),
                 IntrinsicType::Times => todo!(),
 
@@ -158,118 +202,88 @@ impl FuncGen {
                 IntrinsicType::Cast(_) => {}
             },
 
-            OpType::Drop => self.push(Drop),
-            OpType::Dup => self.push(Call("dup".into())),
-            OpType::Swap => self.push(Call("swap".into())),
-            OpType::Over => self.push(Call("over".into())),
-            OpType::Rot => self.push(Call("rot".into())),
+            OpType::ControlOp(op, index) => match op {
+                ControlOp::IfStart => {
+                    let contract = register_contract(prog, index, module);
+                    self.push(Block(BlockType::If, Some(contract)));
+                }
 
-            OpType::Call => {
-                let label = prog.get_proc(op).name.as_str(prog);
-                self.push(Call(label.into()));
-            }
+                ControlOp::Else => self.push(Else),
 
-            OpType::Equal => self.push(I32(eq)),
+                ControlOp::EndIf | ControlOp::EndElse => self.push(End),
 
-            OpType::IfStart => {
-                let contract = register_contract(prog, op.index(), module);
-                self.push(Block(BlockType::If, Some(contract)));
-            }
+                ControlOp::While => {
+                    let loop_label = Ident::Label(format!("while{index}"));
+                    let contract = register_contract(prog, ip, module);
+                    self.push(Block(BlockType::Loop(Some(loop_label)), Some(contract)));
+                }
 
-            OpType::Else => self.push(Else),
+                ControlOp::Do => {
+                    let contract = register_contract(prog, ip, module);
+                    self.push(Block(BlockType::If, Some(contract)));
+                }
 
-            OpType::EndIf | OpType::EndElse => self.push(End),
+                ControlOp::EndWhile => {
+                    let loop_label = Ident::Label(format!("while{index}"));
+                    self.extend([Br(loop_label), End, End]);
+                }
 
-            OpType::BindStack => {
-                let Binds(bindings) = &proc.binds[op.index()];
-                let mut inst = vec![];
-                let mut bind_size = 0;
+                ControlOp::BindStack => {
+                    let Binds(bindings) = &proc.binds[index];
+                    let mut inst = vec![];
+                    let mut bind_size = 0;
 
-                for (_, typ) in bindings {
-                    if let &Some(id) = typ {
-                        let type_def = prog.get_type_descr(TypeId(id));
+                    for (_, typ) in bindings {
+                        if let &Some(id) = typ {
+                            let type_def = prog.get_type_descr(TypeId(id));
 
-                        let sizes: Vec<_> = match type_def {
-                            TypeDescr::Structure(StructType(fields, _)) => {
-                                fields.units().map(|unit| unit.size()).collect()
+                            let sizes: Vec<_> = match type_def {
+                                TypeDescr::Structure(StructType(fields, _)) => {
+                                    fields.units().map(|unit| unit.size()).collect()
+                                }
+                                TypeDescr::Primitive(prim) => vec![prim.size()],
+                                TypeDescr::Reference(ptr) => vec![ptr.size()],
+                            };
+
+                            for size in sizes {
+                                bind_size += size as i32;
+                                inst.extend([Const(bind_size), Call("bind_local".into())]);
                             }
-                            TypeDescr::Primitive(prim) => vec![prim.size()],
-                            TypeDescr::Reference(ptr) => vec![ptr.size()],
-                        };
-
-                        for size in sizes {
-                            bind_size += size as i32;
+                        } else {
+                            bind_size += WORD_SIZE;
                             inst.extend([Const(bind_size), Call("bind_local".into())]);
                         }
-                    } else {
-                        bind_size += WORD_SIZE;
-                        inst.extend([Const(bind_size), Call("bind_local".into())]);
                     }
+
+                    self.extend(vec![Const(bind_size), Call("aloc_local".into())]);
+                    self.extend(inst);
+                    self.bind_offset += bind_size;
                 }
 
-                self.extend(vec![Const(bind_size), Call("aloc_local".into())]);
-                self.extend(inst);
-                self.bind_offset += bind_size;
-            }
+                ControlOp::PopBind => {
+                    let Binds(bindings) = &proc.binds[index];
 
-            OpType::PushBind => {
-                self.extend([Const(operand), Call("push_local".into())]);
-            }
+                    let size = bindings.iter().fold(0, |acc, (_, typ)| {
+                        acc + typ.map_or(WORD_USIZE, |id| prog.get_type_descr(TypeId(id)).size())
+                    }) as i32;
 
-            OpType::LoadBind => {
-                self.extend([Const(operand), Call("push_local".into()), I32(load)]);
-            }
-
-            OpType::PopBind => {
-                let Binds(bindings) = &proc.binds[op.index()];
-
-                let size = bindings.iter().fold(0, |acc, (_, typ)| {
-                    acc + typ.map_or(WORD_USIZE, |id| prog.get_type_descr(TypeId(id)).size())
-                }) as i32;
-
-                self.extend(vec![Const(size), Call("free_local".into())]);
-            }
-
-            OpType::While => {
-                let loop_label = Ident::Label(format!("while{}", op.operand()));
-                let contract = register_contract(prog, ip, module);
-                self.push(Block(BlockType::Loop(Some(loop_label)), Some(contract)));
-            }
-
-            OpType::Do => {
-                let contract = register_contract(prog, ip, module);
-                self.push(Block(BlockType::If, Some(contract)));
-            }
-
-            OpType::EndWhile => {
-                let loop_label = Ident::Label(format!("while{}", op.operand()));
-                self.extend([Br(loop_label), End, End]);
-            }
-
-            OpType::Unpack => self.extend(unpack_struct(prog.get_type_descr(TypeId(op.index())))),
-
-            OpType::ExpectType => {}
-
-            OpType::CaseStart => todo!(),
-            OpType::CaseMatch => todo!(),
-            OpType::CaseOption => todo!(),
-            OpType::EndCase => todo!(),
-
-            OpType::CallInline => {
-                let inlined_proc = prog.get_proc(op);
-                let Mode::Inlined(start, end) = inlined_proc.mode else {
-                    unreachable!();
-                };
-
-                for ip in start + 1..end {
-                    let in_op = &prog.ops[ip];
-                    self.append_op(prog, in_op, ip, inlined_proc, module)?;
+                    self.extend(vec![Const(size), Call("free_local".into())]);
                 }
-            }
 
-            OpType::PrepProc | OpType::PrepInline | OpType::EndProc | OpType::EndInline => {
-                unreachable!()
-            }
+                ControlOp::CaseStart => todo!(),
+                ControlOp::CaseMatch => todo!(),
+                ControlOp::CaseOption => todo!(),
+                ControlOp::EndCase => todo!(),
+
+                ControlOp::PrepProc |
+                ControlOp::PrepInline |
+                ControlOp::EndProc |
+                ControlOp::EndInline => {
+                    unreachable!()
+                }
+            },
+
+            OpType::ExpectType(_) => {}
         }
         Ok(())
     }
@@ -283,7 +297,7 @@ fn register_contract(prog: &Program, index: usize, module: &mut Module) -> Ident
 impl Program {
     pub fn final_value(&self, var: &Primitive) -> i32 {
         if matches!(var.type_id(), TypeId::STR) {
-            let offset = self.get_data(var.value()).get_value();
+            let offset = self.get_data(var.value() as usize).value();
             return offset + self.data_start();
         }
 

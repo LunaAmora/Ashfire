@@ -1,9 +1,9 @@
 use std::fmt::Display;
 
 use ashfire_types::{
-    core::{IRToken, Location, Op, Operand, TokenType},
+    core::{IRToken, Location, TokenType},
     data::TypeId,
-    enums::KeywordType,
+    enums::{ControlOp, KeywordType, OpType},
 };
 use firelib::lexer::Loc;
 
@@ -47,7 +47,7 @@ impl Parser {
     pub fn check_type_kind<S: Display + 'static + Clone>(
         &mut self, tok: IRToken, error_text: S, prog: &mut Program,
     ) -> LazyResult<TypeId> {
-        let IRToken(token_type, operand, loc) = tok;
+        let IRToken(token_type, _, loc) = tok;
         match token_type {
             TokenType::Keyword => {
                 let word_error = format!("{error_text} after `*`");
@@ -59,7 +59,7 @@ impl Parser {
             }
 
             TokenType::Word => {
-                let name_type = LocWord(operand.name(), loc);
+                let name_type = LocWord(tok.name(), loc);
 
                 prog.get_type_id(name_type.name())
                     .map_or_else(|| Err(unexpected_token(name_type.into(), error_text)), Ok)
@@ -133,8 +133,9 @@ pub fn invalid_token<S: Display + 'static>(tok: IRToken, error: S) -> LazyError 
     })
 }
 
-pub fn format_block<S: Display + 'static>(error: S, op: &Op, loc: Loc) -> LazyError {
-    let &Op(typ, _, op_loc) = op;
+pub fn format_block<S: Display + 'static>(
+    error: S, op: (ControlOp, usize, Loc), loc: Loc,
+) -> LazyError {
     LazyError::new(move |f| {
         format!(
             concat!(
@@ -143,8 +144,8 @@ pub fn format_block<S: Display + 'static>(error: S, op: &Op, loc: Loc) -> LazyEr
             ),
             f.format(Fmt::Loc(loc)),
             error,
-            typ,
-            f.format(Fmt::Loc(op_loc))
+            OpType::ControlOp(op.0, op.1),
+            f.format(Fmt::Loc(op.2))
         )
     })
 }

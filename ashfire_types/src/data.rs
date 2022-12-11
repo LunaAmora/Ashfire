@@ -2,8 +2,7 @@ use std::{iter::once, ops::Deref};
 
 use firelib::utils::BoolUtils;
 
-use super::core::{Name, Operand, TokenType, Typed, WORD_USIZE};
-use crate::core::IRToken;
+use crate::core::{IRToken, Name, TokenType, Typed, WORD_USIZE};
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub struct TypeId(pub usize);

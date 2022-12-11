@@ -2,6 +2,7 @@ use std::{io::Read, path::Path};
 
 use ashfire_types::{core::*, data::*, enums::*, proc::Mode};
 use firelib::{lazy::LazyCtx, lexer::Loc, ShortCircuit};
+use IndexOp::*;
 
 use super::{parser::Parser, types::*};
 use crate::compiler::{program::*, utils::err_loc};
@@ -13,7 +14,7 @@ impl Program {
         parser
             .current_proc(self)
             .and_then(|proc| proc.bindings().position(|(key, _)| word.eq(key)))
-            .map(|index| vec![Op(OpType::LoadBind, index as i32, word.loc())])
+            .map(|index| vec![Op(OpType::IndexOp(LoadBind, index), word.loc())])
     }
 
     /// Searches for a `binding` reference that matches the given [`word`][LocWord]
@@ -22,7 +23,7 @@ impl Program {
         parser
             .current_proc(self)
             .and_then(|proc| proc.bindings().position(|(key, _)| word.eq(key)))
-            .map(|index| vec![Op(OpType::PushBind, index as i32, word.loc())])
+            .map(|index| vec![Op(OpType::IndexOp(PushBind, index), word.loc())])
     }
 
     /// Searches for a `mem` that matches the given [`word`][LocWord]
@@ -31,7 +32,7 @@ impl Program {
         parser
             .current_proc_data(self)
             .and_then(|proc| proc.local_mems.iter().find(|mem| word.eq(mem)))
-            .map(|local| vec![Op(OpType::PushLocalMem, local.get_value(), word.loc())])
+            .map(|mem| vec![Op(OpType::IndexOp(PushLocalMem, mem.value()), word.loc())])
     }
 
     /// Searches for a `global mem` that matches the given [`LocWord`] name.
@@ -39,7 +40,7 @@ impl Program {
         self.get_memory()
             .iter()
             .find(|mem| word.eq(mem))
-            .map(|global| vec![Op(OpType::PushGlobalMem, global.get_value(), word.loc())])
+            .map(|mem| vec![Op(OpType::IndexOp(PushGlobalMem, mem.value()), word.loc())])
     }
 
     /// Searches for a `const` that matches the given[`word`][LocWord]
@@ -66,12 +67,11 @@ impl Program {
             .enumerate()
             .find(|(_, proc)| word.eq(&proc.name))
             .map(|(index, proc)| {
-                let call = if let Mode::Inlined(..) = &proc.mode {
-                    OpType::CallInline
-                } else {
-                    OpType::Call
+                let call = match &proc.mode {
+                    Mode::Inlined(..) => CallInline,
+                    _ => Call,
                 };
-                vec![Op(call, index as i32, word.loc())]
+                vec![Op(OpType::IndexOp(call, index), word.loc())]
             })
     }
 
@@ -83,7 +83,7 @@ impl Program {
         let proc = parser
             .current_proc_data(self)
             .or_return(OptionErr::default)?;
-        self.try_get_var(word, &proc.local_vars, OpType::PushLocal, var_typ, parser)
+        self.try_get_var(word, &proc.local_vars, PushLocal, var_typ, parser)
     }
 
     /// Searches for a global `variable` that matches the given [`word`][LocWord]
@@ -91,11 +91,11 @@ impl Program {
     pub fn get_global_var(
         &self, word: &LocWord, var_typ: VarWordType, parser: &Parser,
     ) -> OptionErr<Vec<Op>> {
-        self.try_get_var(word, &self.global_vars, OpType::PushGlobal, var_typ, parser)
+        self.try_get_var(word, &self.global_vars, PushGlobal, var_typ, parser)
     }
 
     fn try_get_var(
-        &self, word: &LocWord, vars: &[TypeDescr], push_type: OpType, var_typ: VarWordType,
+        &self, word: &LocWord, vars: &[TypeDescr], push_type: IndexOp, var_typ: VarWordType,
         parser: &Parser,
     ) -> OptionErr<Vec<Op>> {
         let &LocWord(name, loc) = word;
@@ -128,19 +128,19 @@ impl Program {
     }
 
     fn unpack_struct(
-        &self, stk: &TypeDescr, push_type: OpType, mut offset: usize, var_typ: VarWordType,
+        &self, stk: &TypeDescr, push_type: IndexOp, mut offset: usize, var_typ: VarWordType,
         loc: Loc,
     ) -> OptionErr<Vec<Op>> {
         let mut result = Vec::new();
         match stk {
-            TypeDescr::Primitive(Primitive(.., typ @ TypeId(id))) => {
-                result.push(Op(push_type, offset as i32, loc));
+            TypeDescr::Primitive(Primitive(.., type_id)) => {
+                result.push(Op(OpType::IndexOp(push_type, offset), loc));
 
                 if var_typ == VarWordType::Store {
-                    result.insert(0, Op(OpType::ExpectType, id.operand(), loc));
+                    result.insert(0, Op(OpType::ExpectType(*type_id), loc));
                     result.push(Op::from((IntrinsicType::Store32, loc)));
                 } else if var_typ == VarWordType::Pointer {
-                    let Some(ptr_id) = self.try_get_type_ptr(*typ) else {
+                    let Some(ptr_id) = self.try_get_type_ptr(*type_id) else {
                         todo!("must register the ptr type earlier");
                     };
 
@@ -148,7 +148,7 @@ impl Program {
                 } else {
                     result.extend([
                         Op::from((IntrinsicType::Load32, loc)),
-                        Op::from((IntrinsicType::Cast(*typ), loc)),
+                        Op::from((IntrinsicType::Cast(*type_id), loc)),
                     ]);
                 }
             }
@@ -158,7 +158,7 @@ impl Program {
                     todo!();
                 }
 
-                if push_type == OpType::PushLocal {
+                if push_type == PushLocal {
                     offset += 1;
                 }
 
@@ -167,12 +167,12 @@ impl Program {
                 };
 
                 result.extend([
-                    Op(push_type, offset as i32, loc),
+                    Op(OpType::IndexOp(push_type, offset), loc),
                     Op::from((IntrinsicType::Cast(ptr_id), loc)),
                 ]);
 
                 if var_typ != VarWordType::Pointer {
-                    result.push(Op(OpType::Unpack, 0, loc));
+                    result.push(Op::from((Unpack, loc)));
                 }
             }
 

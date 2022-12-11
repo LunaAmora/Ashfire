@@ -7,7 +7,7 @@ use ashfire_types::{
     core::*,
     data::*,
     enums::IntrinsicType,
-    lasso::Rodeo,
+    lasso::{Key, Rodeo},
     proc::{Data, Proc},
 };
 use firelib::{lazy, lexer::Loc};
@@ -99,7 +99,7 @@ impl Program {
     }
 
     pub fn push_mem(&mut self, word: Name, size: usize) {
-        let value = OffsetWord::new(word, self.mem_size as i32);
+        let value = OffsetWord::new(word, self.mem_size);
         self.memory.push(value);
         self.mem_size += size;
     }
@@ -110,7 +110,7 @@ impl Program {
         };
 
         let name = self.get_or_intern(&word);
-        let value = OffsetData::new(name, size as i32, self.data_size as i32);
+        let value = OffsetData::new(name, size, self.data_size as i32);
         self.data.push(value);
         self.data_size += size;
         self.data.len() - 1
@@ -148,24 +148,25 @@ impl Program {
         self.interner.get(word)
     }
 
-    pub fn get_word<O: Operand>(&self, index: O) -> String {
-        self.interner.resolve(&index.name()).to_owned()
+    pub fn get_word(&self, index: usize) -> String {
+        let name = Name::try_from_usize(index).unwrap();
+        self.interner.resolve(&name).to_owned()
     }
 
-    pub fn get_data<O: Operand>(&self, index: O) -> &OffsetData {
-        &self.data[index.index()]
+    pub fn get_data(&self, index: usize) -> &OffsetData {
+        &self.data[index]
     }
 
-    pub fn get_data_str<O: Operand>(&self, index: O) -> &str {
+    pub fn get_data_str(&self, index: usize) -> &str {
         self.get_data(index).as_str(self)
     }
 
-    pub fn get_proc<O: Operand>(&self, index: O) -> &Proc {
-        &self.procs[index.index()]
+    pub fn get_proc(&self, index: usize) -> &Proc {
+        &self.procs[index]
     }
 
-    pub fn get_contract<O: Operand>(&self, index: O) -> (usize, usize) {
-        self.block_contracts[&(index.index())]
+    pub fn get_contract(&self, index: usize) -> (usize, usize) {
+        self.block_contracts[&(index)]
     }
 
     pub fn get_all_data(&self) -> &[OffsetData] {
@@ -205,7 +206,6 @@ impl Program {
     }
 
     fn data_display(value: TypeId, operand: i32) -> String {
-        let operand = operand.operand();
         match value {
             TypeId::BOOL => fold_bool!(operand != 0, "True", "False").to_owned(),
             TypeId::PTR => format!("*{operand}"),
@@ -213,11 +213,11 @@ impl Program {
         }
     }
 
-    pub fn type_display(&self, tok: IRToken) -> String {
+    pub fn type_display(&self, tok: &IRToken) -> String {
         match tok.get_type() {
             TokenType::Keyword => format!("{:?}", tok.as_keyword()),
-            TokenType::Word => self.get_word(tok),
-            TokenType::Str => self.get_data_str(tok).to_owned(),
+            TokenType::Word => self.get_word(tok.index()),
+            TokenType::Str => self.get_data_str(tok.index()).to_owned(),
             TokenType::Data(ValueType(id)) => Self::data_display(id, tok.operand()),
         }
     }
@@ -232,7 +232,7 @@ impl Program {
     pub fn format(&self, fmt: Fmt) -> String {
         match fmt {
             Fmt::Loc(loc) => self.loc_fmt(loc),
-            Fmt::Tok(tok) => self.type_display(tok),
+            Fmt::Tok(tok) => self.type_display(&tok),
             Fmt::Typ(typ) => self.type_name(typ),
         }
     }
@@ -315,21 +315,31 @@ impl Program {
     #[cfg(debug_assertions)]
     #[allow(dead_code)]
     fn op_debug(&self, op: &Op) -> String {
-        use ashfire_types::enums::OpType;
-        let &Op(op_type, operand, ..) = op;
+        use ashfire_types::enums::{ControlOp, IndexOp, OpType};
+        let &Op(op_type, _) = op;
         match op_type {
-            OpType::Intrinsic => match IntrinsicType::from(operand.index()) {
+            OpType::Intrinsic(intrinsic) => match intrinsic {
                 IntrinsicType::Cast(type_id) => {
                     format!("Intrinsic Cast [{}]", self.type_name(type_id.get_type()))
                 }
                 intrinsic => format!("Intrinsic [{intrinsic:?}]"),
             },
-            OpType::Call => format!("Call [{}]", self.get_proc(operand).name.as_str(self)),
-            OpType::EndProc => format!("EndProc [{}]", self.get_proc(operand).name.as_str(self)),
-            OpType::CallInline => {
-                format!("Inline [{}]", self.get_proc(operand).name.as_str(self))
+
+            OpType::IndexOp(op, index) => match op {
+                IndexOp::Call => format!("Call [{}]", self.get_proc(index).name.as_str(self)),
+                IndexOp::CallInline => {
+                    format!("Inline [{}]", self.get_proc(index).name.as_str(self))
+                }
+                _ => format!("{op:?}: [{index}]"),
+            },
+
+            OpType::ControlOp(op, index) if matches!(op, ControlOp::EndProc) => {
+                format!("EndProc [{}]", self.get_proc(index).name.as_str(self))
             }
-            _ => format!("{op_type:?} [{operand}]"),
+
+            OpType::ControlOp(op, index) => format!("{op:?}: [{index}]"),
+
+            _ => format!("{op_type:?}"),
         }
     }
 }

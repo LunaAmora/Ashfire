@@ -1,12 +1,14 @@
 use std::{collections::VecDeque, path::Path};
 
-use ashfire_types::{core::*, data::*, enums::*, proc::*};
+use ashfire_types::{core::*, data::*, enums::*, lasso::Key, proc::*};
 use firelib::{
     lazy::LazyCtx,
     lexer::{Lexer, Loc},
     utils::*,
     TrySuccess,
 };
+use ControlOp::*;
+use IndexOp::*;
 
 use super::{types::*, utils::*};
 use crate::compiler::{
@@ -70,7 +72,7 @@ impl Parser {
         self.structs
             .iter()
             .find(|stk| word.eq(stk))
-            .map(Wrapper::get_value)
+            .map(Wrapper::value)
     }
 
     /// Parse each [`IRToken`] from this [`Parser`] to an [`Op`],
@@ -102,12 +104,12 @@ impl Parser {
         let op = match token_type {
             TokenType::Keyword => return self.define_keyword_op(tok.as_keyword(), loc, prog),
 
-            TokenType::Str => Op(OpType::PushStr, operand, loc),
+            TokenType::Str => Op(OpType::IndexOp(PushStr, operand as usize), loc),
 
             TokenType::Data(data) => match data {
                 ValueType(val) => match val {
                     TypeId::INT | TypeId::BOOL | TypeId::PTR => {
-                        Op(OpType::PushData(val), operand, loc)
+                        Op(OpType::PushData(val, operand), loc)
                     }
                     TypeId(_) => lazybail!(
                         |f| "{}Value type not valid here: `{}`",
@@ -118,7 +120,7 @@ impl Parser {
             },
 
             TokenType::Word => {
-                let word = &LocWord(operand.name(), loc);
+                let word = &LocWord(tok.name(), loc);
 
                 choice!(
                     OptionErr,
@@ -162,8 +164,8 @@ impl Parser {
                 };
 
                 return OptionErr::new(vec![
-                    Op(OpType::Offset, key.operand(), word.loc()),
-                    Op(OpType::Unpack, 0, word.loc()),
+                    Op(OpType::IndexOp(Offset, key.into_usize()), word.loc()),
+                    Op::from((Unpack, word.loc())),
                 ]);
             }
             _ => return OptionErr::default(),
@@ -192,13 +194,13 @@ impl Parser {
         &mut self, key: KeywordType, loc: Loc, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
         let op = match key {
-            KeywordType::Drop => Op(OpType::Drop, 0, loc),
-            KeywordType::Dup => Op(OpType::Dup, 0, loc),
-            KeywordType::Swap => Op(OpType::Swap, 0, loc),
-            KeywordType::Over => Op(OpType::Over, 0, loc),
-            KeywordType::Rot => Op(OpType::Rot, 0, loc),
-            KeywordType::Equal => Op(OpType::Equal, 0, loc),
-            KeywordType::At => Op(OpType::Unpack, 0, loc),
+            KeywordType::Drop => Op::from((StackOp::Drop, loc)),
+            KeywordType::Dup => Op::from((StackOp::Dup, loc)),
+            KeywordType::Swap => Op::from((StackOp::Swap, loc)),
+            KeywordType::Over => Op::from((StackOp::Over, loc)),
+            KeywordType::Rot => Op::from((StackOp::Rot, loc)),
+            KeywordType::Equal => Op::from((StackOp::Equal, loc)),
+            KeywordType::At => Op::from((Unpack, loc)),
 
             KeywordType::Dot => {
                 let Some(next_token) = self.next() else {
@@ -214,12 +216,12 @@ impl Parser {
                             loc,
                         )?;
                         let word = self.expect_word("word after `.*`", loc)?;
-                        Op(OpType::Offset, word.operand(), loc)
+                        Op(OpType::IndexOp(Offset, word.index()), loc)
                     }
                     TokenType::Word => {
                         return OptionErr::new(vec![
-                            Op(OpType::Offset, next_token.operand(), loc),
-                            Op(OpType::Unpack, 0, loc),
+                            Op(OpType::IndexOp(Offset, next_token.index()), loc),
+                            Op::from((Unpack, loc)),
                         ])
                     }
                     _ => todo!(),
@@ -238,15 +240,13 @@ impl Parser {
                 };
             }
 
-            KeywordType::While => self.push_block(Op(OpType::While, 0, loc)),
+            KeywordType::While => self.push_control_block((While, 0, loc)),
 
-            KeywordType::Do => match self.pop_block(key, loc)? {
-                Op(OpType::While, ..) => self.push_block(Op(OpType::Do, 0, loc)),
-                Op(OpType::CaseMatch, operand, ..) => {
-                    self.push_block(Op(OpType::CaseOption, operand, loc))
-                }
+            KeywordType::Do => match self.pop_control_block(key, loc)? {
+                (While, ..) => self.push_control_block((Do, 0, loc)),
+                (CaseMatch, operand, _) => self.push_control_block((CaseOption, operand, loc)),
                 op => {
-                    Err(format_block("`do` can only come in a `while` or `case` block", &op, loc))?
+                    Err(format_block("`do` can only come in a `while` or `case` block", op, loc))?
                 }
             },
 
@@ -254,45 +254,43 @@ impl Parser {
 
             KeywordType::Case => todo!(),
 
-            KeywordType::Colon => match self.pop_block(key, loc)? {
-                Op(OpType::CaseStart, ..) => todo!(),
+            KeywordType::Colon => match self.pop_control_block(key, loc)? {
+                (CaseStart, ..) => todo!(),
                 op => Err(format_block(
                     "`:` can only be used on word or `case` block definition",
-                    &op,
+                    op,
                     loc,
                 ))?,
             },
 
-            KeywordType::If => self.push_block(Op(OpType::IfStart, prog.current_ip() as i32, loc)),
+            KeywordType::If => self.push_control_block((IfStart, prog.current_ip(), loc)),
 
-            KeywordType::Else => match self.pop_block(key, loc)? {
-                Op(OpType::IfStart, ..) => self.push_block(Op(OpType::Else, 0, loc)),
-                Op(OpType::CaseOption, ..) => todo!(),
-                op => {
-                    Err(format_block("`else` can only come in a `if` or `case` block", &op, loc))?
-                }
+            KeywordType::Else => match self.pop_control_block(key, loc)? {
+                (IfStart, ..) => self.push_control_block((Else, 0, loc)),
+                (CaseOption, ..) => todo!(),
+                op => Err(format_block("`else` can only come in a `if` or `case` block", op, loc))?,
             },
 
-            KeywordType::End => match self.pop_block(key, loc)? {
-                Op(OpType::IfStart, ..) => Op(OpType::EndIf, 0, loc),
-                Op(OpType::Else, ..) => Op(OpType::EndElse, 0, loc),
-                Op(OpType::Do, ..) => Op(OpType::EndWhile, 0, loc),
+            KeywordType::End => match self.pop_control_block(key, loc)? {
+                (IfStart, ..) => Op::from((EndIf, loc)),
+                (Else, ..) => Op::from((EndElse, loc)),
+                (Do, ..) => Op::from((EndWhile, loc)),
 
-                Op(OpType::BindStack, operand, ..) => Op(OpType::PopBind, operand, loc),
+                (BindStack, operand, _) => Op(OpType::ControlOp(PopBind, operand), loc),
 
-                Op(OpType::CaseOption, ..) => todo!(),
+                (CaseOption, ..) => todo!(),
 
-                Op(OpType::PrepProc, operand, ..) => {
+                (PrepProc, operand, _) => {
                     self.exit_proc();
-                    Op(OpType::EndProc, operand, loc)
+                    Op(OpType::ControlOp(EndProc, operand), loc)
                 }
 
-                Op(OpType::PrepInline, operand, ..) => {
+                (PrepInline, operand, _) => {
                     self.exit_proc();
-                    Op(OpType::EndInline, operand, loc)
+                    Op(OpType::ControlOp(EndInline, operand), loc)
                 }
 
-                op => Err(format_block("Expected `end` to close a valid block", &op, loc))?,
+                op => Err(format_block("Expected `end` to close a valid block", op, loc))?,
             },
 
             KeywordType::Include |
@@ -312,18 +310,21 @@ impl Parser {
         OptionErr::new(vec![op])
     }
 
-    /// Creates a logic block starting from the given [`Op`].
-    fn push_block(&mut self, op: Op) -> Op {
-        self.name_scopes.push(op.clone());
-        op
+    /// Creates a logic block starting from the given [`OpType::ControlOp`].
+    fn push_control_block(&mut self, block: (ControlOp, usize, Loc)) -> Op {
+        self.name_scopes.push(block);
+        Op(OpType::ControlOp(block.0, block.1), block.2)
     }
 
-    /// Pops the last opened logic block, returning a clone of the [`Op`] that started it.
+    /// Pops the last opened logic block, returning a the [`OpType::ControlOp`]
+    /// that started it.
     ///
     /// # Errors
     ///
     /// This function will return an error if no block is open.
-    fn pop_block(&mut self, closing_type: KeywordType, loc: Loc) -> LazyResult<Op> {
+    fn pop_control_block(
+        &mut self, closing_type: KeywordType, loc: Loc,
+    ) -> LazyResult<(ControlOp, usize, Loc)> {
         self.name_scopes.pop().with_err_ctx(move || {
             err_loc(format!("There are no open blocks to close with `{closing_type:?}`"), loc)
         })
@@ -485,12 +486,9 @@ impl Parser {
         self.name_scopes
             .register(name.name(), ParseContext::ProcName);
 
-        let prep = fold_bool!(
-            matches!(mode, ModeType::Declare | ModeType::Export),
-            OpType::PrepProc,
-            OpType::PrepInline
-        );
-        Ok(self.push_block(Op(prep, operand as i32, loc)))
+        let prep =
+            fold_bool!(matches!(mode, ModeType::Declare | ModeType::Export), PrepProc, PrepInline);
+        Ok(self.push_control_block((prep, operand, loc)))
     }
 
     fn parse_procedure(
@@ -631,9 +629,8 @@ impl Parser {
                 let proc_bindings = &mut self.current_proc_mut(prog).unwrap().binds;
                 proc_bindings.push(Binds(bindings));
 
-                let operand = (proc_bindings.len() - 1).operand();
-                let bind_block = Op(OpType::BindStack, operand, loc);
-                let result = self.push_block(bind_block);
+                let bind_block = (BindStack, proc_bindings.len() - 1, loc);
+                let result = self.push_control_block(bind_block);
 
                 return OptionErr::new(vec![result]);
             }
@@ -760,7 +757,7 @@ impl Parser {
                 token.loc(),
             )?;
 
-            let include_path = prog.get_word(tok);
+            let include_path = prog.get_word(tok.index());
 
             let include = path.get_dir()?.join(include_path).with_extension("fire");
 

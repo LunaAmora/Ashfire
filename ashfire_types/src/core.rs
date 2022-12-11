@@ -11,8 +11,8 @@ pub type Name = lasso::Spur;
 pub const WORD_SIZE: i32 = 4;
 pub const WORD_USIZE: usize = 4;
 
-pub fn word_aligned<O: Operand>(value: O) -> i32 {
-    ((value.operand() + WORD_SIZE - 1) / WORD_SIZE) * WORD_SIZE
+pub fn word_aligned(value: usize) -> i32 {
+    ((value as i32 + WORD_SIZE - 1) / WORD_SIZE) * WORD_SIZE
 }
 
 pub trait Typed {
@@ -37,50 +37,6 @@ impl<T: Location> Location for &T {
 
 impl Location for Loc {
     fn loc(&self) -> Loc {
-        *self
-    }
-}
-
-pub trait Operand {
-    fn operand(&self) -> i32;
-
-    fn index(&self) -> usize {
-        self.operand() as usize
-    }
-
-    fn name(&self) -> Name {
-        Name::try_from_usize(self.index()).unwrap()
-    }
-}
-
-impl<T: Operand> Operand for &T {
-    fn operand(&self) -> i32 {
-        (*self).operand()
-    }
-}
-
-impl Operand for i32 {
-    fn operand(&self) -> i32 {
-        *self
-    }
-}
-
-impl Operand for usize {
-    fn operand(&self) -> i32 {
-        *self as i32
-    }
-}
-
-impl Operand for Name {
-    fn index(&self) -> usize {
-        self.into_usize()
-    }
-
-    fn operand(&self) -> i32 {
-        self.index() as i32
-    }
-
-    fn name(&self) -> Name {
         *self
     }
 }
@@ -127,15 +83,23 @@ impl PartialEq<ValueType> for TokenType {
 #[derive(Clone)]
 pub struct IRToken(pub TokenType, pub i32, pub Loc);
 
-impl Typed for IRToken {
-    fn get_type(&self) -> TokenType {
-        self.0
+impl IRToken {
+    pub fn operand(&self) -> i32 {
+        self.1
+    }
+
+    pub fn index(&self) -> usize {
+        self.1 as usize
+    }
+
+    pub fn name(&self) -> Name {
+        Name::try_from_usize(self.index()).unwrap()
     }
 }
 
-impl Operand for IRToken {
-    fn operand(&self) -> i32 {
-        self.1
+impl Typed for IRToken {
+    fn get_type(&self) -> TokenType {
+        self.0
     }
 }
 
@@ -189,38 +153,38 @@ impl PartialEq<TypeId> for &IRToken {
 }
 
 #[derive(Clone)]
-pub struct Op(pub OpType, pub i32, pub Loc);
-
-impl Operand for Op {
-    fn operand(&self) -> i32 {
-        self.1
-    }
-}
+pub struct Op(pub OpType, pub Loc);
 
 impl Op {
-    pub fn set_operand(&mut self, value: i32) {
-        self.1 = value;
+    pub fn set_index(&mut self, value: usize) {
+        match &mut self.0 {
+            OpType::IndexOp(_, index) | OpType::ControlOp(_, index) => *index = value,
+            _ => todo!(),
+        }
     }
 }
 
 impl From<(&Primitive, Loc)> for Op {
     fn from(value: (&Primitive, Loc)) -> Self {
         let (prim, loc) = value;
-        Self(OpType::PushData(prim.type_id()), prim.value(), loc)
+        Self(OpType::PushData(prim.type_id(), prim.value()), loc)
     }
 }
 
-impl From<(IntrinsicType, Loc)> for Op {
-    fn from(value: (IntrinsicType, Loc)) -> Self {
-        let (intrinsic, loc) = value;
-        Self(OpType::Intrinsic, usize::from(intrinsic).operand(), loc)
+impl<T> From<(T, Loc)> for Op
+where
+    OpType: From<T>,
+{
+    fn from(value: (T, Loc)) -> Self {
+        let (from, loc) = value;
+        Self(from.into(), loc)
     }
 }
 
 pub struct Wrapper<T, O>(T, O);
 
 impl<T, O: Copy> Wrapper<T, O> {
-    pub fn get_value(&self) -> O {
+    pub fn value(&self) -> O {
         self.1
     }
 }
@@ -236,23 +200,23 @@ impl<T, O> Deref for Wrapper<T, O> {
 pub type OffsetData = Wrapper<OffsetWord, i32>;
 
 impl OffsetData {
-    pub fn new(name: Name, size: i32, offset: i32) -> Self {
+    pub fn new(name: Name, size: usize, offset: i32) -> Self {
         Self(OffsetWord::new(name, size), offset)
     }
 
-    pub fn data(&self) -> (i32, i32) {
-        (self.size(), self.get_value())
+    pub fn data(&self) -> (usize, i32) {
+        (self.size(), self.value())
     }
 
-    pub fn size(&self) -> i32 {
-        self.0.get_value()
+    pub fn size(&self) -> usize {
+        self.0.value()
     }
 }
 
-pub type OffsetWord = Wrapper<Name, i32>;
+pub type OffsetWord = Wrapper<Name, usize>;
 
 impl OffsetWord {
-    pub fn new(name: Name, offset: i32) -> Self {
+    pub fn new(name: Name, offset: usize) -> Self {
         Self(name, offset)
     }
 }

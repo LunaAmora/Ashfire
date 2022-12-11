@@ -90,7 +90,7 @@ impl Evaluator for EvalStack<IRToken> {
                 _ => Err(Either::Left(IRToken(TokenType::Keyword, *tok, loc)))?,
             },
 
-            TokenType::Word => match prog.get_intrinsic_type(&prog.get_word(&tok)) {
+            TokenType::Word => match prog.get_intrinsic_type(&prog.get_word(tok.index())) {
                 Some(intrinsic) => match intrinsic {
                     IntrinsicType::Plus => self.pop_push_arity(
                         |[a, b]| IRToken(a.get_type(), *a + *b, loc),
@@ -123,9 +123,9 @@ impl Evaluator for EvalStack<IRToken> {
             },
 
             TokenType::Str => {
-                let (size, _) = prog.get_data(&tok).data();
+                let (size, _) = prog.get_data(tok.index()).data();
 
-                self.extend([IRToken(INT, size, loc), IRToken(STR, operand, loc)]);
+                self.extend([IRToken(INT, size as i32, loc), IRToken(STR, operand, loc)]);
             }
 
             TokenType::Data(ValueType(value)) => match value {

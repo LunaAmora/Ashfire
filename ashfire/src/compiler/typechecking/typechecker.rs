@@ -1,7 +1,8 @@
 use ashfire_types::{
     core::*,
     data::*,
-    enums::{IntrinsicType, OpType},
+    enums::{ControlOp, IndexOp, IntrinsicType, OpType, StackOp},
+    lasso::Key,
     proc::{Binds, Mode},
 };
 use ashlib::{EvalStack, UncheckedStack};
@@ -50,28 +51,116 @@ impl TypeChecker {
     }
 
     fn type_check_op(&mut self, ip: usize, program: &mut Program) -> LazyResult<()> {
-        let &Op(op_type, operand, loc) = &program.ops[ip];
+        let &Op(op_type, loc) = &program.ops[ip];
         match op_type {
-            OpType::PushData(value) => match value {
+            OpType::PushData(value, _) => match value {
                 TypeId::INT | TypeId::BOOL | TypeId::PTR => self.push_value(value, loc),
                 TypeId(_) => unreachable!(),
             },
 
-            OpType::PushStr => self.extend_value([TypeId::INT, TypeId::PTR], loc),
+            OpType::IndexOp(op, index) => match op {
+                IndexOp::PushStr => self.extend_value([TypeId::INT, TypeId::PTR], loc),
 
-            OpType::PushLocalMem |
-            OpType::PushGlobalMem |
-            OpType::PushLocal |
-            OpType::PushGlobal => self.push_value(TypeId::PTR, loc),
-
-            OpType::Offset => match self.expect_struct_pointer(program, ip)? {
-                TokenType::Data(ValueType(offset_id)) => {
-                    self.push_frame(program.get_type_ptr(offset_id).get_type(), loc);
+                IndexOp::PushLocalMem |
+                IndexOp::PushGlobalMem |
+                IndexOp::PushLocal |
+                IndexOp::PushGlobal => {
+                    self.push_value(TypeId::PTR, loc);
                 }
-                _ => todo!(),
+
+                IndexOp::Offset => match self.expect_struct_pointer(program, ip, index, loc)? {
+                    TokenType::Data(ValueType(offset_id)) => {
+                        self.push_frame(program.get_type_ptr(offset_id).get_type(), loc);
+                    }
+                    _ => todo!(),
+                },
+
+                IndexOp::Unpack => match self.data_stack.expect_pop(loc)?.get_type() {
+                    TokenType::Data(ValueType(id @ TypeId(index))) => {
+                        match program.get_type_descr(id) {
+                            TypeDescr::Reference(ptr) => match program.get_type_descr(ptr.ptr_id())
+                            {
+                                TypeDescr::Structure(StructType(fields, TypeId(ptr_id))) => {
+                                    for typ in fields.units().map(|u| u.get_type()) {
+                                        self.push_frame(typ, loc);
+                                    }
+
+                                    program.set_index(ip, *ptr_id);
+                                }
+
+                                TypeDescr::Primitive(_) => {
+                                    self.push_frame(ptr.ptr_id().get_type(), loc);
+                                    program.set_index(ip, index);
+                                }
+
+                                TypeDescr::Reference(_) => todo!(),
+                            },
+                            stk => {
+                                for typ in stk.units().map(|u| u.get_type()) {
+                                    self.push_frame(typ, loc);
+                                }
+                                program.set_index(ip, index);
+                            }
+                        }
+                    }
+
+                    top => {
+                        lazybail!(
+                            |f| "{}Cannot unpack element of type: `{}`",
+                            f.format(Fmt::Loc(loc)),
+                            f.format(Fmt::Typ(top))
+                        );
+                    }
+                },
+
+                IndexOp::Call | IndexOp::CallInline => {
+                    let contr = &program.get_proc(index).contract;
+                    self.data_stack.expect_contract_pop(contr.ins(), loc)?;
+                    for &typ in contr.outs() {
+                        self.push_frame(typ, loc);
+                    }
+                }
+
+                IndexOp::LoadBind => {
+                    let (typ, offset) = self.get_bind_type_offset(index);
+
+                    self.push_frame(typ, loc);
+                    program.set_index(ip, offset);
+                }
+
+                IndexOp::PushBind => {
+                    let (typ, offset) = self.get_bind_type_offset(index);
+
+                    if let TokenType::Data(ValueType(id)) = typ {
+                        self.push_frame(program.get_type_ptr(id).get_type(), loc);
+                    } else {
+                        todo!()
+                    }
+
+                    program.set_index(ip, offset);
+                }
             },
 
-            OpType::Intrinsic => match IntrinsicType::from(operand.index()) {
+            OpType::StackOp(op) => match op {
+                StackOp::Drop => {
+                    self.data_stack.expect_pop(loc)?;
+                }
+
+                StackOp::Dup => self.data_stack.pop_extend(|[a]| [a, a], loc)?,
+                StackOp::Swap => self.data_stack.pop_extend(|[a, b]| [b, a], loc)?,
+                StackOp::Over => self.data_stack.pop_extend(|[a, b]| [a, b, a], loc)?,
+                StackOp::Rot => self.data_stack.pop_extend(|[a, b, c]| [b, c, a], loc)?,
+
+                StackOp::Equal => {
+                    self.data_stack.pop_push_arity(
+                        |[_, _]| TypeFrame(BOOL, loc),
+                        ArityType::Same,
+                        loc,
+                    )?;
+                }
+            },
+
+            OpType::Intrinsic(intrinsic) => match intrinsic {
                 IntrinsicType::Plus |
                 IntrinsicType::Minus |
                 IntrinsicType::And |
@@ -103,281 +192,202 @@ impl TypeChecker {
                 }
             },
 
-            OpType::Drop => {
-                self.data_stack.expect_pop(loc)?;
-            }
+            OpType::ControlOp(op, index) => match op {
+                ControlOp::PrepProc | ControlOp::PrepInline => {
+                    let proc = &self.visit_proc(program, index);
 
-            OpType::Dup => self.data_stack.pop_extend(|[a]| [a, a], loc)?,
-            OpType::Swap => self.data_stack.pop_extend(|[a, b]| [b, a], loc)?,
-            OpType::Over => self.data_stack.pop_extend(|[a, b]| [a, b, a], loc)?,
-            OpType::Rot => self.data_stack.pop_extend(|[a, b, c]| [b, c, a], loc)?,
+                    if matches!(proc.mode, Mode::Imported) {
+                        return Ok(());
+                    }
 
-            OpType::Call | OpType::CallInline => {
-                let contr = &program.get_proc(operand).contract;
-                self.data_stack.expect_contract_pop(contr.ins(), loc)?;
-                for &typ in contr.outs() {
-                    self.push_frame(typ, loc);
-                }
-            }
-
-            OpType::Equal => {
-                self.data_stack.pop_push_arity(
-                    |[_, _]| TypeFrame(BOOL, loc),
-                    ArityType::Same,
-                    loc,
-                )?;
-            }
-
-            OpType::PrepProc | OpType::PrepInline => {
-                let proc = &self.visit_proc(program, operand.index());
-
-                if matches!(proc.mode, Mode::Imported) {
-                    return Ok(());
-                }
-
-                for &typ in proc.contract.ins() {
-                    self.push_frame(typ, loc);
-                }
-            }
-
-            OpType::IfStart => {
-                self.data_stack.expect_pop_type(BOOL, loc)?;
-                self.push_stack(ip);
-                self.data_stack.reset_max_count();
-            }
-
-            OpType::Else => {
-                let TypeBlock(old_stack, start_op) = self.block_stack.last().cloned().unwrap();
-                self.push_stack(start_op);
-                self.data_stack = DataStack::new(old_stack);
-            }
-
-            OpType::EndIf => {
-                let TypeBlock(expected, start_op) = self.block_stack.pop().unwrap();
-
-                self.expect_stack_arity(
-                    &expected,
-                    loc,
-                    format!(
-                        "Else-less if block is not allowed to alter {}",
-                        "the types of the arguments on the data stack."
-                    ),
-                )?;
-
-                let ins = self.data_stack.min().abs();
-                let out = self.data_stack.count() + ins;
-
-                program
-                    .block_contracts
-                    .insert(start_op, (ins as usize, out as usize));
-
-                let old_count = expected.count();
-                self.data_stack
-                    .set_count(self.data_stack.min() + old_count, old_count);
-            }
-
-            OpType::EndElse => {
-                let TypeBlock(expected, start_op) = self.block_stack.pop().unwrap();
-
-                self.expect_stack_arity(
-                    &expected,
-                    loc,
-                    format!(
-                        "Both branches of the if-block must produce {}",
-                        "the same types of the arguments on the data stack"
-                    ),
-                )?;
-
-                let ins = (self.data_stack.min()).min(expected.min()).abs();
-                let out = (self.data_stack.count()).max(expected.count()) + ins;
-
-                program
-                    .block_contracts
-                    .insert(start_op, (ins as usize, out as usize));
-
-                let TypeBlock(old_stack, _) = self.block_stack.pop().unwrap();
-
-                let old_count = old_stack.count();
-                self.data_stack.set_count(old_count - ins, old_count);
-            }
-
-            OpType::EndProc | OpType::EndInline => {
-                let proc = self.current_proc_mut(program).unwrap();
-
-                if matches!(proc.mode, Mode::Imported) {
-                    return Ok(());
-                }
-
-                let outs = proc.contract.outs();
-
-                if outs.is_empty() {
-                    self.data_stack.expect_exact::<TokenType>(&[], loc)?;
-                } else {
-                    self.data_stack.expect_exact_pop(outs, loc)?;
-                }
-
-                self.data_stack = EvalStack::default();
-
-                if let Mode::Inlined(start, _) = proc.mode {
-                    proc.mode = Mode::Inlined(start, ip);
-                }
-
-                self.exit_proc();
-            }
-
-            OpType::BindStack => {
-                let proc = self.current_proc(program).unwrap();
-                let Binds(bindings) = &proc.binds[operand.index()];
-                let mut binds = vec![];
-
-                for (_, typ) in bindings.iter() {
-                    if let &Some(id) = typ {
-                        let type_def = program.get_type_descr(TypeId(id));
-
-                        let contract: Vec<_> = match type_def {
-                            TypeDescr::Structure(StructType(fields, _)) => {
-                                fields.units().map(|u| u.get_type()).collect()
-                            }
-                            TypeDescr::Primitive(prim) => vec![prim.get_type()],
-                            TypeDescr::Reference(ptr) => vec![ptr.get_type()],
-                        };
-
-                        self.data_stack.expect_contract_pop(&contract, loc)?;
-
-                        binds.push((TypeFrame(TypeId(id).get_type(), loc), type_def.size()));
-                    } else {
-                        let top = self.data_stack.expect_pop(loc)?;
-                        binds.push((top, WORD_USIZE));
+                    for &typ in proc.contract.ins() {
+                        self.push_frame(typ, loc);
                     }
                 }
 
-                self.bind_stack.extend(binds.iter().rev());
-            }
+                ControlOp::EndProc | ControlOp::EndInline => {
+                    let proc = self.current_proc_mut(program).unwrap();
 
-            OpType::LoadBind => {
-                let (typ, offset) = self.get_bind_type_offset(operand.index());
+                    if matches!(proc.mode, Mode::Imported) {
+                        return Ok(());
+                    }
 
-                self.push_frame(typ, loc);
-                program.set_operand(ip, offset);
-            }
+                    let outs = proc.contract.outs();
 
-            OpType::PushBind => {
-                let (typ, offset) = self.get_bind_type_offset(operand.index());
+                    if outs.is_empty() {
+                        self.data_stack.expect_exact::<TokenType>(&[], loc)?;
+                    } else {
+                        self.data_stack.expect_exact_pop(outs, loc)?;
+                    }
 
-                if let TokenType::Data(ValueType(id)) = typ {
-                    self.push_frame(program.get_type_ptr(id).get_type(), loc);
-                } else {
-                    todo!()
+                    self.data_stack = EvalStack::default();
+
+                    if let Mode::Inlined(start, _) = proc.mode {
+                        proc.mode = Mode::Inlined(start, ip);
+                    }
+
+                    self.exit_proc();
                 }
 
-                program.set_operand(ip, offset);
-            }
+                ControlOp::IfStart => {
+                    self.data_stack.expect_pop_type(BOOL, loc)?;
+                    self.push_stack(ip);
+                    self.data_stack.reset_max_count();
+                }
 
-            OpType::PopBind => {
-                let proc = self.current_proc(program).unwrap();
-                let Binds(bindings) = &proc.binds[operand.index()];
-                self.bind_stack
-                    .truncate(self.bind_stack.len() - bindings.len());
-            }
+                ControlOp::Else => {
+                    let TypeBlock(old_stack, start_op) = self.block_stack.last().cloned().unwrap();
+                    self.push_stack(start_op);
+                    self.data_stack = DataStack::new(old_stack);
+                }
 
-            OpType::While => {
-                self.push_stack(ip);
-                self.data_stack.reset_max_count();
-            }
+                ControlOp::EndIf => {
+                    let TypeBlock(expected, start_op) = self.block_stack.pop().unwrap();
 
-            OpType::Do => {
-                self.data_stack.expect_pop_type(BOOL, loc)?;
-                let TypeBlock(expected, _) = self.block_stack.last().cloned().unwrap();
+                    self.expect_stack_arity(
+                        &expected,
+                        loc,
+                        format!(
+                            "Else-less if block is not allowed to alter {}",
+                            "the types of the arguments on the data stack."
+                        ),
+                    )?;
 
-                self.expect_stack_arity(
-                    &expected,
-                    loc,
-                    format!(
-                        "While block is not allowed to alter {}",
-                        "the types of the arguments on the data stack"
-                    ),
-                )?;
+                    let ins = self.data_stack.min().abs();
+                    let out = self.data_stack.count() + ins;
 
-                self.push_stack(ip);
-                self.data_stack = DataStack::new(expected);
-            }
+                    program
+                        .block_contracts
+                        .insert(start_op, (ins as usize, out as usize));
 
-            OpType::EndWhile => {
-                let TypeBlock(expected, do_op) = self.block_stack.pop().unwrap();
+                    let old_count = expected.count();
+                    self.data_stack
+                        .set_count(self.data_stack.min() + old_count, old_count);
+                }
 
-                self.expect_stack_arity(
-                    &expected,
-                    loc,
-                    format!(
-                        "Do block is not allowed to alter {}",
-                        "the types of the arguments on the data stack"
-                    ),
-                )?;
+                ControlOp::EndElse => {
+                    let TypeBlock(expected, start_op) = self.block_stack.pop().unwrap();
 
-                let ins = (self.data_stack.min()).min(expected.min()).abs();
-                let out = (self.data_stack.count()).max(expected.count()) + ins;
+                    self.expect_stack_arity(
+                        &expected,
+                        loc,
+                        format!(
+                            "Both branches of the if-block must produce {}",
+                            "the same types of the arguments on the data stack"
+                        ),
+                    )?;
 
-                let TypeBlock(old_stack, start_op) = self.block_stack.pop().unwrap();
+                    let ins = (self.data_stack.min()).min(expected.min()).abs();
+                    let out = (self.data_stack.count()).max(expected.count()) + ins;
 
-                let ip_dif = ip - start_op;
-                program.set_operand(start_op, ip_dif);
-                program.set_operand(ip, ip_dif);
+                    program
+                        .block_contracts
+                        .insert(start_op, (ins as usize, out as usize));
 
-                let contr = (ins as usize, out as usize);
-                program
-                    .block_contracts
-                    .extend([(do_op, contr), (start_op, contr)]);
+                    let TypeBlock(old_stack, _) = self.block_stack.pop().unwrap();
 
-                let old_count = old_stack.count();
-                self.data_stack.set_count(old_count - ins, old_count);
-            }
+                    let old_count = old_stack.count();
+                    self.data_stack.set_count(old_count - ins, old_count);
+                }
 
-            OpType::Unpack => match self.data_stack.expect_pop(loc)?.get_type() {
-                TokenType::Data(ValueType(id @ TypeId(index))) => {
-                    match &program.get_type_descr(id) {
-                        TypeDescr::Reference(ptr) => match program.get_type_descr(ptr.ptr_id()) {
-                            TypeDescr::Structure(StructType(fields, TypeId(ptr_id))) => {
-                                for typ in fields.units().map(|u| u.get_type()) {
-                                    self.push_frame(typ, loc);
+                ControlOp::While => {
+                    self.push_stack(ip);
+                    self.data_stack.reset_max_count();
+                }
+
+                ControlOp::Do => {
+                    self.data_stack.expect_pop_type(BOOL, loc)?;
+                    let TypeBlock(expected, _) = self.block_stack.last().cloned().unwrap();
+
+                    self.expect_stack_arity(
+                        &expected,
+                        loc,
+                        format!(
+                            "While block is not allowed to alter {}",
+                            "the types of the arguments on the data stack"
+                        ),
+                    )?;
+
+                    self.push_stack(ip);
+                    self.data_stack = DataStack::new(expected);
+                }
+
+                ControlOp::EndWhile => {
+                    let TypeBlock(expected, do_op) = self.block_stack.pop().unwrap();
+
+                    self.expect_stack_arity(
+                        &expected,
+                        loc,
+                        format!(
+                            "Do block is not allowed to alter {}",
+                            "the types of the arguments on the data stack"
+                        ),
+                    )?;
+
+                    let ins = (self.data_stack.min()).min(expected.min()).abs();
+                    let out = (self.data_stack.count()).max(expected.count()) + ins;
+
+                    let TypeBlock(old_stack, start_op) = self.block_stack.pop().unwrap();
+
+                    let ip_dif = ip - start_op;
+                    program.set_index(start_op, ip_dif);
+                    program.set_index(ip, ip_dif);
+
+                    let contr = (ins as usize, out as usize);
+                    program
+                        .block_contracts
+                        .extend([(do_op, contr), (start_op, contr)]);
+
+                    let old_count = old_stack.count();
+                    self.data_stack.set_count(old_count - ins, old_count);
+                }
+
+                ControlOp::BindStack => {
+                    let proc = self.current_proc(program).unwrap();
+                    let Binds(bindings) = &proc.binds[index];
+                    let mut binds = vec![];
+
+                    for (_, typ) in bindings.iter() {
+                        if let &Some(id) = typ {
+                            let type_def = program.get_type_descr(TypeId(id));
+
+                            let contract: Vec<_> = match type_def {
+                                TypeDescr::Structure(StructType(fields, _)) => {
+                                    fields.units().map(|u| u.get_type()).collect()
                                 }
+                                TypeDescr::Primitive(prim) => vec![prim.get_type()],
+                                TypeDescr::Reference(ptr) => vec![ptr.get_type()],
+                            };
 
-                                program.set_operand(ip, *ptr_id);
-                            }
+                            self.data_stack.expect_contract_pop(&contract, loc)?;
 
-                            TypeDescr::Primitive(_) => {
-                                self.push_frame(ptr.ptr_id().get_type(), loc);
-                                program.set_operand(ip, index);
-                            }
-
-                            TypeDescr::Reference(_) => todo!(),
-                        },
-                        stk => {
-                            for typ in stk.units().map(|u| u.get_type()) {
-                                self.push_frame(typ, loc);
-                            }
-                            program.set_operand(ip, index);
+                            binds.push((TypeFrame(TypeId(id).get_type(), loc), type_def.size()));
+                        } else {
+                            let top = self.data_stack.expect_pop(loc)?;
+                            binds.push((top, WORD_USIZE));
                         }
                     }
+
+                    self.bind_stack.extend(binds.iter().rev());
                 }
 
-                top => {
-                    lazybail!(
-                        |f| "{}Cannot unpack element of type: `{}`",
-                        f.format(Fmt::Loc(loc)),
-                        f.format(Fmt::Typ(top))
-                    );
+                ControlOp::PopBind => {
+                    let proc = self.current_proc(program).unwrap();
+                    let Binds(bindings) = &proc.binds[index];
+                    self.bind_stack
+                        .truncate(self.bind_stack.len() - bindings.len());
                 }
+
+                ControlOp::CaseStart => todo!(),
+                ControlOp::CaseMatch => todo!(),
+                ControlOp::CaseOption => todo!(),
+                ControlOp::EndCase => todo!(),
             },
 
-            OpType::ExpectType => {
-                let typ = TypeId(operand.index()).get_type();
+            OpType::ExpectType(type_id) => {
+                let typ = type_id.get_type();
                 self.data_stack.expect_peek(ArityType::Type(typ), loc)?;
             }
-
-            OpType::CaseStart => todo!(),
-            OpType::CaseMatch => todo!(),
-            OpType::CaseOption => todo!(),
-            OpType::EndCase => todo!(),
         };
         Ok(())
     }
@@ -417,15 +427,16 @@ impl TypeChecker {
         (bind.get_type(), offset)
     }
 
-    fn expect_struct_pointer(&mut self, prog: &mut Program, ip: usize) -> LazyResult<TokenType> {
-        let &Op(_, operand, loc) = &prog.ops[ip];
+    fn expect_struct_pointer(
+        &mut self, prog: &mut Program, ip: usize, operand: usize, loc: Loc,
+    ) -> LazyResult<TokenType> {
         let typ = self.data_stack.expect_pop(loc)?.get_type();
 
         if let TokenType::Data(ValueType(id)) = typ {
             if let TypeDescr::Reference(ptr) = &prog.get_type_descr(id) {
                 match prog.get_type_descr(ptr.ptr_id()) {
                     TypeDescr::Structure(StructType(fields, _)) => {
-                        let word = operand.name();
+                        let word = Name::try_from_usize(operand).unwrap();
 
                         let Some((offset, index)) = fields.get_offset(word) else {
                             let error = format!("The struct {} does not contain a member with name: `{}`",
@@ -434,7 +445,7 @@ impl TypeChecker {
                         };
 
                         let result = fields[index].type_id().get_type();
-                        prog.set_operand(ip, offset * WORD_USIZE);
+                        prog.set_index(ip, offset * WORD_USIZE);
 
                         return Ok(result);
                     }
@@ -464,9 +475,9 @@ impl TypeChecker {
 }
 
 impl Program {
-    fn set_operand(&mut self, ip: usize, index: usize) {
+    fn set_index(&mut self, ip: usize, value: usize) {
         let op = &mut self.ops[ip];
-        op.set_operand(index as i32);
+        op.set_index(value);
     }
 
     pub fn type_check(&mut self) -> Result<&mut Self> {

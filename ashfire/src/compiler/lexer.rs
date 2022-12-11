@@ -1,8 +1,9 @@
 use std::{fs::File, io::Read, path::Path, str::FromStr};
 
 use ashfire_types::{
-    core::{IRToken, Operand, TokenType, INT},
+    core::{IRToken, TokenType, INT},
     enums::KeywordType,
+    lasso::Key,
 };
 use firelib::{lazy::LazyCtx, lexer::*, utils::PathUtils, Context, Result, ShortCircuit};
 
@@ -59,14 +60,14 @@ impl Program {
             .or_return(OptionErr::default)?
             .strip_suffix('\"')
             .with_err_ctx(move || err_loc("Missing closing `\"` in string literal", loc))
-            .map(|name| self.push_data(name.to_owned(), escaped_len(name)).operand())
-            .map(|operand| IRToken(TokenType::Str, operand, loc))
+            .map(|name| self.push_data(name.to_owned(), escaped_len(name)))
+            .map(|operand| IRToken(TokenType::Str, operand as i32, loc))
             .map(OptionErr::new)?
     }
 
     fn define_word(&mut self, tok: &Token) -> OptionErr<IRToken> {
-        let operand = self.get_or_intern(&tok.name).operand();
-        OptionErr::new(IRToken(TokenType::Word, operand, tok.loc))
+        let operand = self.get_or_intern(&tok.name).into_usize();
+        OptionErr::new(IRToken(TokenType::Word, operand as i32, tok.loc))
     }
 }
 

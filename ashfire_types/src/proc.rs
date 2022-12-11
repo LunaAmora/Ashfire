@@ -1,8 +1,7 @@
-use super::{
+use crate::{
     core::{word_aligned, Name, OffsetWord, TokenType, WORD_SIZE},
-    data::TypeDescr,
+    data::{StructInfo, TypeDescr},
 };
-use crate::data::StructInfo;
 
 #[derive(Default)]
 pub struct Data {
@@ -14,8 +13,7 @@ pub struct Data {
 impl Data {
     pub fn push_mem(&mut self, word: Name, size: usize) {
         self.mem_size += size;
-        self.local_mems
-            .push(OffsetWord::new(word, self.mem_size as i32));
+        self.local_mems.push(OffsetWord::new(word, self.mem_size));
     }
 
     pub fn total_size(&self) -> i32 {
@@ -23,8 +21,8 @@ impl Data {
             self.local_vars.iter().fold(0, |acc, var| acc + var.size()) as i32
     }
 
-    pub fn var_mem_offset(&self, index: i32) -> i32 {
-        word_aligned(self.mem_size) + ((index + 1) * WORD_SIZE)
+    pub fn var_mem_offset(&self, index: usize) -> i32 {
+        word_aligned(self.mem_size) + ((index as i32 + 1) * WORD_SIZE)
     }
 }
 

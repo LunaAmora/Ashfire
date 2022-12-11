@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ashfire_types::{
-    core::{Name, Op, Operand, WORD_SIZE},
+    core::{Name, WORD_SIZE},
     data::{Primitive, StructInfo, TypeDescr},
     proc::{Contract, Proc},
 };
@@ -39,12 +39,12 @@ impl Generator {
         }
     }
 
-    pub fn prep_proc<'a>(&mut self, program: &'a Program, op: &Op) -> Result<Option<&'a Proc>> {
+    pub fn prep_proc<'a>(&mut self, program: &'a Program, ip: usize) -> Result<Option<&'a Proc>> {
         if self.current_func.is_some() {
             bail!("Cannot start an Wasm function block without closing the current one");
         }
 
-        let proc = self.visit_proc(program, op.index());
+        let proc = self.visit_proc(program, ip);
         let Some(data) = proc.get_data() else {
             return Ok(None);
         };

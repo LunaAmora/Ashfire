@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use ashfire_types::{
     core::*,
     data::*,
-    enums::{IntrinsicType, OpType},
+    enums::{ControlOp, IndexOp, IntrinsicType, OpType},
+    lasso::Key,
     num::iter::range_step_from,
 };
 use firelib::{lexer::Loc, utils::BoolUtils};
@@ -17,13 +18,13 @@ impl Compare<IRToken> for Vec<IRToken> {}
 
 pub struct LocWord(pub Name, pub Loc);
 
-impl Operand for LocWord {
-    fn name(&self) -> Name {
+impl LocWord {
+    pub fn name(&self) -> Name {
         self.0
     }
 
-    fn operand(&self) -> i32 {
-        self.0.operand()
+    pub fn index(&self) -> usize {
+        self.0.into_usize()
     }
 }
 
@@ -51,7 +52,7 @@ impl PartialEq<Name> for LocWord {
 
 impl From<LocWord> for IRToken {
     fn from(word: LocWord) -> Self {
-        Self(TokenType::Word, word.0.operand(), word.1)
+        Self(TokenType::Word, word.0.into_usize() as i32, word.1)
     }
 }
 
@@ -74,13 +75,13 @@ pub enum ParseContext {
 }
 
 pub struct Scope {
-    op: Op,
+    block: (ControlOp, usize, Loc),
     names: HashMap<Name, ParseContext>,
 }
 
 impl Scope {
-    pub fn new(op: Op) -> Self {
-        Self { op, names: HashMap::default() }
+    pub fn new(block: (ControlOp, usize, Loc)) -> Self {
+        Self { block, names: HashMap::default() }
     }
 }
 
@@ -118,21 +119,21 @@ impl NameScopes {
             .insert(name, ctx);
     }
 
-    pub fn push(&mut self, op: Op) {
-        self.scopes.push(Scope::new(op));
+    pub fn push(&mut self, block: (ControlOp, usize, Loc)) {
+        self.scopes.push(Scope::new(block));
     }
 
-    pub fn pop(&mut self) -> Option<Op> {
-        self.scopes.pop().map(|s| s.op)
+    pub fn pop(&mut self) -> Option<(ControlOp, usize, Loc)> {
+        self.scopes.pop().map(|s| s.block)
     }
 }
 
 pub trait StructUtils {
     fn get_offset(&self, word: Name) -> Option<(usize, usize)>;
     fn get_offset_local(&self, word: Name) -> Option<(usize, usize)>;
-    fn get_pointer(&self, word: &LocWord, push_type: OpType, type_id: TypeId) -> Vec<Op>;
+    fn get_pointer(&self, word: &LocWord, push_type: IndexOp, type_id: TypeId) -> Vec<Op>;
     fn get_fields(
-        &self, word: &LocWord, push_type: OpType, stk_def: &TypeDescr, store: bool,
+        &self, word: &LocWord, push_type: IndexOp, stk_def: &TypeDescr, store: bool,
     ) -> Vec<Op>;
 }
 
@@ -159,28 +160,28 @@ impl StructUtils for [TypeDescr] {
         Some((offset - 1, i))
     }
 
-    fn get_pointer(&self, word: &LocWord, push_type: OpType, type_id: TypeId) -> Vec<Op> {
+    fn get_pointer(&self, word: &LocWord, push_type: IndexOp, type_id: TypeId) -> Vec<Op> {
         let &LocWord(name, loc) = word;
-        let (index, _) = if push_type == OpType::PushLocal {
+        let (index, _) = if push_type == IndexOp::PushLocal {
             self.get_offset_local(name).unwrap()
         } else {
             self.get_offset(name).unwrap()
         };
 
         vec![
-            Op(push_type, index as i32, loc),
+            Op(OpType::IndexOp(push_type, index), loc),
             Op::from((IntrinsicType::Cast(type_id), loc)),
         ]
     }
 
     fn get_fields(
-        &self, word: &LocWord, push_type: OpType, stk_def: &TypeDescr, store: bool,
+        &self, word: &LocWord, push_type: IndexOp, stk_def: &TypeDescr, store: bool,
     ) -> Vec<Op> {
         let mut result = Vec::new();
         let &LocWord(name, loc) = word;
         let (index, _) = self.get_offset(name).unwrap();
 
-        let is_local = push_type == OpType::PushLocal;
+        let is_local = push_type == IndexOp::PushLocal;
         let id_range = if store == is_local {
             range_step_from(index as i32, 1)
         } else {
@@ -197,12 +198,12 @@ impl StructUtils for [TypeDescr] {
             TypeDescr::Reference(ptr) => vec![ptr.type_id()],
         };
 
-        for (operand, type_id @ TypeId(id)) in id_range.zip(members) {
+        for (operand, type_id) in id_range.zip(members) {
             if store {
-                result.push(Op(OpType::ExpectType, id.operand(), loc));
+                result.push(Op(OpType::ExpectType(type_id), loc));
             }
 
-            result.push(Op(push_type, operand, loc));
+            result.push(Op(OpType::IndexOp(push_type, operand as usize), loc));
 
             if store {
                 result.push(Op::from((IntrinsicType::Store32, loc)));
