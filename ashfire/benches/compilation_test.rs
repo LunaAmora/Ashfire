@@ -5,7 +5,7 @@ extern crate test;
 mod tests {
     use std::{env, io, path::PathBuf};
 
-    use ashfire_lib::{compile, target::Target};
+    use ashfire::{compile, target::Target};
     use test::Bencher;
 
     fn bech_folder() -> io::Result<PathBuf> {

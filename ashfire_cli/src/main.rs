@@ -8,10 +8,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use ashfire_lib::{compile, compile_buffer, logger, target::Target};
-use clap::{Parser, Subcommand};
+use ashfire::{compile, compile_buffer, target::Target as LibTarget};
+use clap::{Parser, Subcommand, ValueEnum};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use firelib::Result;
+mod logger;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -45,6 +46,21 @@ enum Commands {
     },
 }
 
+#[derive(Debug, Copy, Clone, ValueEnum)]
+pub enum Target {
+    Wasi,
+    Wasm4,
+}
+
+impl From<Target> for LibTarget {
+    fn from(value: Target) -> Self {
+        match value {
+            Target::Wasi => Self::Wasi,
+            Target::Wasm4 => Self::Wasm4,
+        }
+    }
+}
+
 fn main() {
     let args = Cli::parse();
     if let Some(level) = args.verbose.log_level() {
@@ -55,8 +71,10 @@ fn main() {
 
     let result = match args.command {
         Commands::Com { path, output, run, wat, target, runtime } => match path {
-            Some(path) => compile_command(&path, output.as_deref(), run, wat, target, runtime),
-            None => compile_pipe(target, &runtime, run),
+            Some(path) => {
+                compile_command(&path, output.as_deref(), run, wat, target.into(), runtime)
+            }
+            None => compile_pipe(target.into(), &runtime, run),
         },
     };
 
@@ -66,7 +84,7 @@ fn main() {
 }
 
 fn compile_command(
-    path: &Path, output: Option<&Path>, run: bool, wat: bool, target: Target, runtime: String,
+    path: &Path, output: Option<&Path>, run: bool, wat: bool, target: LibTarget, runtime: String,
 ) -> Result<()> {
     let out = output.unwrap_or(path).with_extension("wat");
 
@@ -88,11 +106,11 @@ fn compile_command(
     Ok(())
 }
 
-fn compile_pipe(target: Target, runtime_name: &str, run: bool) -> Result<()> {
+fn compile_pipe(target: LibTarget, runtime_name: &str, run: bool) -> Result<()> {
     let path = lib_folder()?;
 
     match (run, target) {
-        (true, Target::Wasi) => {
+        (true, LibTarget::Wasi) => {
             let mut runtime = cmd_piped!(runtime_name, "/dev/stdin");
             compile_buffer(&path, "stdin", io::stdin(), runtime.stdin().unwrap(), target)?;
 
@@ -100,7 +118,7 @@ fn compile_pipe(target: Target, runtime_name: &str, run: bool) -> Result<()> {
             runtime.wait_with_result()?;
         }
 
-        (true, Target::Wasm4) => {
+        (true, LibTarget::Wasm4) => {
             let mut w4 = cmd_piped!("w4", "run", "/dev/stdin");
             let mut wat2wasm = cmd_piped!("wat2wasm", "-", "--output=-" => w4.stdin().unwrap());
 

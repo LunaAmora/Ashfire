@@ -3,6 +3,7 @@
 members = [
     "ashlib",
     "ashfire",
+    "ashfire_cli",
     "ashfire_types",
     "firelib",
     "firelib_macro",

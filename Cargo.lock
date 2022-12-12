@@ -25,13 +25,22 @@ version = "0.1.0"
 dependencies = [
  "ashfire_types",
  "ashlib",
- "clap",
- "clap-verbosity-flag",
- "env_logger",
  "firelib",
  "itertools",
  "log",
  "wasm_backend",
+]
+
+[[package]]
+name = "ashfire_cli"
+version = "0.1.0"
+dependencies = [
+ "ashfire",
+ "clap",
+ "clap-verbosity-flag",
+ "env_logger",
+ "firelib",
+ "log",
 ]
 
 [[package]]

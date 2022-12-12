@@ -3,7 +3,6 @@
 #[macro_use] extern crate firelib;
 
 mod compiler;
-pub mod logger;
 pub mod target;
 
 use std::{

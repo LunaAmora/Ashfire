@@ -8,16 +8,9 @@ readme.workspace = true
 license-file.workspace = true
 
 [dependencies]
-clap = { version = "4.0.29", features = ["derive"] }
-clap-verbosity-flag = "2.0.0"
 log = "0.4.17"
-env_logger = { features = ["auto-color"], default-features = false, version = "0.10.0" }
 itertools = "0.10.5"
-ashlib = {path = "../ashlib"}
-firelib = {path = "../firelib"}
-wasm_backend = {path = "../wasm_backend"}
-ashfire_types = {path = "../ashfire_types"}
-
-[lib]
-name = "ashfire_lib"
-path = "src/lib.rs"
+ashlib = { path = "../ashlib" }
+firelib = { path = "../firelib" }
+wasm_backend = { path = "../wasm_backend" }
+ashfire_types = { path = "../ashfire_types" }
