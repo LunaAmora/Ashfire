@@ -2,7 +2,6 @@
 #[macro_use] extern crate firelib;
 
 use std::{
-    env,
     fs::File,
     io::{self, BufWriter},
     path::{Path, PathBuf},
@@ -100,19 +99,17 @@ fn compile_command(
     }
 
     if run {
-        target.runner(runtime).run(out_wasm)?;
+        Runner::new(target, runtime).run(out_wasm)?;
     }
 
     Ok(())
 }
 
 fn compile_pipe(target: LibTarget, runtime_name: &str, run: bool) -> Result<()> {
-    let path = lib_folder()?;
-
     match (run, target) {
         (true, LibTarget::Wasi) => {
             let mut runtime = cmd_piped!(runtime_name, "/dev/stdin");
-            compile_buffer(&path, "stdin", io::stdin(), runtime.stdin().unwrap(), target)?;
+            compile_buffer("stdin", io::stdin(), runtime.stdin().unwrap(), target, true)?;
 
             info!("[CMD] {runtime_name} /dev/stdin");
             runtime.wait_with_result()?;
@@ -122,7 +119,7 @@ fn compile_pipe(target: LibTarget, runtime_name: &str, run: bool) -> Result<()> 
             let mut w4 = cmd_piped!("w4", "run", "/dev/stdin");
             let mut wat2wasm = cmd_piped!("wat2wasm", "-", "--output=-" => w4.stdin().unwrap());
 
-            compile_buffer(&path, "stdin", io::stdin(), wat2wasm.stdin().unwrap(), target)?;
+            compile_buffer("stdin", io::stdin(), wat2wasm.stdin().unwrap(), target, true)?;
 
             info!("[CMD] | wat2wasm - --output=- | w4 run /dev/stdin");
             wat2wasm.wait_with_result()?;
@@ -130,15 +127,33 @@ fn compile_pipe(target: LibTarget, runtime_name: &str, run: bool) -> Result<()> 
         }
 
         (false, _) => {
-            compile_buffer(&path, "stdin", io::stdin(), io::stdout(), target)?;
+            compile_buffer("stdin", io::stdin(), io::stdout(), target, true)?;
         }
     }
 
     Ok(())
 }
 
-fn lib_folder() -> io::Result<PathBuf> {
-    Ok(env::current_dir()?.join("lib/_"))
+pub struct Runner(Box<dyn FnOnce(PathBuf) -> Result<()>>);
+
+impl Runner {
+    pub fn new(target: LibTarget, wasi_runtime: String) -> Self {
+        match target {
+            LibTarget::Wasi => Self(Box::new(move |out| {
+                cmd_wait!(wasi_runtime, out);
+                Ok(())
+            })),
+
+            LibTarget::Wasm4 => Self(Box::new(|out| {
+                cmd_wait!("w4", "run", out);
+                Ok(())
+            })),
+        }
+    }
+
+    pub fn run(self, path: PathBuf) -> Result<()> {
+        self.0(path)
+    }
 }
 
 #[cfg(test)]

@@ -235,16 +235,25 @@ impl Program {
         ParseContext::LocalMem
     }
 
+    pub fn include(
+        &mut self, parser: &mut Parser, reader: impl Read + 'static, source: &str, module: &str,
+    ) -> firelib::Result<()> {
+        let lex = self.new_lexer(reader, source, module);
+        parser.read_lexer(self, lex, module)?;
+        Ok(())
+    }
+
     pub fn compile_buffer(
-        &mut self, path: &Path, source: &str, reader: impl Read + 'static,
+        &mut self, source: &str, reader: impl Read + 'static,
     ) -> firelib::Result<&mut Self> {
-        info!("Compiling buffer: {:?}", source);
+        let mut parser = Parser::new();
+        self.include(&mut parser, reader, source, "")?;
+        self.compile_parser(parser)
+    }
 
-        let lexer = self.new_lexer(source, reader);
-
-        Parser::new()
-            .read_lexer(self, lexer, path)
-            .and_then(|parser| parser.parse_tokens(self))
+    pub fn compile_parser(&mut self, mut parser: Parser) -> firelib::Result<&mut Self> {
+        parser
+            .parse_tokens(self)
             .try_or_apply(&|fmt| self.format(fmt))?;
 
         info!("Compilation done");
@@ -254,12 +263,8 @@ impl Program {
     pub fn compile_file(&mut self, path: &Path) -> firelib::Result<&mut Self> {
         info!("Compiling file: {:?}", path);
 
-        Parser::new()
-            .lex_file(path, self)
-            .and_then(|parser| parser.parse_tokens(self))
-            .try_or_apply(&|fmt| self.format(fmt))?;
-
-        info!("Compilation done");
-        Ok(self)
+        let mut parser = Parser::new();
+        parser.lex_path(path, self)?;
+        self.compile_parser(parser)
     }
 }

@@ -1,11 +1,11 @@
-use std::{fs::File, io::Read, path::Path, str::FromStr};
+use std::{io::Read, str::FromStr};
 
 use ashfire_types::{
     core::{IRToken, TokenType, INT},
     enums::KeywordType,
     lasso::Key,
 };
-use firelib::{lazy::LazyCtx, lexer::*, utils::PathUtils, Context, Result, ShortCircuit};
+use firelib::{lazy::LazyCtx, lexer::*, ShortCircuit};
 
 use super::{
     program::{Fmt, OptionErr, Program},
@@ -29,15 +29,8 @@ fn new_lexer(buf_id: usize, reader: impl Read + 'static) -> Lexer {
 }
 
 impl Program {
-    pub fn new_file_lexer(&mut self, path: &Path) -> Result<Lexer> {
-        let file = File::open(path).with_context(|| format!("Could not read file `{path:?}`"))?;
-
-        let buf_id = self.push_source(path.try_to_str()?);
-        Ok(new_lexer(buf_id, file))
-    }
-
-    pub fn new_lexer(&mut self, source: &str, reader: impl Read + 'static) -> Lexer {
-        new_lexer(self.push_source(source), reader)
+    pub fn new_lexer(&mut self, reader: impl Read + 'static, source: &str, module: &str) -> Lexer {
+        new_lexer(self.push_source(source, module), reader)
     }
 
     pub fn lex_next_token(&mut self, lexer: &mut Lexer) -> OptionErr<IRToken> {

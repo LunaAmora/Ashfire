@@ -47,7 +47,7 @@ pub struct Program {
     pub global_vars: Vec<TypeDescr>,
     pub block_contracts: HashMap<usize, (usize, usize)>,
     structs_types: Vec<TypeDescr>,
-    included_sources: Vec<Name>,
+    included_sources: HashMap<Name, Name>,
     consts: Vec<TypeDescr>,
     interner: Rodeo,
     mem_size: usize,
@@ -84,18 +84,22 @@ impl Program {
         Self { structs_types, interner, ..Default::default() }
     }
 
-    pub fn has_source(&self, source: &str) -> bool {
-        let Some(key) = self.interner.get(source) else {
-            return false;
-        };
-
-        self.included_sources.contains(&key)
+    pub fn has_source(&self, source: &str, module: &str) -> bool {
+        if let (Some(src), Some(modl)) = (self.interner.get(source), self.interner.get(module)) {
+            self.included_sources
+                .get(&src)
+                .map_or(false, |module| module == &modl)
+        } else {
+            false
+        }
     }
 
-    pub fn push_source(&mut self, source: &str) -> usize {
-        let key = self.interner.get_or_intern(source);
-        self.included_sources.push(key);
-        self.included_sources.len() - 1
+    pub fn push_source(&mut self, source: &str, module: &str) -> usize {
+        let mkey = self.interner.get_or_intern(module);
+
+        let skey = self.interner.get_or_intern(source);
+        self.included_sources.insert(skey, mkey);
+        skey.into_usize()
     }
 
     pub fn push_mem(&mut self, word: Name, size: usize) {
@@ -225,8 +229,10 @@ impl Program {
     pub fn loc_fmt<L: Location>(&self, loc: L) -> String {
         let Loc { file_index, line, col } = loc.loc();
         self.included_sources
-            .get(file_index)
-            .map_or_else(String::new, |l| format!("{}:{line}:{col} ", l.as_str(self)))
+            .get_key_value(&Name::try_from_usize(file_index).unwrap())
+            .map_or_else(String::new, |(src, modl)| {
+                format!("{}/{}:{line}:{col} ", modl.as_str(self), src.as_str(self))
+            })
     }
 
     pub fn format(&self, fmt: Fmt) -> String {

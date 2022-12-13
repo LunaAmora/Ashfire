@@ -1,11 +1,11 @@
-use std::{collections::VecDeque, path::Path};
+use std::{collections::VecDeque, fs::File, path::Path};
 
 use ashfire_types::{core::*, data::*, enums::*, lasso::Key, proc::*};
 use firelib::{
     lazy::LazyCtx,
     lexer::{Lexer, Loc},
     utils::*,
-    TrySuccess,
+    Context, TrySuccess,
 };
 use ControlOp::*;
 use IndexOp::*;
@@ -732,17 +732,32 @@ impl Parser {
         }
     }
 
-    pub fn lex_file(&mut self, path: &Path, prog: &mut Program) -> LazyResult<&mut Self> {
-        let lex = match prog.new_file_lexer(path) {
-            Ok(ok) => ok,
-            Err(err) => return Err(err.into()),
-        };
+    pub fn lex_path(&mut self, path: &Path, prog: &mut Program) -> LazyResult<&mut Self> {
+        info!("Including: {:?}", path);
+        let file = File::open(path).with_context(|| format!("Could not read file `{path:?}`"))?;
 
-        self.read_lexer(prog, lex, path)
+        let module = path.get_dir().unwrap().to_str().unwrap();
+        let path = path.with_extension("");
+        let source = path.file_name().unwrap().to_str().unwrap();
+
+        let lex = prog.new_lexer(file, source, module);
+        self.read_lexer(prog, lex, module)
+    }
+
+    pub fn lex_source(
+        &mut self, source: &str, module: &str, prog: &mut Program,
+    ) -> LazyResult<&mut Self> {
+        let source_name = Path::new(source).file_name().unwrap().to_str().unwrap();
+        if prog.has_source(source_name, module) {
+            return Ok(self);
+        }
+
+        let path = Path::new(module).join(source).with_extension("fire");
+        self.lex_path(&path, prog)
     }
 
     pub fn read_lexer(
-        &mut self, prog: &mut Program, mut lex: Lexer, path: &Path,
+        &mut self, prog: &mut Program, mut lex: Lexer, module: &str,
     ) -> LazyResult<&mut Self> {
         while let Some(token) = prog.lex_next_token(&mut lex).value? {
             if &token != KeywordType::Include {
@@ -753,22 +768,12 @@ impl Parser {
             let tok = expect_token_by(
                 prog.lex_next_token(&mut lex).value?,
                 |tok| tok == TokenType::Word,
-                "include file name",
+                "include source name",
                 token.loc(),
             )?;
 
             let include_path = prog.get_word(tok.index());
-
-            let include = path.get_dir()?.join(include_path).with_extension("fire");
-
-            if prog.has_source(include.with_extension("").try_to_str()?) ||
-                prog.has_source(include.try_to_str()?)
-            {
-                continue;
-            }
-
-            info!("Including file: {:?}", include);
-            self.lex_file(&include, prog)?;
+            self.lex_source(&include_path, module, prog)?;
         }
         Ok(self)
     }

@@ -10,6 +10,7 @@ use std::{
     path::Path,
 };
 
+use compiler::parsing::parser::Parser;
 use firelib::Result;
 
 use crate::{compiler::program::Program, target::Target};
@@ -22,33 +23,55 @@ pub fn compile(path: &Path, writer: impl Write, target: Target) -> Result<()> {
 }
 
 pub fn compile_buffer(
-    path: &Path, source: &str, reader: impl Read + 'static, writer: impl Write, target: Target,
+    source: &str, reader: impl Read + 'static, writer: impl Write, target: Target, std: bool,
 ) -> Result<()> {
-    Program::new()
-        .compile_buffer(path, source, reader)?
-        .type_check()?
-        .generate_wasm(writer, target)
+    info!("Compiling buffer: {:?}", source);
+    let mut prog = Program::new();
+
+    if std {
+        let mut parser = Parser::new();
+        prog.include_libs(&mut parser, target)?;
+        prog.include(&mut parser, reader, source, "")?;
+
+        prog.compile_parser(parser)?;
+    } else {
+        prog.compile_buffer(source, reader)?;
+    };
+
+    prog.type_check()?.generate_wasm(writer, target)
 }
+
+impl Program {
+    fn include_libs(&mut self, parser: &mut Parser, target: Target) -> firelib::Result<()> {
+        self.include(parser, LIB_CORE.as_bytes(), "core", "lib")?;
+
+        match target {
+            Target::Wasi => self.include(parser, LIB_WASI.as_bytes(), "wasi", "lib")?,
+            Target::Wasm4 => self.include(parser, LIB_WASM4.as_bytes(), "wasm4", "lib")?,
+        };
+
+        self.include(parser, LIB_STD.as_bytes(), "std", "lib")?;
+        Ok(())
+    }
+}
+
+pub static LIB_CORE: &str = include_str!("../../firelang/lib/core.fire");
+pub static LIB_STD: &str = include_str!("../../firelang/lib/std.fire");
+pub static LIB_WASI: &str = include_str!("../../firelang/lib/wasi.fire");
+pub static LIB_WASM4: &str = include_str!("../../firelang/lib/wasm4.fire");
 
 #[cfg(test)]
 mod tests {
-    use std::{env, io, path::PathBuf};
+    use std::io;
 
     use firelib::Result;
 
     use crate::{compile_buffer, target::Target};
 
-    fn lib_folder() -> io::Result<PathBuf> {
-        Ok(env::current_dir()?.join("../firelang/lib"))
-    }
-
     #[test]
     fn buffer_compilation() -> Result<()> {
         compile(
-            r#"
-            include lib/wasi
-            include lib/std
-            
+            r#"            
             _start export::
                 "Hello World!" println
             end
@@ -57,6 +80,6 @@ mod tests {
     }
 
     fn compile(code: &'static str) -> Result<()> {
-        compile_buffer(&lib_folder()?, "buffer", code.as_bytes(), io::sink(), Target::Wasi)
+        compile_buffer("buffer", code.as_bytes(), io::sink(), Target::Wasi, true)
     }
 }
