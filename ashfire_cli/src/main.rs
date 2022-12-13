@@ -3,7 +3,7 @@
 
 use std::{
     fs::File,
-    io::{self, BufWriter},
+    io::{self, BufReader, BufWriter},
     path::{Path, PathBuf},
 };
 
@@ -106,10 +106,11 @@ fn compile_command(
 }
 
 fn compile_pipe(target: LibTarget, runtime_name: &str, run: bool) -> Result<()> {
+    let stdin = &mut BufReader::new(io::stdin());
     match (run, target) {
         (true, LibTarget::Wasi) => {
             let mut runtime = cmd_piped!(runtime_name, "/dev/stdin");
-            compile_buffer("stdin", io::stdin(), runtime.stdin().unwrap(), target, true)?;
+            compile_buffer("stdin", stdin, runtime.stdin().unwrap(), target, true)?;
 
             info!("[CMD] {runtime_name} /dev/stdin");
             runtime.wait_with_result()?;
@@ -119,7 +120,7 @@ fn compile_pipe(target: LibTarget, runtime_name: &str, run: bool) -> Result<()> 
             let mut w4 = cmd_piped!("w4", "run", "/dev/stdin");
             let mut wat2wasm = cmd_piped!("wat2wasm", "-", "--output=-" => w4.stdin().unwrap());
 
-            compile_buffer("stdin", io::stdin(), wat2wasm.stdin().unwrap(), target, true)?;
+            compile_buffer("stdin", stdin, wat2wasm.stdin().unwrap(), target, true)?;
 
             info!("[CMD] | wat2wasm - --output=- | w4 run /dev/stdin");
             wat2wasm.wait_with_result()?;
@@ -127,7 +128,7 @@ fn compile_pipe(target: LibTarget, runtime_name: &str, run: bool) -> Result<()> 
         }
 
         (false, _) => {
-            compile_buffer("stdin", io::stdin(), io::stdout(), target, true)?;
+            compile_buffer("stdin", stdin, io::stdout(), target, true)?;
         }
     }
 

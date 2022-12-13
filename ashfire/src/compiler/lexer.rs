@@ -1,4 +1,4 @@
-use std::{io::Read, str::FromStr};
+use std::{io::BufRead, str::FromStr};
 
 use ashfire_types::{
     core::{IRToken, TokenType, INT},
@@ -24,12 +24,14 @@ fn builder() -> LexerBuilder {
         .with_comments("//")
 }
 
-fn new_lexer(buf_id: usize, reader: impl Read + 'static) -> Lexer {
+fn new_lexer(buf_id: usize, reader: &mut impl BufRead) -> Lexer {
     builder().build(buf_id, reader)
 }
 
 impl Program {
-    pub fn new_lexer(&mut self, reader: impl Read + 'static, source: &str, module: &str) -> Lexer {
+    pub fn new_lexer<'r>(
+        &mut self, reader: &'r mut impl BufRead, source: &str, module: &str,
+    ) -> Lexer<'r> {
         new_lexer(self.push_source(source, module), reader)
     }
 

@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fs::File, path::Path};
+use std::{collections::VecDeque, fs::File, io::BufReader, path::Path};
 
 use ashfire_types::{core::*, data::*, enums::*, lasso::Key, proc::*};
 use firelib::{
@@ -740,7 +740,8 @@ impl Parser {
         let path = path.with_extension("");
         let source = path.file_name().unwrap().to_str().unwrap();
 
-        let lex = prog.new_lexer(file, source, module);
+        let mut reader = BufReader::new(file);
+        let lex = prog.new_lexer(&mut reader, source, module);
         self.read_lexer(prog, lex, module)
     }
 
