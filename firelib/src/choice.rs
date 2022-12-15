@@ -87,9 +87,11 @@ mod tests {
     use crate::{
         self as firelib, alternative, choice,
         choice::Alternative,
-        lazy::{LazyCtx, LazyResult},
+        lazy::{self, LazyCtx},
         FlowControl,
     };
+
+    type LazyResult<R, T> = lazy::LazyResult<'static, R, T>;
 
     #[test]
     fn test1() {

@@ -12,9 +12,9 @@ use ashfire_types::{
 };
 use firelib::{lazy, lexer::Loc};
 
-pub type OptionErr<T, E = Fmt> = ashlib::OptionErr<T, E>;
-pub type LazyResult<T, E = Fmt> = lazy::LazyResult<T, E>;
-pub type LazyError<E = Fmt> = lazy::LazyError<E>;
+pub type OptionErr<T, E = Fmt> = ashlib::OptionErr<'static, T, E>;
+pub type LazyResult<T, E = Fmt> = lazy::LazyResult<'static, T, E>;
+pub type LazyError<E = Fmt> = lazy::LazyError<'static, E>;
 
 pub trait InternalString {
     fn as_str<'a>(&self, prog: &'a Program) -> &'a str;

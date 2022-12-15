@@ -12,7 +12,7 @@ use crate::compiler::{
     typechecking::expect::{format_frames, ArityType, Expect},
 };
 
-type DoubleResult<T> = ashlib::DoubleResult<T, IRToken, Fmt>;
+type DoubleResult<T> = ashlib::DoubleResult<'static, T, IRToken, Fmt>;
 
 impl Parser {
     pub fn compile_eval(&self, prog: &mut Program, loc: Loc) -> DoubleResult<(IRToken, usize)> {
