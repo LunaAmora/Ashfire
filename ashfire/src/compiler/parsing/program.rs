@@ -1,4 +1,4 @@
-use std::{io::BufRead, path::Path};
+use std::{io::Read, path::Path};
 
 use ashfire_types::{core::*, data::*, enums::*, proc::Mode};
 use firelib::{lazy::LazyCtx, lexer::Loc, ShortCircuit};
@@ -236,7 +236,7 @@ impl Program {
     }
 
     pub fn include(
-        &mut self, parser: &mut Parser, reader: &mut impl BufRead, source: &str, module: &str,
+        &mut self, parser: &mut Parser, reader: impl Read, source: &str, module: &str,
     ) -> firelib::Result<()> {
         let lex = self.new_lexer(reader, source, module);
         parser.read_lexer(self, lex, module)?;
@@ -244,7 +244,7 @@ impl Program {
     }
 
     pub fn compile_buffer(
-        &mut self, source: &str, reader: &mut impl BufRead,
+        &mut self, source: &str, reader: impl Read,
     ) -> firelib::Result<&mut Self> {
         let mut parser = Parser::new();
         self.include(&mut parser, reader, source, "")?;

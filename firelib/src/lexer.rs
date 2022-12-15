@@ -1,4 +1,7 @@
-use std::{collections::HashMap, io::BufRead};
+use std::{
+    collections::HashMap,
+    io::{BufRead, BufReader, Read},
+};
 
 use crate::utils::strip_trailing_newline;
 
@@ -39,7 +42,7 @@ impl LexerBuilder {
     }
 
     /// Tries to build an `Lexer` with the given `Read` and parameters.
-    pub fn build<'r>(self, index: usize, read: &'r mut impl BufRead) -> Lexer<'r> {
+    pub fn build<'r>(self, index: usize, read: impl Read + 'r) -> Lexer<'r> {
         let mut matches = HashMap::with_capacity(self.matches.len());
 
         for value in &self.matches {
@@ -49,7 +52,8 @@ impl LexerBuilder {
             };
         }
 
-        Lexer::<'r>::new(read, index, self.separators, self.comments, matches)
+        let reader = Box::new(BufReader::new(read));
+        Lexer::<'r>::new(reader, index, self.separators, self.comments, matches)
     }
 }
 
@@ -67,7 +71,7 @@ enum Predicate {
 
 pub struct Lexer<'r> {
     buffer: Vec<char>,
-    reader: &'r mut dyn BufRead,
+    reader: Box<dyn BufRead + 'r>,
     separators: Vec<char>,
     comments: Option<String>,
     matches: HashMap<char, char>,
@@ -87,7 +91,7 @@ impl<'r> Iterator for Lexer<'r> {
 
 impl<'r> Lexer<'r> {
     pub fn new(
-        reader: &'r mut impl BufRead, file_index: usize, separators: Vec<char>,
+        reader: Box<dyn BufRead + 'r>, file_index: usize, separators: Vec<char>,
         comments: Option<String>, matches: HashMap<char, char>,
     ) -> Self {
         Self {

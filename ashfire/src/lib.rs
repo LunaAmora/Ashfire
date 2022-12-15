@@ -6,7 +6,7 @@ mod compiler;
 pub mod target;
 
 use std::{
-    io::{BufRead, Write},
+    io::{Read, Write},
     path::Path,
 };
 
@@ -23,7 +23,7 @@ pub fn compile(path: &Path, writer: impl Write, target: Target) -> Result<()> {
 }
 
 pub fn compile_buffer(
-    source: &str, reader: &mut impl BufRead, writer: impl Write, target: Target, std: bool,
+    source: &str, reader: impl Read, writer: impl Write, target: Target, std: bool,
 ) -> Result<()> {
     info!("Compiling buffer: {:?}", source);
     let mut prog = Program::new();
