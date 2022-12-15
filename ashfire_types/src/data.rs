@@ -199,10 +199,10 @@ impl TypeDescr {
 }
 
 pub trait Transposer<T, I> {
-    type Provider<'a>
+    type Provider<'i>
     where
-        I: 'a,
-    = &'a mut (dyn Iterator<Item = I>);
+        I: 'i,
+    = &'i mut (dyn Iterator<Item = I>);
     fn transpose(self, rev: bool, provider: Self::Provider<'_>) -> Option<T>;
 }
 

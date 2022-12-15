@@ -19,12 +19,12 @@ pub type LazyResult<T> = utils::LazyResult<'static, T>;
 pub type LazyError = utils::LazyError<'static>;
 
 pub trait InternalString {
-    fn as_str<'a>(&self, prog: &'a Program) -> &'a str;
+    fn as_str<'p>(&self, prog: &'p Program) -> &'p str;
     fn as_string(&self, prog: &Program) -> String;
 }
 
 impl InternalString for Name {
-    fn as_str<'a>(&self, prog: &'a Program) -> &'a str {
+    fn as_str<'p>(&self, prog: &'p Program) -> &'p str {
         prog.interner.resolve(self)
     }
 
@@ -360,19 +360,19 @@ pub trait Visitor {
         self.get_index().is_some()
     }
 
-    fn current_proc<'a>(&self, program: &'a Program) -> Option<&'a Proc> {
+    fn current_proc<'p>(&self, program: &'p Program) -> Option<&'p Proc> {
         self.get_index().and_then(|i| program.procs.get(i))
     }
 
-    fn current_proc_data<'a>(&self, program: &'a Program) -> Option<&'a Data> {
+    fn current_proc_data<'p>(&self, program: &'p Program) -> Option<&'p Data> {
         self.current_proc(program).and_then(Proc::get_data)
     }
 
-    fn current_proc_mut<'a>(&self, program: &'a mut Program) -> Option<&'a mut Proc> {
+    fn current_proc_mut<'p>(&self, program: &'p mut Program) -> Option<&'p mut Proc> {
         self.get_index().and_then(|i| program.procs.get_mut(i))
     }
 
-    fn visit_proc<'a>(&mut self, program: &'a Program, index: usize) -> &'a Proc {
+    fn visit_proc<'p>(&mut self, program: &'p Program, index: usize) -> &'p Proc {
         self.enter_proc(index);
         &program.procs[index]
     }

@@ -39,7 +39,7 @@ impl Generator {
         }
     }
 
-    pub fn prep_proc<'a>(&mut self, program: &'a Program, ip: usize) -> Result<Option<&'a Proc>> {
+    pub fn prep_proc<'p>(&mut self, program: &'p Program, ip: usize) -> Result<Option<&'p Proc>> {
         if self.current_func.is_some() {
             bail!("Cannot start an Wasm function block without closing the current one");
         }

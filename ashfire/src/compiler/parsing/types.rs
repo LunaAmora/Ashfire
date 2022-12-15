@@ -35,7 +35,7 @@ impl Location for LocWord {
 }
 
 impl InternalString for LocWord {
-    fn as_str<'a>(&self, prog: &'a Program) -> &'a str {
+    fn as_str<'p>(&self, prog: &'p Program) -> &'p str {
         self.0.as_str(prog)
     }
 

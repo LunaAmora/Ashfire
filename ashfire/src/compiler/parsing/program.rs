@@ -182,9 +182,9 @@ impl Program {
         OptionErr::new(result)
     }
 
-    fn try_get_field<'a>(
-        &self, word: &LocWord, vars: &'a [TypeDescr],
-    ) -> OptionErr<(&'a TypeDescr, usize)> {
+    fn try_get_field<'t>(
+        &self, word: &LocWord, vars: &'t [TypeDescr],
+    ) -> OptionErr<(&'t TypeDescr, usize)> {
         let fields: Vec<_> = word.as_str(self).split('.').collect();
         let loc = word.loc();
 
