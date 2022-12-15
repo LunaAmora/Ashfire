@@ -14,7 +14,7 @@ use crate::compiler::{
     typechecking::expect::Compare,
 };
 
-impl Compare<IRToken> for Vec<IRToken> {}
+impl Compare<'_, IRToken> for Vec<IRToken> {}
 
 pub struct LocWord(pub Name, pub Loc);
 

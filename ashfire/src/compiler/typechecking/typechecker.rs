@@ -13,7 +13,7 @@ use crate::compiler::{parsing::types::StructUtils, program::*, utils::err_loc};
 
 type DataStack = EvalStack<TypeFrame>;
 
-impl Expect<TypeFrame> for DataStack {}
+impl Expect<'_, TypeFrame> for DataStack {}
 
 #[derive(Clone)]
 struct TypeBlock(DataStack, usize);

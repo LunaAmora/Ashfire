@@ -10,11 +10,13 @@ use ashfire_types::{
     lasso::{Key, Rodeo},
     proc::{Data, Proc},
 };
-use firelib::{lazy, lexer::Loc};
+use firelib::lexer::Loc;
 
-pub type OptionErr<T, E = Fmt> = ashlib::OptionErr<'static, T, E>;
-pub type LazyResult<T, E = Fmt> = lazy::LazyResult<'static, T, E>;
-pub type LazyError<E = Fmt> = lazy::LazyError<'static, E>;
+use super::utils;
+
+pub type OptionErr<T> = utils::OptionErr<'static, T>;
+pub type LazyResult<T> = utils::LazyResult<'static, T>;
+pub type LazyError = utils::LazyError<'static>;
 
 pub trait InternalString {
     fn as_str<'a>(&self, prog: &'a Program) -> &'a str;

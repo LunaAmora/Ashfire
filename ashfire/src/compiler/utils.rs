@@ -1,15 +1,19 @@
 use std::fmt::Display;
 
-use firelib::lexer::Loc;
+use firelib::{lazy, lexer::Loc};
 
-use super::program::{Fmt, LazyError, Program};
+use super::program::{Fmt, Program};
 
-pub fn err_loc<S: Display + 'static>(error: S, loc: Loc) -> LazyError {
-    LazyError::new(move |f| format!("{}{error}", f.format(Fmt::Loc(loc))))
+pub type OptionErr<'err, T, E = Fmt> = ashlib::OptionErr<'err, T, E>;
+pub type LazyResult<'err, T, E = Fmt> = lazy::LazyResult<'err, T, E>;
+pub type LazyError<'err, E = Fmt> = lazy::LazyError<'err, E>;
+
+pub fn err_loc<'err, S: Display + 'err>(error: S, loc: Loc) -> LazyError<'err> {
+    LazyError::new(move |f| format!("{}{}", f.format(Fmt::Loc(loc)), error))
 }
 
 #[track_caller]
-pub fn todo(loc: Loc) -> LazyError {
+pub fn todo<'err>(loc: Loc) -> LazyError<'err> {
     err_loc(format!("\n[HERE]  {}", std::panic::Location::caller()), loc)
 }
 

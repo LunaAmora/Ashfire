@@ -60,7 +60,7 @@ impl Parser {
     }
 }
 
-impl Expect<IRToken> for EvalStack<IRToken> {}
+impl Expect<'_, IRToken> for EvalStack<IRToken> {}
 
 pub trait Evaluator {
     fn evaluate(&mut self, item: IRToken, prog: &mut Program) -> DoubleResult<()>;
