@@ -2,7 +2,7 @@
 #[macro_use] extern crate log;
 #[macro_use] extern crate firelib;
 
-mod compiler;
+pub mod compiler;
 pub mod target;
 
 use std::{
@@ -79,7 +79,7 @@ mod tests {
         )
     }
 
-    fn compile(code: &'static str) -> Result<()> {
+    fn compile(code: &str) -> Result<()> {
         compile_buffer("buffer", &mut code.as_bytes(), io::sink(), Target::Wasi, true)
     }
 }

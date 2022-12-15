@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fs::File, io::BufReader, path::Path};
+use std::{collections::VecDeque, fs::File, path::Path};
 
 use ashfire_types::{core::*, data::*, enums::*, lasso::Key, proc::*};
 use firelib::{
@@ -35,6 +35,15 @@ impl Visitor for Parser {
     }
 }
 
+impl Iterator for Parser {
+    type Item = IRToken;
+
+    /// Pops and returns the next [`IRToken`] of this [`Parser`].
+    fn next(&mut self) -> Option<Self::Item> {
+        self.ir_tokens.pop_front()
+    }
+}
+
 impl Parser {
     pub fn new() -> Self {
         Self { ..Default::default() }
@@ -50,11 +59,6 @@ impl Parser {
 
     pub fn get_cloned(&self, index: usize) -> Option<IRToken> {
         self.ir_tokens.get(index).cloned()
-    }
-
-    /// Pops and returns the next [`IRToken`] of this [`Parser`].
-    pub fn next(&mut self) -> Option<IRToken> {
-        self.ir_tokens.pop_front()
     }
 
     /// Pops `n` elements and returns the last [`IRToken`] of this [`Parser`].
@@ -740,8 +744,7 @@ impl Parser {
         let path = path.with_extension("");
         let source = path.file_name().unwrap().to_str().unwrap();
 
-        let mut reader = BufReader::new(file);
-        let lex = prog.new_lexer(&mut reader, source, module);
+        let lex = prog.new_lexer(file, source, module);
         self.read_lexer(prog, lex, module)
     }
 

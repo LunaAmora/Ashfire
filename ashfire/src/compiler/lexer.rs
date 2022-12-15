@@ -117,7 +117,7 @@ fn escaped_len(name: &str) -> usize {
 }
 
 fn parse_as_keyword(tok: &Token) -> Option<IRToken> {
-    KeywordType::from_str(tok.name.as_str())
+    KeywordType::from_str(&tok.name)
         .ok()
         .map(|k| IRToken(TokenType::Keyword, k as i32, tok.loc))
 }
