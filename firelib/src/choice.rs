@@ -87,7 +87,7 @@ mod tests {
     use crate::{
         self as firelib, alternative, choice,
         choice::Alternative,
-        lazy::{self, LazyCtx},
+        lazy::{self, LazyErrCtx},
         FlowControl,
     };
 

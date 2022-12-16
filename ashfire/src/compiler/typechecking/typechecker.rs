@@ -6,7 +6,7 @@ use ashfire_types::{
     proc::{Binds, Mode},
 };
 use ashlib::{EvalStack, UncheckedStack};
-use firelib::{lazy::LazyCtx, lexer::Loc, Result};
+use firelib::{lazy::LazyErrCtx, lexer::Loc, Result};
 
 use super::{expect::*, types::TypeFrame};
 use crate::compiler::{parsing::types::StructUtils, program::*, utils::err_loc};

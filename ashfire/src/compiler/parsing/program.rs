@@ -1,7 +1,7 @@
 use std::{io::Read, path::Path};
 
 use ashfire_types::{core::*, data::*, enums::*, proc::Mode};
-use firelib::{lazy::LazyCtx, lexer::Loc, Result, ShortCircuit};
+use firelib::{lazy::LazyErrCtx, lexer::Loc, Result, ShortCircuit};
 use IndexOp::*;
 
 use super::{parser::Parser, types::*};
