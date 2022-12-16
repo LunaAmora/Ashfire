@@ -42,16 +42,15 @@ pub fn compile_buffer(
 }
 
 impl Program {
-    fn include_libs(&mut self, parser: &mut Parser, target: Target) -> firelib::Result<()> {
-        self.include(parser, &mut LIB_CORE.as_bytes(), "core", "lib")?;
+    fn include_libs(&mut self, parser: &mut Parser, target: Target) -> Result<()> {
+        self.include(parser, LIB_CORE.as_bytes(), "core", "lib")?;
 
         match target {
-            Target::Wasi => self.include(parser, &mut LIB_WASI.as_bytes(), "wasi", "lib")?,
-            Target::Wasm4 => self.include(parser, &mut LIB_WASM4.as_bytes(), "wasm4", "lib")?,
+            Target::Wasi => self.include(parser, LIB_WASI.as_bytes(), "wasi", "lib")?,
+            Target::Wasm4 => self.include(parser, LIB_WASM4.as_bytes(), "wasm4", "lib")?,
         };
 
-        self.include(parser, &mut LIB_STD.as_bytes(), "std", "lib")?;
-        Ok(())
+        self.include(parser, LIB_STD.as_bytes(), "std", "lib")
     }
 }
 
@@ -80,6 +79,6 @@ mod tests {
     }
 
     fn compile(code: &str) -> Result<()> {
-        compile_buffer("buffer", &mut code.as_bytes(), io::sink(), Target::Wasi, true)
+        compile_buffer("buffer", code.as_bytes(), io::sink(), Target::Wasi, true)
     }
 }

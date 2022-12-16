@@ -1,7 +1,7 @@
 use std::{io::Read, path::Path};
 
 use ashfire_types::{core::*, data::*, enums::*, proc::Mode};
-use firelib::{lazy::LazyCtx, lexer::Loc, ShortCircuit};
+use firelib::{lazy::LazyCtx, lexer::Loc, Result, ShortCircuit};
 use IndexOp::*;
 
 use super::{parser::Parser, types::*};
@@ -237,21 +237,21 @@ impl Program {
 
     pub fn include(
         &mut self, parser: &mut Parser, reader: impl Read, source: &str, module: &str,
-    ) -> firelib::Result<()> {
+    ) -> Result<()> {
         let lex = self.new_lexer(reader, source, module);
-        parser.read_lexer(self, lex, module)?;
+        parser
+            .read_lexer(self, lex, module)
+            .try_or_apply(&|fmt| self.format(fmt))?;
         Ok(())
     }
 
-    pub fn compile_buffer(
-        &mut self, source: &str, reader: impl Read,
-    ) -> firelib::Result<&mut Self> {
+    pub fn compile_buffer(&mut self, source: &str, reader: impl Read) -> Result<&mut Self> {
         let mut parser = Parser::new();
         self.include(&mut parser, reader, source, "")?;
         self.compile_parser(parser)
     }
 
-    pub fn compile_parser(&mut self, mut parser: Parser) -> firelib::Result<&mut Self> {
+    pub fn compile_parser(&mut self, mut parser: Parser) -> Result<&mut Self> {
         parser
             .parse_tokens(self)
             .try_or_apply(&|fmt| self.format(fmt))?;
@@ -260,11 +260,13 @@ impl Program {
         Ok(self)
     }
 
-    pub fn compile_file(&mut self, path: &Path) -> firelib::Result<&mut Self> {
+    pub fn compile_file(&mut self, path: &Path) -> Result<&mut Self> {
         info!("Compiling file: {:?}", path);
 
         let mut parser = Parser::new();
-        parser.lex_path(path, self)?;
+        parser
+            .lex_path(path, self)
+            .try_or_apply(&|fmt| self.format(fmt))?;
         self.compile_parser(parser)
     }
 }
