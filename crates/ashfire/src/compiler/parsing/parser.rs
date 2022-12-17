@@ -737,11 +737,10 @@ impl Parser {
     }
 
     pub fn lex_path(&mut self, path: &Path, prog: &mut Program) -> LazyResult<&mut Self> {
-        info!("Including: {:?}", path);
+        debug!("Including: {:?}", path);
         let file = File::open(path).with_context(|| format!("Could not read file `{path:?}`"))?;
 
         let module = path.get_dir().unwrap().to_str().unwrap();
-        let path = path.with_extension("");
         let source = path.file_name().unwrap().to_str().unwrap();
 
         let lex = prog.new_lexer(file, source, module);
@@ -751,12 +750,14 @@ impl Parser {
     pub fn lex_source(
         &mut self, source: &str, module: &str, prog: &mut Program,
     ) -> LazyResult<&mut Self> {
-        let source_name = Path::new(source).file_name().unwrap().to_str().unwrap();
-        if prog.has_source(source_name, module) {
+        let path = Path::new(module).join(source).with_extension("fire");
+        let source_name = path.file_name().unwrap().to_str().unwrap();
+        let module_name = path.get_dir().unwrap().to_str().unwrap();
+
+        if prog.has_source(source_name, module_name) {
             return Ok(self);
         }
 
-        let path = Path::new(module).join(source).with_extension("fire");
         self.lex_path(&path, prog)
     }
 

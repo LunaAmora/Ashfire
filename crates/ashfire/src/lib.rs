@@ -31,7 +31,7 @@ pub fn compile_buffer(
     if std {
         let mut parser = Parser::new();
         prog.include_libs(&mut parser, target)?;
-        prog.include(&mut parser, reader, source, "")?;
+        prog.include(&mut parser, reader, source, LANG_FOLDER)?;
 
         prog.compile_parser(parser)?;
     } else {
@@ -43,21 +43,18 @@ pub fn compile_buffer(
 
 impl Program {
     fn include_libs(&mut self, parser: &mut Parser, target: Target) -> Result<()> {
-        self.include(parser, LIB_CORE.as_bytes(), "core", "lib")?;
+        let folder = Path::new(LANG_FOLDER);
 
         match target {
-            Target::Wasi => self.include(parser, LIB_WASI.as_bytes(), "wasi", "lib")?,
-            Target::Wasm4 => self.include(parser, LIB_WASM4.as_bytes(), "wasm4", "lib")?,
+            Target::Wasi => self.include_path(parser, &folder.join("lib/wasi.fire"))?,
+            Target::Wasm4 => self.include_path(parser, &folder.join("lib/wasm4.fire"))?,
         };
 
-        self.include(parser, LIB_STD.as_bytes(), "std", "lib")
+        self.include_path(parser, &folder.join("lib/std.fire"))
     }
 }
 
-pub static LIB_CORE: &str = include_str!("../../firelang/lib/core.fire");
-pub static LIB_STD: &str = include_str!("../../firelang/lib/std.fire");
-pub static LIB_WASI: &str = include_str!("../../firelang/lib/wasi.fire");
-pub static LIB_WASM4: &str = include_str!("../../firelang/lib/wasm4.fire");
+pub static LANG_FOLDER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/firelang");
 
 #[cfg(test)]
 mod tests {

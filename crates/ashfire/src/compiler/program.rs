@@ -98,8 +98,9 @@ impl Program {
 
     pub fn push_source(&mut self, source: &str, module: &str) -> usize {
         let mkey = self.interner.get_or_intern(module);
-
         let skey = self.interner.get_or_intern(source);
+
+        //this should only insert a new key-value pair, should check if `has_source` first
         self.included_sources.insert(skey, mkey);
         skey.into_usize()
     }

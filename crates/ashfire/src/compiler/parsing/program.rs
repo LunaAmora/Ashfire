@@ -264,9 +264,14 @@ impl Program {
         info!("Compiling file: {:?}", path);
 
         let mut parser = Parser::new();
+        self.include_path(&mut parser, path)?;
+        self.compile_parser(parser)
+    }
+
+    pub fn include_path(&mut self, parser: &mut Parser, path: &Path) -> Result<()> {
         parser
             .lex_path(path, self)
             .try_or_apply(&|fmt| self.format(fmt))?;
-        self.compile_parser(parser)
+        Ok(())
     }
 }

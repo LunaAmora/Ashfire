@@ -1,13 +1,29 @@
-[workspace]
+[package]
+name = "ashfire_cli"
+description = "Cli for the Firelang language compiler"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+readme.workspace = true
+license-file.workspace = true
 
+[dependencies]
+clap = { version = "4.0.29", features = ["derive"] }
+clap-verbosity-flag = "2.0.0"
+log = "0.4.17"
+env_logger = { features = ["auto-color"], default-features = false, version = "0.10.0" }
+ashfire = { path = "crates/ashfire" }
+firelib = { path = "crates/firelib" }
+
+[workspace]
+resolver = '2'
 members = [
-    "ashlib",
-    "ashfire",
-    "ashfire_cli",
-    "ashfire_types",
-    "firelib",
-    "firelib_macro",
-    "wasm_backend",
+    "crates/ashlib",
+    "crates/ashfire",
+    "crates/ashfire_types",
+    "crates/firelib",
+    "crates/firelib_macro",
+    "crates/wasm_backend",
 ]
 
 [workspace.package]
