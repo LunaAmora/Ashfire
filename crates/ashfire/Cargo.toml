@@ -14,3 +14,10 @@ ashlib = { path = "../ashlib" }
 firelib = { path = "../firelib" }
 wasm_backend = { path = "../wasm_backend" }
 ashfire_types = { path = "../ashfire_types" }
+
+[dev-dependencies]
+criterion = "0.4"
+
+[[bench]]
+name = "compilation_test"
+harness = false
