@@ -5,7 +5,6 @@
         "-Wclippy::all",
 
         "-Wclippy::nursery",
-        "-Aclippy::non-send-fields-in-send-ty",
         "-Aclippy::missing_const_for_fn",
 
         "-Wclippy::pedantic",

@@ -78,7 +78,7 @@ impl<'err, S: Display + 'err> ExpectToken<'err, S> for Parser {
         match token_type {
             TokenType::Keyword => {
                 let word_error = format!("{error_text} after `*`");
-                let ref_word = self.expect_word(word_error.to_string(), loc)?;
+                let ref_word = self.expect_word(word_error.clone(), loc)?;
 
                 prog.get_type_id(ref_word.name())
                     .map(|x| prog.get_type_ptr(x))

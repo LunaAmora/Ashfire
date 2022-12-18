@@ -327,12 +327,13 @@ impl Program {
         use ashfire_types::enums::{ControlOp, IndexOp, OpType};
         let &Op(op_type, _) = op;
         match op_type {
-            OpType::Intrinsic(intrinsic) => match intrinsic {
-                IntrinsicType::Cast(type_id) => {
-                    format!("Intrinsic Cast [{}]", self.type_name(type_id.get_type()))
-                }
-                intrinsic => format!("Intrinsic [{intrinsic:?}]"),
-            },
+            OpType::Intrinsic(IntrinsicType::Cast(type_id)) => {
+                format!("Intrinsic Cast [{}]", self.type_name(type_id.get_type()))
+            }
+
+            OpType::Intrinsic(intrinsic) => {
+                format!("Intrinsic [{intrinsic:?}]")
+            }
 
             OpType::IndexOp(op, index) => match op {
                 IndexOp::Call => format!("Call [{}]", self.get_proc(index).name.as_str(self)),
