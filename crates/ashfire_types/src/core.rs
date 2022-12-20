@@ -62,15 +62,6 @@ impl Typed for TokenType {
     }
 }
 
-impl PartialEq<TypeId> for TokenType {
-    fn eq(&self, other: &TypeId) -> bool {
-        match self {
-            Self::Data(ValueType(typ)) => typ == other,
-            _ => false,
-        }
-    }
-}
-
 impl PartialEq<ValueType> for TokenType {
     fn eq(&self, other: &ValueType) -> bool {
         match self {
@@ -148,7 +139,7 @@ impl PartialEq<TokenType> for &IRToken {
 
 impl PartialEq<TypeId> for &IRToken {
     fn eq(&self, other: &TypeId) -> bool {
-        &self.0 == other
+        self.0 == ValueType(*other)
     }
 }
 
