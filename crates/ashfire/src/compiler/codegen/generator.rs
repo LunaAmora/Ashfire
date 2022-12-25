@@ -71,7 +71,7 @@ impl Generator {
         wasm.add_fn("push_local", i1, i1, vec![Get(global, Id(stk)), Get(local, Id(0)), I32(sub)]);
 
         let mut proc = None;
-        for (ip, &Op(op_type, ..)) in program.ops.iter().enumerate() {
+        for (ip, &Op(op_type, _)) in program.ops.iter().enumerate() {
             match (op_type, proc) {
                 (OpType::ControlOp(ControlOp::PrepProc | ControlOp::PrepInline, proc_ip), _) => {
                     proc = self.prep_proc(program, proc_ip)?;
@@ -79,11 +79,11 @@ impl Generator {
 
                 (OpType::ControlOp(ControlOp::EndProc, _), _) => {
                     self.end_proc(program, &mut wasm)?;
+                    proc = None;
                 }
 
-                (_, Some(proc)) => self
-                    .current_fn()?
-                    .append_op(program, op_type, ip, proc, &mut wasm)?,
+                (_, Some(proc)) => self.current_fn()?.append_op(program, ip, proc, &mut wasm),
+
                 _ => (),
             }
         }
@@ -110,9 +110,8 @@ impl Generator {
 }
 
 impl FuncGen {
-    fn append_op(
-        &mut self, prog: &Program, op_type: OpType, ip: usize, proc: &Proc, module: &mut Module,
-    ) -> Result<()> {
+    fn append_op(&mut self, prog: &Program, ip: usize, proc: &Proc, module: &mut Module) {
+        let Op(op_type, _) = prog.ops[ip];
         match op_type {
             OpType::PushData(_, operand) => self.push(Const(operand)),
 
@@ -154,9 +153,8 @@ impl FuncGen {
                         unreachable!();
                     };
 
-                    for ip in start + 1..end {
-                        let in_op = prog.ops[ip].0;
-                        self.append_op(prog, in_op, ip, inlined_proc, module)?;
+                    for ip in (start + 1)..end {
+                        self.append_op(prog, ip, inlined_proc, module);
                     }
                 }
 
@@ -285,7 +283,6 @@ impl FuncGen {
 
             OpType::ExpectType(_) => {}
         }
-        Ok(())
     }
 }
 
