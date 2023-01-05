@@ -248,7 +248,7 @@ impl Module {
     }
 
     pub fn write_text(mut self, mut writer: impl Write) -> Result<()> {
-        writer.write_all(b";;;\n(module\n")?;
+        writer.write_all(b"(module\n")?;
 
         self.write_imports(&mut writer)?
             .write_globals(&mut writer)?
