@@ -34,34 +34,34 @@ pub trait Expect<'err, T: Clone + Typed + Location + 'err>: UncheckedStack<T> {
         &mut self, contract: [TokenType; N], loc: Loc,
     ) -> LazyResult<'err, [T; N]> {
         self.expect_arity(&contract, loc)?;
-        Ok(unsafe { self.pop_array() })
+        Ok(self.pop_array())
     }
 
     fn expect_arity_pop<const N: usize>(
         &mut self, arity: ArityType<TokenType>, loc: Loc,
     ) -> LazyResult<'err, [T; N]> {
         self.expect_arity_type::<N>(arity, loc)?;
-        Ok(unsafe { self.pop_array() })
+        Ok(self.pop_array())
     }
 
     fn expect_peek(&mut self, arity_t: ArityType<TokenType>, loc: Loc) -> LazyResult<'err, &T> {
         self.expect_arity_type::<1>(arity_t, loc)?;
-        Ok(unsafe { self.peek() })
+        Ok(self.peek())
     }
 
     fn expect_pop(&mut self, loc: Loc) -> LazyResult<'err, T> {
         self.expect_stack_size(1, loc)?;
-        Ok(unsafe { self.pop() })
+        Ok(self.pop())
     }
 
     fn expect_pop_n<const N: usize>(&mut self, loc: Loc) -> LazyResult<'err, [T; N]> {
         self.expect_stack_size(N, loc)?;
-        Ok(unsafe { self.pop_array() })
+        Ok(self.pop_array())
     }
 
     fn expect_pop_type(&mut self, arity_t: TokenType, loc: Loc) -> LazyResult<'err, T> {
         self.expect_arity_type::<1>(ArityType::Type(arity_t), loc)?;
-        Ok(unsafe { self.pop() })
+        Ok(self.pop())
     }
 
     fn expect_arity_type<const N: usize>(
@@ -71,7 +71,7 @@ pub trait Expect<'err, T: Clone + Typed + Location + 'err>: UncheckedStack<T> {
 
         let typ = match arity {
             ArityType::Any => return Ok(()),
-            ArityType::Same => unsafe { self.get_from_top(0) }.get_type(),
+            ArityType::Same => self.get_from_top(0).get_type(),
             ArityType::Type(typ) => typ,
         };
 

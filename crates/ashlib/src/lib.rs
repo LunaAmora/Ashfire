@@ -151,22 +151,18 @@ impl<'err, T, E, F> FromResidual<Result<Infallible, LazyError<'err, F>>>
 }
 
 /// An unchecked Stack API.
+///
+/// # Panics
+///
+/// Can panic if the underlying stack lenght is not checked beforehand.
 pub trait UncheckedStack<T>: Deref<Target = [T]> {
     fn push(&mut self, item: T);
     fn extend<const N: usize>(&mut self, items: [T; N]);
     fn truncate(&mut self, n: usize);
-    /// # Safety
-    /// Check inner stack lengh before using.
-    unsafe fn pop(&mut self) -> T;
-    /// # Safety
-    /// Check inner stack lengh before using.
-    unsafe fn pop_array<const N: usize>(&mut self) -> [T; N];
-    /// # Safety
-    /// Check inner stack lengh before using.
-    unsafe fn peek(&mut self) -> &T;
-    /// # Safety
-    /// Check inner stack lengh before using.
-    unsafe fn get_from_top(&self, n: usize) -> &T;
+    fn pop(&mut self) -> T;
+    fn pop_array<const N: usize>(&mut self) -> [T; N];
+    fn peek(&mut self) -> &T;
+    fn get_from_top(&self, n: usize) -> &T;
 }
 
 #[derive(Clone)]
@@ -239,9 +235,9 @@ impl<T> UncheckedStack<T> for EvalStack<T> {
         self.frames.extend(items);
     }
 
-    unsafe fn pop(&mut self) -> T {
+    fn pop(&mut self) -> T {
         self.stack_minus(1);
-        self.frames.pop().unwrap_unchecked()
+        self.frames.pop().unwrap()
     }
 
     fn truncate(&mut self, n: usize) {
@@ -249,22 +245,22 @@ impl<T> UncheckedStack<T> for EvalStack<T> {
         self.frames.truncate(self.len() - n);
     }
 
-    unsafe fn pop_array<const N: usize>(&mut self) -> [T; N] {
+    fn pop_array<const N: usize>(&mut self) -> [T; N] {
         self.stack_minus(N);
         let len = self.len();
         let range = (len - N)..;
         let drain: Vec<T> = self.frames.drain(range).collect();
 
-        drain.try_into().unwrap_unchecked()
+        drain.try_into().map_or_else(|_| panic!(), |drain| drain)
     }
 
-    unsafe fn peek(&mut self) -> &T {
+    fn peek(&mut self) -> &T {
         self.stack_minus(1);
         self.stack_count += 1;
-        self.frames.get_unchecked(self.len() - 1)
+        self.frames.get(self.len() - 1).unwrap()
     }
 
-    unsafe fn get_from_top(&self, n: usize) -> &T {
-        self.frames.get_unchecked(self.len() - 1 - n)
+    fn get_from_top(&self, n: usize) -> &T {
+        self.frames.get(self.len() - 1 - n).unwrap()
     }
 }
