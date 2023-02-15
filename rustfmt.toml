@@ -1,6 +1,6 @@
 ignore = ["firelib_macro"]
-group_imports ="StdExternalCrate"
-fn_args_layout  = "Compressed"
+group_imports = "StdExternalCrate"
+fn_params_layout  = "Compressed"
 imports_granularity = "Crate"
 binop_separator = "Back"
 newline_style = "Unix"
