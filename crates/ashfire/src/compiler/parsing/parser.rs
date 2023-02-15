@@ -1,6 +1,7 @@
-use std::{collections::VecDeque, fs::File, path::Path};
+use std::{collections::VecDeque, fs::File, ops::Index, path::Path};
 
 use ashfire_types::{core::*, data::*, enums::*, lasso::Key, proc::*};
+use ashlib::Either;
 use firelib::{
     lazy::LazyCtx,
     lexer::{Lexer, Loc},
@@ -41,6 +42,14 @@ impl Iterator for Parser {
     /// Pops and returns the next [`IRToken`] of this [`Parser`].
     fn next(&mut self) -> Option<Self::Item> {
         self.ir_tokens.pop_front()
+    }
+}
+
+impl Index<usize> for Parser {
+    type Output = IRToken;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.ir_tokens.get(index).expect("Index out of range")
     }
 }
 
@@ -369,7 +378,7 @@ impl Parser {
     fn parse_expected_type(
         &mut self, colons: &mut u8, top_index: usize, word: &LocWord, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
-        let tok = self.get(top_index).unwrap();
+        let tok = &self[top_index];
         match tok.as_keyword() {
             KeywordType::Mem => {
                 self.next();
@@ -421,7 +430,7 @@ impl Parser {
     fn parse_keyword_ctx(
         &mut self, top_index: usize, word: &LocWord, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
-        let tok = self.get(top_index).unwrap();
+        let tok = &self[top_index];
         match tok.as_keyword() {
             KeywordType::Equal => {
                 self.skip(1);
@@ -571,7 +580,7 @@ impl Parser {
 
             match prog.get_type_descr(kind) {
                 TypeDescr::Structure(StructType(fields, _)) => {
-                    let value = prog.get_type_id(fields.name()).unwrap();
+                    let value = prog.get_fields_type_id(fields);
                     members.push(TypeDescr::structure(member_name, fields.to_vec(), value));
                 }
                 TypeDescr::Primitive(Primitive(.., id)) => {
@@ -630,7 +639,11 @@ impl Parser {
                 self.expect_keyword(KeywordType::In, "`in` after let bind declaration", loc)?;
 
                 bindings.reverse();
-                let proc_bindings = &mut self.current_proc_mut(prog).unwrap().binds;
+                let current_proc_mut = self
+                    .current_proc_mut(prog)
+                    .expect("Expected to be used inside a procedure");
+
+                let proc_bindings = &mut current_proc_mut.binds;
                 proc_bindings.push(Binds(bindings));
 
                 let bind_block = (BindStack, proc_bindings.len() - 1, loc);
@@ -654,7 +667,7 @@ impl Parser {
         let stk = prog.get_type_descr(reftype).clone();
         let &LocWord(name, loc) = word;
 
-        let (mut result, eval) = match self.compile_eval_n(stk.count(), prog, loc).value {
+        let (result, skip) = match self.compile_eval_n(stk.count(), prog, loc).value {
             Ok(value) => value,
             Err(either) => {
                 return Err(either.either(
@@ -666,41 +679,48 @@ impl Parser {
             }
         };
 
-        let end_loc = self.skip(eval).unwrap().loc();
+        let end_loc = self
+            .skip(skip)
+            .expect("Should not fail if `compile_eval_n` was sucessfull")
+            .loc();
 
-        let struct_type = if result.len() == 1 {
-            let eval = result.pop().unwrap();
+        let struct_type = match result {
+            Either::Left(tok) => {
+                match &stk {
+                    TypeDescr::Primitive(_) => todo!(),
 
-            match &stk {
-                TypeDescr::Primitive(_) => todo!(),
+                    TypeDescr::Structure(StructType(fields, _)) => {
+                        expect_type(&tok, fields[0].type_id().get_type(), end_loc)?;
+                    }
 
-                TypeDescr::Structure(StructType(fields, _)) => {
-                    expect_type(&eval, fields[0].type_id().get_type(), end_loc)?;
-                }
+                    TypeDescr::Reference(ptr) => {
+                        expect_type(&tok, ptr.type_id().get_type(), end_loc)?;
+                    }
+                };
 
-                TypeDescr::Reference(ptr) => {
-                    expect_type(&eval, ptr.type_id().get_type(), end_loc)?;
-                }
-            };
+                TypeDescr::Primitive(Primitive::new(name, &tok))
+            }
 
-            TypeDescr::Primitive(Primitive::new(name, &eval))
-        } else {
-            let contract: Vec<_> = stk.units().map(|u| u.get_type()).collect();
-            result.expect_exact(&contract, end_loc)?;
+            Either::Right(tokens) => {
+                let contract: Vec<_> = stk.units().map(|u| u.get_type()).collect();
+                tokens.expect_exact(&contract, end_loc)?;
 
-            let mut eval_items = result
-                .into_iter()
-                .conditional_rev(self.inside_proc() && !is_constant);
+                let mut eval_items = tokens
+                    .into_iter()
+                    .conditional_rev(self.inside_proc() && !is_constant);
 
-            let def_members: Vec<_> = match stk {
-                TypeDescr::Structure(StructType(fields, _)) => fields
-                    .transpose(self.inside_proc(), &mut eval_items)
-                    .unwrap(),
-                TypeDescr::Primitive(_) => todo!(),
-                TypeDescr::Reference(_) => todo!(),
-            };
+                let def_members: Vec<_> = match stk {
+                    TypeDescr::Structure(StructType(fields, _)) => fields
+                        .transpose(self.inside_proc(), &mut eval_items)
+                        .expect(
+                            "Should not fail if `fields` and `eval_items` have the same lenght",
+                        ),
+                    TypeDescr::Primitive(_) => todo!(),
+                    TypeDescr::Reference(_) => todo!(),
+                };
 
-            TypeDescr::structure(name, def_members, reftype)
+                TypeDescr::structure(name, def_members, reftype)
+            }
         };
 
         self.register_const_or_var(is_constant, word, reftype, struct_type, prog);
@@ -737,28 +757,35 @@ impl Parser {
     }
 
     pub fn lex_path(&mut self, path: &Path, prog: &mut Program) -> LazyResult<&mut Self> {
-        debug!("Including: {:?}", path);
-        let file = File::open(path).with_context(|| format!("Could not read file `{path:?}`"))?;
+        let module_name = path.get_dir()?;
+        let source_name = path.get_file()?;
 
-        let module = path.get_dir().unwrap().to_str().unwrap();
-        let source = path.file_name().unwrap().to_str().unwrap();
-
-        let lex = prog.new_lexer(file, source, module);
-        self.read_lexer(prog, lex, module)
+        self.lex_include(path, module_name, source_name, prog)
     }
 
     pub fn lex_source(
         &mut self, source: &str, module: &str, prog: &mut Program,
     ) -> LazyResult<&mut Self> {
         let path = Path::new(module).join(source).with_extension("fire");
-        let source_name = path.file_name().unwrap().to_str().unwrap();
-        let module_name = path.get_dir().unwrap().to_str().unwrap();
+
+        let module_name = path.get_dir()?;
+        let source_name = path.get_file()?;
 
         if prog.has_source(source_name, module_name) {
             return Ok(self);
         }
 
-        self.lex_path(&path, prog)
+        self.lex_include(&path, module_name, source_name, prog)
+    }
+
+    pub fn lex_include(
+        &mut self, path: &Path, module: &str, source: &str, prog: &mut Program,
+    ) -> LazyResult<&mut Self> {
+        debug!("Including: {:?}", path);
+        let file = File::open(path).with_context(|| format!("Could not read file `{path:?}`"))?;
+
+        let lex = prog.new_lexer(file, source, module);
+        self.read_lexer(prog, lex, module)
     }
 
     pub fn read_lexer(

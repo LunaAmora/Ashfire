@@ -1,20 +1,30 @@
-use std::{iter::Rev, path::Path};
+use std::{ffi::OsStr, iter::Rev, path::Path};
 
 use anyhow::{Context, Result};
 use itertools::Either;
 
 pub trait PathUtils {
-    fn get_dir(&self) -> Result<&Path>;
+    fn get_dir(&self) -> Result<&str>;
+    fn get_file(&self) -> Result<&str>;
     fn try_to_str(&self) -> Result<&str>;
 }
 
 impl PathUtils for Path {
-    /// Gets the directory of the [`Path`],
-    /// or [`None`] if is empty.
-    fn get_dir(&self) -> Result<&Path> {
-        self.ancestors().nth(1).with_context(|| {
-            format!("Failed to get file directory path: {}", self.to_string_lossy())
-        })
+    /// Gets the directory of the [`Path`], if there is one.
+    fn get_dir(&self) -> Result<&str> {
+        self.ancestors()
+            .nth(1)
+            .and_then(Self::to_str)
+            .with_context(|| {
+                format!("Failed to get file directory path: {}", self.to_string_lossy())
+            })
+    }
+
+    /// Returns the final component of the [`Path`], if there is one.
+    fn get_file(&self) -> Result<&str> {
+        self.file_name()
+            .and_then(OsStr::to_str)
+            .with_context(|| format!("Failed to get file name: {}", self.to_string_lossy()))
     }
 
     fn try_to_str(&self) -> Result<&str> {

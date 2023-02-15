@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::{ops::Deref, usize};
 
 use firelib::lexer::Loc;
 use lasso::Key;
@@ -7,6 +7,10 @@ use num::FromPrimitive;
 use super::{data::*, enums::*};
 
 pub type Name = lasso::Spur;
+
+pub fn name_from_usize(value: usize) -> Name {
+    Name::try_from_usize(value).expect("Value should not be greater than `u32::MAX - 1`")
+}
 
 pub const WORD_SIZE: i32 = 4;
 pub const WORD_USIZE: usize = 4;
@@ -84,7 +88,7 @@ impl IRToken {
     }
 
     pub fn name(&self) -> Name {
-        Name::try_from_usize(self.index()).unwrap()
+        name_from_usize(self.index())
     }
 }
 
@@ -113,7 +117,7 @@ impl IRToken {
     ///
     /// Will panic if the operand is not a valid `KeywordType`.
     pub fn as_keyword(&self) -> KeywordType {
-        FromPrimitive::from_i32(self.1).unwrap()
+        FromPrimitive::from_i32(self.1).expect("IRToken is not a valid `KeywordType`")
     }
 }
 

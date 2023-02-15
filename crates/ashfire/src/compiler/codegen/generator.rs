@@ -129,7 +129,10 @@ impl FuncGen {
                 IndexOp::PushGlobalMem => self.push(Const(index as i32)),
 
                 IndexOp::PushLocal => {
-                    let ptr = self.bind_offset + proc.get_data().unwrap().var_mem_offset(index);
+                    let data = proc
+                        .get_data()
+                        .expect("PushLocal can not be used outside of a procedure");
+                    let ptr = self.bind_offset + data.var_mem_offset(index);
                     self.extend([Const(ptr), Call("push_local".into())]);
                 }
 

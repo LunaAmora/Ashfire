@@ -39,7 +39,7 @@ fn intern_all<const N: usize>(rodeo: &mut Rodeo, strings: [&'static str; N]) -> 
         .map(|s| rodeo.get_or_intern_static(s))
         .collect::<Vec<_>>()
         .try_into()
-        .unwrap()
+        .expect("Failed to collect into a valid array")
 }
 
 #[derive(Default)]
@@ -156,7 +156,7 @@ impl Program {
     }
 
     pub fn get_word(&self, index: usize) -> String {
-        let name = Name::try_from_usize(index).unwrap();
+        let name = name_from_usize(index);
         self.interner.resolve(&name).to_owned()
     }
 
@@ -232,7 +232,7 @@ impl Program {
     pub fn loc_fmt<L: Location>(&self, loc: L) -> String {
         let Loc { file_index, line, col } = loc.loc();
         self.included_sources
-            .get_key_value(&Name::try_from_usize(file_index).unwrap())
+            .get_key_value(&name_from_usize(file_index))
             .map_or_else(String::new, |(src, modl)| {
                 format!("{}/{}:{line}:{col} ", modl.as_str(self), src.as_str(self))
             })
@@ -272,6 +272,11 @@ impl Program {
         self.structs_types
             .iter()
             .position(|def| word.eq(&def.name()))
+    }
+
+    pub fn get_fields_type_id(&self, fields: &StructFields) -> TypeId {
+        self.get_type_id(fields.name())
+            .expect("Fields was not constructed from a valid type id")
     }
 
     pub fn get_type_id(&self, word: Name) -> Option<TypeId> {

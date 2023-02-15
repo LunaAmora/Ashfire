@@ -75,7 +75,10 @@ impl Generator {
     }
 
     pub fn end_proc(&mut self, program: &Program, wasm: &mut Module) -> Result<()> {
-        let proc = self.current_proc(program).unwrap();
+        let proc = self
+            .current_proc(program)
+            .expect("No procedure to end was found");
+
         let Some(data) = proc.get_data() else {
             return Ok(());
         };

@@ -16,14 +16,16 @@ type DoubleResult<T> = ashlib::DoubleResult<'static, T, IRToken, Fmt>;
 
 impl Parser {
     pub fn compile_eval(&self, prog: &mut Program, loc: Loc) -> DoubleResult<(IRToken, usize)> {
-        let (mut result, skip) = self.compile_eval_n(1, prog, loc)?;
-        DoubleResult::new((result.pop().unwrap(), skip))
+        let (Either::Left(result), skip) = self.compile_eval_n(1, prog, loc)? else {
+            unreachable!();
+        };
+        DoubleResult::new((result, skip))
     }
 
     pub fn compile_eval_n(
         &self, n: usize, prog: &mut Program, loc: Loc,
-    ) -> DoubleResult<(Vec<IRToken>, usize)> {
-        let mut stack = EvalStack::default();
+    ) -> DoubleResult<(Either<IRToken, Vec<IRToken>>, usize)> {
+        let mut stack = EvalStack::<IRToken>::default();
         let mut i = 0;
 
         while let Some(tok) = self.get_cloned(i) {
@@ -48,7 +50,14 @@ impl Parser {
                     );
                 }
 
-                return DoubleResult::new((stack.to_vec(), i + 1));
+                return DoubleResult::new((
+                    if stack.len() == 1 {
+                        Either::Left(stack.pop())
+                    } else {
+                        Either::Right(stack.to_vec())
+                    },
+                    i + 1,
+                ));
             }
 
             stack.evaluate(tok, prog)?;

@@ -163,10 +163,11 @@ impl StructUtils for [TypeDescr] {
     fn get_pointer(&self, word: &LocWord, push_type: IndexOp, type_id: TypeId) -> Vec<Op> {
         let &LocWord(name, loc) = word;
         let (index, _) = if push_type == IndexOp::PushLocal {
-            self.get_offset_local(name).unwrap()
+            self.get_offset_local(name)
         } else {
-            self.get_offset(name).unwrap()
-        };
+            self.get_offset(name)
+        }
+        .expect("Should return an valid offset if the `name` is valid");
 
         vec![
             Op(OpType::IndexOp(push_type, index), loc),
@@ -179,7 +180,9 @@ impl StructUtils for [TypeDescr] {
     ) -> Vec<Op> {
         let mut result = Vec::new();
         let &LocWord(name, loc) = word;
-        let (index, _) = self.get_offset(name).unwrap();
+        let (index, _) = self
+            .get_offset(name)
+            .expect("Should return an valid offset if the `name` is valid");
 
         let is_local = push_type == IndexOp::PushLocal;
         let id_range = if store == is_local {

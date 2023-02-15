@@ -37,10 +37,7 @@ impl<'err, T, E> Default for OptionErr<'err, T, E> {
 
 impl<'err, T, E> FromResidual<LazyResult<'err, Infallible, E>> for OptionErr<'err, T, E> {
     fn from_residual(residual: LazyResult<'err, Infallible, E>) -> Self {
-        match residual {
-            Err(lazy) => Self { value: Err(lazy) },
-            Ok(_) => unreachable!(),
-        }
+        Self { value: Err(residual.unwrap_err()) }
     }
 }
 
@@ -135,10 +132,7 @@ impl<'err, T, E, F> FromResidual<Result<Infallible, <Self as Try>::Residual>>
     for DoubleResult<'err, T, E, F>
 {
     fn from_residual(residual: Result<Infallible, <Self as Try>::Residual>) -> Self {
-        match residual {
-            Ok(_) => unreachable!(),
-            Err(r) => Self { value: Err(r) },
-        }
+        Self { value: Err(residual.unwrap_err()) }
     }
 }
 
@@ -237,7 +231,9 @@ impl<T> UncheckedStack<T> for EvalStack<T> {
 
     fn pop(&mut self) -> T {
         self.stack_minus(1);
-        self.frames.pop().unwrap()
+        self.frames
+            .pop()
+            .expect("Could not pop from an empty Stack")
     }
 
     fn truncate(&mut self, n: usize) {
@@ -257,10 +253,10 @@ impl<T> UncheckedStack<T> for EvalStack<T> {
     fn peek(&mut self) -> &T {
         self.stack_minus(1);
         self.stack_count += 1;
-        self.frames.get(self.len() - 1).unwrap()
+        &self.frames[self.len() - 1]
     }
 
     fn get_from_top(&self, n: usize) -> &T {
-        self.frames.get(self.len() - 1 - n).unwrap()
+        &self.frames[self.len() - 1 - n]
     }
 }

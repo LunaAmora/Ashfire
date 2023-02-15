@@ -105,7 +105,7 @@ impl Module {
                 .func_map
                 .iter()
                 .find(|pair| pair.1 == index)
-                .unwrap()
+                .expect("The given `Ident` is invalid")
                 .0
                 .clone(),
             Ident::Label(label) => label.clone(),

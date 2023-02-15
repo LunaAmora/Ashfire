@@ -153,10 +153,7 @@ mod tests {
 
     impl<T, E> FromResidual<LazyResult<Infallible, E>> for OptionErr<T, E> {
         fn from_residual(residual: LazyResult<Infallible, E>) -> Self {
-            match residual {
-                Err(lazy) => Self { value: Err(lazy) },
-                Ok(_) => unreachable!(),
-            }
+            Self { value: Err(residual.unwrap_err()) }
         }
     }
 

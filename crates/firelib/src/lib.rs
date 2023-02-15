@@ -69,10 +69,7 @@ pub trait FlowControl:
     where
         Self: From<anyhow::Error>,
     {
-        match residual {
-            Err(err) => Self::from(err),
-            _ => unreachable!(),
-        }
+        Self::from(residual.unwrap_err())
     }
 }
 
@@ -166,7 +163,7 @@ impl ChildGuard {
     }
 
     pub fn take(mut self) -> Child {
-        self.0.take().unwrap()
+        self.0.take().expect("Failed to take the `Child`")
     }
 
     pub fn stdin(&mut self) -> Option<ChildStdin> {

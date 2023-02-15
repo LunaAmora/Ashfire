@@ -2,7 +2,6 @@ use ashfire_types::{
     core::*,
     data::*,
     enums::{ControlOp, IndexOp, IntrinsicType, OpType, StackOp},
-    lasso::Key,
     proc::{Binds, Mode},
 };
 use ashlib::{EvalStack, UncheckedStack};
@@ -48,6 +47,18 @@ impl TypeChecker {
             ip += 1;
         }
         Ok(())
+    }
+
+    fn block_stack_pop(&mut self) -> TypeBlock {
+        self.block_stack
+            .pop()
+            .expect("Could not pop from an empty `block_stack`")
+    }
+
+    fn block_stack_last(&mut self) -> &TypeBlock {
+        self.block_stack
+            .last()
+            .expect("Could not get the last block from an empty `block_stack`")
     }
 
     fn type_check_op(&mut self, ip: usize, program: &mut Program) -> LazyResult<()> {
@@ -206,7 +217,9 @@ impl TypeChecker {
                 }
 
                 ControlOp::EndProc | ControlOp::EndInline => {
-                    let proc = self.current_proc_mut(program).unwrap();
+                    let proc = self
+                        .current_proc_mut(program)
+                        .expect("Expected to be used inside a procedure");
 
                     if matches!(proc.mode, Mode::Imported) {
                         return Ok(());
@@ -236,13 +249,13 @@ impl TypeChecker {
                 }
 
                 ControlOp::Else => {
-                    let TypeBlock(old_stack, start_op) = self.block_stack.last().cloned().unwrap();
+                    let TypeBlock(old_stack, start_op) = self.block_stack_last().clone();
                     self.push_stack(start_op);
                     self.data_stack = DataStack::new(old_stack);
                 }
 
                 ControlOp::EndIf => {
-                    let TypeBlock(expected, start_op) = self.block_stack.pop().unwrap();
+                    let TypeBlock(expected, start_op) = self.block_stack_pop();
 
                     self.expect_stack_arity(
                         &expected,
@@ -266,7 +279,7 @@ impl TypeChecker {
                 }
 
                 ControlOp::EndElse => {
-                    let TypeBlock(expected, start_op) = self.block_stack.pop().unwrap();
+                    let TypeBlock(expected, start_op) = self.block_stack_pop();
 
                     self.expect_stack_arity(
                         &expected,
@@ -284,7 +297,7 @@ impl TypeChecker {
                         .block_contracts
                         .insert(start_op, (ins as usize, out as usize));
 
-                    let TypeBlock(old_stack, _) = self.block_stack.pop().unwrap();
+                    let TypeBlock(old_stack, _) = self.block_stack_pop();
 
                     let old_count = old_stack.count();
                     self.data_stack.set_count(old_count - ins, old_count);
@@ -297,7 +310,7 @@ impl TypeChecker {
 
                 ControlOp::Do => {
                     self.data_stack.expect_pop_type(BOOL, loc)?;
-                    let TypeBlock(expected, _) = self.block_stack.last().cloned().unwrap();
+                    let TypeBlock(expected, _) = self.block_stack_last().clone();
 
                     self.expect_stack_arity(
                         &expected,
@@ -313,7 +326,7 @@ impl TypeChecker {
                 }
 
                 ControlOp::EndWhile => {
-                    let TypeBlock(expected, do_op) = self.block_stack.pop().unwrap();
+                    let TypeBlock(expected, do_op) = self.block_stack_pop();
 
                     self.expect_stack_arity(
                         &expected,
@@ -327,7 +340,7 @@ impl TypeChecker {
                     let ins = (self.data_stack.min()).min(expected.min()).abs();
                     let out = (self.data_stack.count()).max(expected.count()) + ins;
 
-                    let TypeBlock(old_stack, start_op) = self.block_stack.pop().unwrap();
+                    let TypeBlock(old_stack, start_op) = self.block_stack_pop();
 
                     let ip_dif = ip - start_op;
                     program.set_index(start_op, ip_dif);
@@ -343,7 +356,10 @@ impl TypeChecker {
                 }
 
                 ControlOp::BindStack => {
-                    let proc = self.current_proc(program).unwrap();
+                    let proc = self
+                        .current_proc(program)
+                        .expect("Expected to be used inside a procedure");
+
                     let Binds(bindings) = &proc.binds[index];
                     let mut binds = vec![];
 
@@ -372,7 +388,10 @@ impl TypeChecker {
                 }
 
                 ControlOp::PopBind => {
-                    let proc = self.current_proc(program).unwrap();
+                    let proc = self
+                        .current_proc(program)
+                        .expect("Expected to be used inside a procedure");
+
                     let Binds(bindings) = &proc.binds[index];
                     self.bind_stack
                         .truncate(self.bind_stack.len() - bindings.len());
@@ -436,7 +455,7 @@ impl TypeChecker {
             if let TypeDescr::Reference(ptr) = &prog.get_type_descr(id) {
                 match prog.get_type_descr(ptr.ptr_id()) {
                     TypeDescr::Structure(StructType(fields, _)) => {
-                        let word = Name::try_from_usize(operand).unwrap();
+                        let word = name_from_usize(operand);
 
                         let Some((offset, index)) = fields.get_offset(word) else {
                             let error = format!("The struct {} does not contain a member with name: `{}`",

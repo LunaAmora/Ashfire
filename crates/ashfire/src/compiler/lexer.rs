@@ -89,7 +89,7 @@ fn parse_char(word: &str, loc: Loc) -> OptionErr<i32> {
                 err_loc(format!("Char literals cannot contain more than one char: `{word}`"), loc)
                     .into()
             }
-            _ => OptionErr::new(word.chars().next().unwrap() as i32),
+            _ => word.chars().next().map(|char| char as i32).into(),
         },
         |escaped| parse_scaped(escaped.to_owned(), loc),
     )
