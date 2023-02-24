@@ -99,7 +99,7 @@ fn compile_command(
     }
 
     if run {
-        Runner::new(target, runtime).run(out_wasm)?;
+        new_runner(target, runtime)(out_wasm)?;
     }
 
     Ok(())
@@ -136,25 +136,19 @@ fn compile_pipe(target: LibTarget, runtime_name: &str, run: bool) -> Result<()> 
     Ok(())
 }
 
-pub struct Runner(Box<dyn FnOnce(PathBuf) -> Result<()>>);
+pub fn new_runner(
+    target: LibTarget, wasi_runtime: String,
+) -> Box<dyn FnOnce(PathBuf) -> Result<()>> {
+    match target {
+        LibTarget::Wasi => Box::new(move |out| {
+            cmd_wait!(wasi_runtime, out);
+            Ok(())
+        }),
 
-impl Runner {
-    pub fn new(target: LibTarget, wasi_runtime: String) -> Self {
-        match target {
-            LibTarget::Wasi => Self(Box::new(move |out| {
-                cmd_wait!(wasi_runtime, out);
-                Ok(())
-            })),
-
-            LibTarget::Wasm4 => Self(Box::new(|out| {
-                cmd_wait!("w4", "run", out);
-                Ok(())
-            })),
-        }
-    }
-
-    pub fn run(self, path: PathBuf) -> Result<()> {
-        self.0(path)
+        LibTarget::Wasm4 => Box::new(|out| {
+            cmd_wait!("w4", "run", out);
+            Ok(())
+        }),
     }
 }
 
