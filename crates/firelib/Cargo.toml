@@ -8,6 +8,7 @@ readme.workspace = true
 license-file.workspace = true
 
 [dependencies]
+log = "0.4.17"
 anyhow = "1.0"
 itertools = "0.10.5"
 firelib_macro = {path = "../firelib_macro", optional = true}

@@ -5,13 +5,14 @@
 use std::{
     convert::Infallible,
     ops::{ControlFlow, FromResidual, Try},
-    process::{Child, ChildStdin, Output},
+    process::{Child, ChildStdin, Command, Output},
 };
 
 pub use anyhow::{self, bail, Context, Error, Result};
 #[cfg(feature = "derive")]
 pub use firelib_macro::{alternative, FlowControl};
 use lazy::private::{Sealed, SealedT};
+use log::info;
 
 pub mod choice;
 pub mod lazy;
@@ -139,7 +140,11 @@ macro_rules! fold_bool {
     };
 }
 
-/// Creates a new [`Command`][std::process::Command] with the given arguments,
+pub fn command_info(cmd: &Command) -> String {
+    format!("{cmd:?}").replace('\"', "")
+}
+
+/// Creates a new [`Command`][Command] with the given arguments,
 /// prints its content, executes it, then waits for the child process to finish.
 #[macro_export]
 macro_rules! cmd_wait {
@@ -150,16 +155,16 @@ macro_rules! cmd_wait {
     ($cmd:expr, $($arg:expr),*) => {
         let mut __cmd = std::process::Command::new($cmd);
         __cmd$(.arg($arg))*;
-        info!("[CMD] {}", (format!("{:?}", __cmd).replace("\"", "")));
+        info!("[CMD] {}", $crate::command_info(&__cmd));
         __cmd.spawn()?.wait()?
     };
 }
 
-pub struct ChildGuard(Option<Child>);
+pub struct ChildGuard(Option<Child>, String);
 
 impl ChildGuard {
-    pub fn new(child: Child) -> Self {
-        Self(Some(child))
+    pub fn new(child: Child, info: String) -> Self {
+        Self(Some(child), info)
     }
 
     pub fn take(mut self) -> Child {
@@ -174,6 +179,7 @@ impl ChildGuard {
     }
 
     pub fn wait_with_output(self) -> std::io::Result<Output> {
+        info!("[CMD] | {}", self.1);
         self.take().wait_with_output()
     }
 
@@ -204,22 +210,28 @@ impl Drop for ChildGuard {
 /// and configured pipes, spawns it and returns inside an `kill on drop` struct.
 #[macro_export]
 macro_rules! cmd_piped {
-    ($cmd:expr, $($arg:expr),* ) => {
-        $crate::ChildGuard::new(std::process::Command::new($cmd)
+    ($cmd:expr, $($arg:expr),* ) => {{
+        let mut cmd = std::process::Command::new($cmd);
+        cmd
             $(.arg($arg))*
             .stdin(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()?)
-    };
+            .stderr(std::process::Stdio::piped());
 
-    ($cmd:expr, $($arg:expr),* => $stdout:expr) => {
-        $crate::ChildGuard::new(std::process::Command::new($cmd)
+        let info = $crate::command_info(&cmd);
+        $crate::ChildGuard::new(cmd.spawn()?, info)
+    }};
+
+    ($cmd:expr, $($arg:expr),* => $stdout:expr) => {{
+        let mut cmd = std::process::Command::new($cmd);
+        cmd
             $(.arg($arg))*
             .stdin(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
-            .stdout($stdout)
-            .spawn()?)
-    };
+            .stdout($stdout);
+
+        let info = $crate::command_info(&cmd);
+        $crate::ChildGuard::new(cmd.spawn()?, info)
+    }};
 }
 
 pub trait ShortCircuit<T>: Sealed
