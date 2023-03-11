@@ -145,7 +145,7 @@ impl Module {
                     };
 
                     writer.write_all(
-                        format!("(import \"{}\" \"{}\" {mem})\n", import.module, import.label,)
+                        format!("(import \"{}\" \"{}\" {mem})\n", import.module, import.label)
                             .as_bytes(),
                     )?;
                 }

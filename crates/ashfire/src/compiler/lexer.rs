@@ -1,4 +1,4 @@
-use std::{io::Read, str::FromStr};
+use std::io::Read;
 
 use ashfire_types::{
     core::{IRToken, TokenType, INT},
@@ -117,18 +117,19 @@ fn escaped_len(name: &str) -> usize {
 }
 
 fn parse_as_keyword(tok: &Token) -> Option<IRToken> {
-    KeywordType::from_str(&tok.name)
+    tok.name
+        .parse()
+        .map(|k: KeywordType| IRToken(TokenType::Keyword, k as i32, tok.loc))
         .ok()
-        .map(|k| IRToken(TokenType::Keyword, k as i32, tok.loc))
 }
 
 fn parse_as_number(tok: &Token) -> Option<IRToken> {
     tok.name
-        .parse::<i32>()
-        .ok()
+        .parse()
         .map(|operand| IRToken(INT, operand, tok.loc))
+        .ok()
 }
 
 fn try_parse_hex(word: &str) -> Option<i32> {
-    i64::from_str_radix(word, 16).ok().map(|h| h as i32)
+    i64::from_str_radix(word, 16).map(|h| h as i32).ok()
 }

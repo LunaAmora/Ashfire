@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    str::{from_utf8, FromStr},
-};
+use std::{collections::HashMap, str::from_utf8};
 
 use ashfire_types::{
     core::*,
@@ -247,7 +244,7 @@ impl Program {
     }
 
     pub fn get_intrinsic_type(&mut self, word: &str) -> Option<IntrinsicType> {
-        IntrinsicType::from_str(word).ok().or_else(|| {
+        word.parse().ok().or_else(|| {
             Some(match word.as_bytes() {
                 [b'#', b'*', rest @ ..] => IntrinsicType::Cast(self.get_cast_type_ptr(rest)?),
                 [b'#', rest @ ..] => IntrinsicType::Cast(self.get_cast_type(rest)?),
