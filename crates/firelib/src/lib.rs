@@ -5,7 +5,7 @@
 use std::{
     convert::Infallible,
     ops::{ControlFlow, FromResidual, Try},
-    process::{Child, ChildStdin, Command, Output},
+    process::{Child, ChildStdin, ChildStdout, Command, Output},
 };
 
 pub use anyhow::{self, bail, Context, Error, Result};
@@ -178,6 +178,13 @@ impl ChildGuard {
         }
     }
 
+    pub fn stdout(&mut self) -> Option<ChildStdout> {
+        match &mut self.0 {
+            Some(child) => child.stdout.take(),
+            None => None,
+        }
+    }
+
     pub fn wait_with_output(self) -> std::io::Result<Output> {
         info!("[CMD] | {}", self.1);
         self.take().wait_with_output()
@@ -215,6 +222,7 @@ macro_rules! cmd_piped {
         cmd
             $(.arg($arg))*
             .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
 
         let info = $crate::command_info(&cmd);
@@ -228,6 +236,18 @@ macro_rules! cmd_piped {
             .stdin(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .stdout($stdout);
+
+        let info = $crate::command_info(&cmd);
+        $crate::ChildGuard::new(cmd.spawn()?, info)
+    }};
+
+    ($stdin:expr => $cmd:expr, $($arg:expr),* ) => {{
+        let mut cmd = std::process::Command::new($cmd);
+        cmd
+            $(.arg($arg))*
+            .stderr(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stdin($stdin);
 
         let info = $crate::command_info(&cmd);
         $crate::ChildGuard::new(cmd.spawn()?, info)

@@ -115,25 +115,21 @@ fn compile_pipe(target: LibTarget, runtime_name: &str, run: bool) -> Result<()> 
             let mut runtime = cmd_piped!(runtime_name, "-");
             compile_stdin(runtime.stdin().unwrap(), target, true)?;
 
-            runtime.wait_with_result()?;
+            runtime.wait_with_result()
         }
 
         (true, LibTarget::Wasm4) => {
-            let mut w4 = cmd_piped!("w4", "run", "-");
-            let mut wat2wasm = cmd_piped!("wat2wasm", "-", "--output=-" => w4.stdin().unwrap());
+            let mut wat2wasm = cmd_piped!("wat2wasm", "-", "--output=-");
+            let w4 = cmd_piped!(wat2wasm.stdout().unwrap() => "w4", "run", "-");
 
             compile_stdin(wat2wasm.stdin().unwrap(), target, true)?;
 
             wat2wasm.wait_with_result()?;
-            w4.wait_with_result()?;
+            w4.wait_with_result()
         }
 
-        (false, _) => {
-            compile_stdin(io::stdout(), target, true)?;
-        }
+        (false, _) => compile_stdin(io::stdout(), target, true),
     }
-
-    Ok(())
 }
 
 pub fn new_runner(
