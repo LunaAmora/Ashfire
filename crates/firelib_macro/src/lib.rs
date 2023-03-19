@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, AttributeArgs, DeriveInput, NestedMeta};
+use syn::{parse_macro_input, DeriveInput, punctuated::Punctuated, Token, Meta};
 
 /// Derive macro generating an impl of the trait `FlowControl`.
 #[proc_macro_derive(FlowControl)]
@@ -25,6 +25,8 @@ pub fn derive_flow(item: TokenStream) -> TokenStream {
     })
 }
 
+type AttributeArgs = Punctuated::<Meta, Token![,]>;
+
 /// Attribute macro generating a simple impl of the trait `Alternative`
 /// based on the given pairs of field names and patterns.
 /// 
@@ -39,7 +41,7 @@ pub fn derive_flow(item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn alternative(attr: TokenStream, item: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(item as DeriveInput);
-    let args = parse_macro_input!(attr as AttributeArgs);
+    let args = parse_macro_input!(attr with AttributeArgs::parse_terminated);
 
     let (imp, struct_name) = extract_generics(&ast);
     let (name, pattern) = generate_matcher(&args);
@@ -73,11 +75,11 @@ pub fn alternative(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 type QuoteStream = quote::__private::TokenStream;
 
-fn generate_matcher(args: &Vec<NestedMeta>) -> (&NestedMeta, &NestedMeta) {
-    assert!(args.len() == 2, "Only two arguments are supported!");
+fn generate_matcher(args: &AttributeArgs) -> (&Meta, &Meta) {
+    assert!(args.len() <= 2, "Only two arguments are supported!");
     
-    (args.get(0).expect("Missing match attribute name"),
-        args.get(1).expect("Missing match attribute pattern"))
+    (args.first().expect("Missing match attribute name"),
+        args.last().expect("Missing match attribute pattern"))
 }
 
 fn extract_generics(ast: &DeriveInput) -> (QuoteStream, QuoteStream) {
