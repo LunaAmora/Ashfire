@@ -16,7 +16,6 @@ ashfire = { path = "crates/ashfire" }
 firelib = { path = "crates/firelib" }
 
 [workspace]
-resolver = '2'
 members = [
     "crates/ashlib",
     "crates/ashfire",
