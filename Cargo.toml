@@ -8,7 +8,7 @@ readme.workspace = true
 license-file.workspace = true
 
 [dependencies]
-clap = { version = "4.1.11", features = ["derive"] }
+clap = { version = "4.2.0", features = ["derive"] }
 clap-verbosity-flag = "2.0.0"
 log = "0.4.17"
 env_logger = { features = ["auto-color"], default-features = false, version = "0.10.0" }
