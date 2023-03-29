@@ -136,7 +136,7 @@ impl FuncGen {
     pub fn new(label: Name, contract: &Contract) -> Self {
         Self {
             label,
-            contract: as_wasm(contract),
+            contract: contract.as_vec(WasmType::I32, WasmType::I32),
             code: Vec::new(),
             bind_offset: 0,
         }
@@ -152,11 +152,6 @@ impl FuncGen {
     {
         self.code.extend(instructions);
     }
-}
-
-pub fn as_wasm(contract: &Contract) -> (Vec<WasmType>, Vec<WasmType>) {
-    let (ins, outs) = contract.size();
-    (vec![WasmType::I32; ins], vec![WasmType::I32; outs])
 }
 
 pub fn unpack_struct(stk: &TypeDescr) -> Vec<Instruction> {

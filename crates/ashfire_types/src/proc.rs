@@ -124,6 +124,11 @@ impl Contract {
     pub fn size(&self) -> (usize, usize) {
         (self.ins.len(), self.outs.len())
     }
+
+    pub fn as_vec<I: Copy, O: Copy>(&self, in_type: I, out_type: O) -> (Vec<I>, Vec<O>) {
+        let (ins, outs) = self.size();
+        (vec![in_type; ins], vec![out_type; outs])
+    }
 }
 
 impl From<&Contract> for (usize, usize) {

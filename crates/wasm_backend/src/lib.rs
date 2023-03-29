@@ -24,7 +24,7 @@ pub struct Module {
 
 impl Module {
     pub fn new() -> Self {
-        Self { ..Default::default() }
+        Self::default()
     }
 
     pub fn new_mem(&mut self) -> usize {

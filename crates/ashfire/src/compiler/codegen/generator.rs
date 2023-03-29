@@ -13,7 +13,7 @@ use Instruction::*;
 use NumMethod::*;
 use Scope::*;
 
-use super::types::{as_wasm, unpack_struct, FuncGen, Generator};
+use super::types::{unpack_struct, FuncGen, Generator};
 use crate::{compiler::program::*, target::Target};
 
 impl Generator {
@@ -26,7 +26,7 @@ impl Generator {
 
         let module = &target.module();
         for import in program.procs.iter().filter(|p| p.is_import()) {
-            let (ins, outs) = as_wasm(&import.contract);
+            let (ins, outs) = import.contract.as_vec(WasmType::I32, WasmType::I32);
             let name = &import.name.as_str(program);
             wasm.add_import(module, name, name, &ins, &outs);
         }

@@ -37,7 +37,7 @@ impl Visitor for TypeChecker {
 
 impl TypeChecker {
     pub fn new() -> Self {
-        Self { ..Default::default() }
+        Self::default()
     }
 
     pub fn type_check(&mut self, program: &mut Program) -> LazyResult<()> {
@@ -485,11 +485,9 @@ impl TypeChecker {
     fn expect_stack_arity(
         &self, expected: &[TypeFrame], loc: Loc, error_text: String,
     ) -> LazyResult<()> {
-        if let Err(err) = self.data_stack.expect_exact(expected, loc) {
-            lazybail!(|f| "{}\n[ERROR] {}", error_text, err.apply(f))
-        } else {
-            Ok(())
-        }
+        self.data_stack.expect_exact(expected, loc).map_err(|err| {
+            LazyError::new(move |f| format!("{}\n[ERROR] {}", error_text, err.apply(f)))
+        })
     }
 }
 

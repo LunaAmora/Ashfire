@@ -75,8 +75,7 @@ pub trait Expect<'err, T: Clone + Typed + Location + 'err>: UncheckedStack<T> {
             ArityType::Type(typ) => typ,
         };
 
-        self.expect_arity(&[typ; N], loc)?;
-        Ok(())
+        self.expect_arity(&[typ; N], loc)
     }
 
     fn expect_stack_size(&self, n: usize, loc: Loc) -> LazyResult<'err, ()> {

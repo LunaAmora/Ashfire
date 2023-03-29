@@ -55,7 +55,7 @@ impl Index<usize> for Parser {
 
 impl Parser {
     pub fn new() -> Self {
-        Self { ..Default::default() }
+        Self::default()
     }
 
     pub fn peek(&self) -> Option<&IRToken> {
