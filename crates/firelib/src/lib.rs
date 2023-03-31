@@ -1,7 +1,6 @@
 #![feature(try_trait_v2)]
 #![feature(never_type)]
 #![feature(try_blocks)]
-#![allow(clippy::try_err)]
 use std::{
     convert::Infallible,
     ops::{ControlFlow, FromResidual, Try},
