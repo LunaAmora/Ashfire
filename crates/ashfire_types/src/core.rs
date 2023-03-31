@@ -150,6 +150,57 @@ impl PartialEq<TypeId> for &IRToken {
     }
 }
 
+
+#[derive(Clone, Copy)]
+pub struct DataToken(ValueType, i32, Loc);
+
+impl DataToken {
+    pub fn new(id: TypeId, value: i32, loc: Loc) -> Self {
+        Self(ValueType(id), value, loc)
+    }
+
+    pub fn value(&self) -> i32 {
+        self.1
+    }
+
+    #[must_use]
+    pub fn add(self, Self(_, r_value, _): Self, loc: Loc) -> Self {
+        let Self(id, value, _) = self;
+        Self(id, value + r_value, loc)
+    }
+
+    #[must_use]
+    pub fn sub(self, Self(_, r_value, _): Self, loc: Loc) -> Self {
+        let Self(id, value, _) = self;
+        Self(id, value - r_value, loc)
+    }
+}
+
+impl Typed for DataToken {
+    fn get_type(&self) -> TokenType {
+        self.0.get_type()
+    }
+}
+
+impl Location for DataToken {
+    fn loc(&self) -> Loc {
+        self.2
+    }
+}
+
+impl PartialEq for DataToken {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl From<DataToken> for IRToken {
+    fn from(val: DataToken) -> Self {
+        let DataToken(ValueType(id), value, loc) = val;
+        Self::data(id, value, loc)
+    }
+}
+
 #[derive(Clone)]
 pub struct Op(pub OpType, pub Loc);
 
