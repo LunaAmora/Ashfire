@@ -63,7 +63,7 @@ impl<'err, S: Display + 'err> ExpectToken<'err, S> for Parser {
         &mut self, error_text: S, prog: &mut Program, loc: Loc,
     ) -> LazyResult<'err, TypeId> {
         let next = self.expect_by(
-            |tok| equals_any!(tok, KeywordType::Ref, TokenType::Word),
+            |tok| tok == KeywordType::Ref || tok.get_word().is_some(),
             error_text.to_string(),
             loc,
         )?;
@@ -74,9 +74,9 @@ impl<'err, S: Display + 'err> ExpectToken<'err, S> for Parser {
     fn check_type_kind(
         &mut self, tok: IRToken, error_text: S, prog: &mut Program,
     ) -> LazyResult<'err, TypeId> {
-        let IRToken(token_type, _, loc) = tok;
+        let IRToken(token_type, loc) = tok;
         match token_type {
-            TokenType::Keyword => {
+            TokenType::Keyword(_) => {
                 let word_error = format!("{error_text} after `*`");
                 let ref_word = self.expect_word(word_error.clone(), loc)?;
 
@@ -85,8 +85,8 @@ impl<'err, S: Display + 'err> ExpectToken<'err, S> for Parser {
                     .map_or_else(|| Err(unexpected_token(ref_word.into(), word_error)), Ok)
             }
 
-            TokenType::Word => {
-                let name_type = LocWord(tok.name(), loc);
+            TokenType::Word(name) => {
+                let name_type = LocWord(name, loc);
 
                 prog.get_type_id(name_type.name())
                     .map_or_else(|| Err(unexpected_token(name_type.into(), error_text)), Ok)
@@ -103,8 +103,8 @@ impl<'err, S: Display + 'err> ExpectToken<'err, S> for Parser {
     }
 
     fn expect_word(&mut self, error_text: S, loc: Loc) -> LazyResult<'err, LocWord> {
-        self.expect_by(|tok| tok == TokenType::Word, error_text, loc)
-            .map(|tok| LocWord(tok.name(), tok.loc()))
+        self.expect_by(|tok| tok.get_word().is_some(), error_text, loc)
+            .map(|tok| LocWord(tok.get_word().unwrap(), tok.loc()))
     }
 
     fn expect_by(
@@ -131,7 +131,7 @@ pub fn unexpected_end<'err, S: Display + 'err>(desc: S, loc: Loc) -> LazyError<'
 }
 
 pub fn unexpected_token<'err, S: Display + 'err>(tok: IRToken, desc: S) -> LazyError<'err> {
-    let IRToken(token_type, _, loc) = tok;
+    let IRToken(token_type, loc) = tok;
 
     LazyError::new(move |f| {
         format!(
@@ -148,7 +148,7 @@ pub fn invalid_context<'err>(tok: IRToken, word: &str) -> LazyError<'err> {
 }
 
 pub fn invalid_token<'err, S: Display + 'err>(tok: IRToken, error: S) -> LazyError<'err> {
-    let IRToken(token_type, _, loc) = tok;
+    let IRToken(token_type, loc) = tok;
 
     LazyError::new(move |f| {
         format!(
@@ -161,7 +161,7 @@ pub fn invalid_token<'err, S: Display + 'err>(tok: IRToken, error: S) -> LazyErr
 }
 
 pub fn format_block<'err, S: Display + 'err>(
-    error: S, op: (ControlOp, usize, Loc), loc: Loc,
+    error: S, (control, value, start_loc): (ControlOp, usize, Loc), loc: Loc,
 ) -> LazyError<'err> {
     LazyError::new(move |f| {
         format!(
@@ -171,8 +171,8 @@ pub fn format_block<'err, S: Display + 'err>(
             ),
             f.format(Fmt::Loc(loc)),
             error,
-            OpType::ControlOp(op.0, op.1),
-            f.format(Fmt::Loc(op.2))
+            OpType::ControlOp(control, value),
+            f.format(Fmt::Loc(start_loc))
         )
     })
 }

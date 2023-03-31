@@ -80,14 +80,14 @@ impl TypeChecker {
                 }
 
                 IndexOp::Offset => match self.expect_struct_pointer(program, ip, index, loc)? {
-                    TokenType::Data(ValueType(offset_id)) => {
+                    TokenType::Type(ValueType(offset_id)) => {
                         self.push_frame(program.get_type_ptr(offset_id).get_type(), loc);
                     }
                     _ => todo!(),
                 },
 
                 IndexOp::Unpack => match self.data_stack.expect_pop(loc)?.get_type() {
-                    TokenType::Data(ValueType(id @ TypeId(index))) => {
+                    TokenType::Type(ValueType(id @ TypeId(index))) => {
                         match program.get_type_descr(id) {
                             TypeDescr::Reference(ptr) => match program.get_type_descr(ptr.ptr_id())
                             {
@@ -142,7 +142,7 @@ impl TypeChecker {
                 IndexOp::PushBind => {
                     let (typ, offset) = self.get_bind_type_offset(index);
 
-                    if let TokenType::Data(ValueType(id)) = typ {
+                    if let TokenType::Type(ValueType(id)) = typ {
                         self.push_frame(program.get_type_ptr(id).get_type(), loc);
                     } else {
                         todo!()
@@ -451,7 +451,7 @@ impl TypeChecker {
     ) -> LazyResult<TokenType> {
         let typ = self.data_stack.expect_pop(loc)?.get_type();
 
-        if let TokenType::Data(ValueType(id)) = typ {
+        if let TokenType::Type(ValueType(id)) = typ {
             if let TypeDescr::Reference(ptr) = &prog.get_type_descr(id) {
                 match prog.get_type_descr(ptr.ptr_id()) {
                     TypeDescr::Structure(StructType(fields, _)) => {

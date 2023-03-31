@@ -141,7 +141,7 @@ impl FromStr for IntrinsicType {
     }
 }
 
-#[derive(FromPrimitive, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KeywordType {
     If,
     Else,

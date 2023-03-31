@@ -75,6 +75,7 @@ dependencies = [
  "firelib",
  "itertools",
  "log",
+ "num",
  "wasm_backend",
 ]
 
@@ -83,7 +84,7 @@ name = "ashfire_cli"
 version = "0.1.0"
 dependencies = [
  "ashfire",
- "clap 4.2.0",
+ "clap 4.2.1",
  "clap-verbosity-flag",
  "env_logger",
  "firelib",
@@ -97,9 +98,6 @@ dependencies = [
  "either",
  "firelib",
  "lasso",
- "num",
- "num-derive",
- "num-traits",
 ]
 
 [[package]]
@@ -198,9 +196,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.2.0"
+version = "4.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6efb5f0a41b5ef5b50c5da28c07609c20091df0c1fc33d418fa2a7e693c2b624"
+checksum = "046ae530c528f252094e4a77886ee1374437744b2bff1497aa898bbddbbb29b3"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -209,19 +207,19 @@ dependencies = [
 
 [[package]]
 name = "clap-verbosity-flag"
-version = "2.0.0"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23e2b6c3dcdb73299f48ae05b294da14e2f560b3ed2c09e742269eb1b22af231"
+checksum = "1eef05769009513df2eb1c3b4613e7fad873a14c600ff025b08f250f59fee7de"
 dependencies = [
- "clap 4.2.0",
+ "clap 4.2.1",
  "log",
 ]
 
 [[package]]
 name = "clap_builder"
-version = "4.2.0"
+version = "4.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "671fcaa5debda4b9a84aa7fde49c907c8986c0e6ab927e04217c9cb74e7c8bc9"
+checksum = "223163f58c9a40c3b0a43e1c4b50a9ce09f007ea2cb1ec258a687945b4b7929f"
 dependencies = [
  "anstream",
  "anstyle",
@@ -239,7 +237,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn 2.0.11",
+ "syn 2.0.12",
 ]
 
 [[package]]
@@ -415,7 +413,7 @@ name = "firelib_macro"
 version = "0.1.0"
 dependencies = [
  "quote",
- "syn 2.0.11",
+ "syn 2.0.12",
 ]
 
 [[package]]
@@ -576,9 +574,9 @@ checksum = "99227334921fae1a979cf0bfdfcc6b3e5ce376ef57e16fb6fb3ea2ed6095f80c"
 
 [[package]]
 name = "linux-raw-sys"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd550e73688e6d578f0ac2119e32b797a327631a42f9433e59d02e139c8df60d"
+checksum = "d59d8c75012853d2e872fb56bc8a2e53718e2cafe1a4c823143141c6d90c322f"
 
 [[package]]
 name = "log"
@@ -618,17 +616,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02e0d21255c828d6f128a1e41534206671e8c3ea0c62f32291e808dc82cff17d"
 dependencies = [
  "num-traits",
-]
-
-[[package]]
-name = "num-derive"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "876a53fff98e03a936a674b29568b0e605f06b29372c2489ff4de23f1949743d"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]
@@ -785,9 +772,9 @@ checksum = "f162c6dd7b008981e4d40210aca20b4bd0f9b60ca9271061b07f78537722f2e1"
 
 [[package]]
 name = "rustix"
-version = "0.37.4"
+version = "0.37.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c348b5dc624ecee40108aa2922fed8bad89d7fcc2b9f8cb18f632898ac4a37f9"
+checksum = "0e78cc525325c06b4a7ff02db283472f3c042b7ff0c391f96c6d5ac6f4f91b75"
 dependencies = [
  "bitflags",
  "errno",
@@ -835,7 +822,7 @@ checksum = "4c614d17805b093df4b147b51339e7e44bf05ef59fba1e45d83500bcfb4d8585"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.11",
+ "syn 2.0.12",
 ]
 
 [[package]]
@@ -868,9 +855,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.11"
+version = "2.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21e3787bb71465627110e7d87ed4faaa36c1f61042ee67badb9e2ef173accc40"
+checksum = "79d9531f94112cfc3e4c8f5f02cb2b58f72c97b7efd85f70203cc6d8efda5927"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -18,7 +18,7 @@ impl TypeId {
 
 impl Typed for TypeId {
     fn get_type(&self) -> TokenType {
-        TokenType::Data(ValueType(*self))
+        TokenType::Type(ValueType(*self))
     }
 }
 
@@ -35,7 +35,7 @@ impl PartialEq for ValueType {
 
 impl Typed for ValueType {
     fn get_type(&self) -> TokenType {
-        TokenType::Data(*self)
+        TokenType::Type(*self)
     }
 }
 
@@ -44,11 +44,11 @@ pub struct Primitive(pub Name, pub i32, pub TypeId);
 
 impl Primitive {
     pub fn new(name: Name, typed: &IRToken) -> Self {
-        let TokenType::Data(ValueType(id)) = typed.get_type() else {
+        let TokenType::Data(ValueType(id), value) = typed.get_type() else {
             unimplemented!()
         };
 
-        Self(name, typed.operand(), id)
+        Self(name, value, id)
     }
 
     pub fn name(&self) -> Name {
@@ -218,7 +218,11 @@ where
                 }
 
                 TypeDescr::Reference(ptr) => {
-                    TypeDescr::Primitive(ptr.as_primitive(provider.next()?.operand()))
+                    let TokenType::Data(_, operand) = provider.next()?.0 else {
+                        unreachable!();
+                    };
+
+                    TypeDescr::Primitive(ptr.as_primitive(operand))
                 }
 
                 TypeDescr::Structure(StructType(field @ StructFields(name, _), reftype)) => field

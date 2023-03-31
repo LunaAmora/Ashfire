@@ -152,8 +152,7 @@ impl Program {
         self.interner.get(word)
     }
 
-    pub fn get_word(&self, index: usize) -> String {
-        let name = name_from_usize(index);
+    pub fn get_word(&self, name: Name) -> String {
         self.interner.resolve(&name).to_owned()
     }
 
@@ -199,12 +198,12 @@ impl Program {
 
     pub fn type_name(&self, typ: TokenType) -> String {
         match typ {
-            TokenType::Keyword => "Keyword",
-            TokenType::Word => "Word or Intrinsic",
-            TokenType::Data(data) => match data {
-                ValueType(value) => return self.data_name(value),
-            },
-            TokenType::Str => "String Id",
+            TokenType::Keyword(_) => "Keyword",
+            TokenType::Word(_) => "Word or Intrinsic",
+            TokenType::Data(ValueType(val), _) | TokenType::Type(ValueType(val)) => {
+                return self.data_name(val);
+            }
+            TokenType::Str(_) => "String Id",
         }
         .to_owned()
     }
@@ -219,10 +218,11 @@ impl Program {
 
     pub fn type_display(&self, tok: &IRToken) -> String {
         match tok.get_type() {
-            TokenType::Keyword => format!("{:?}", tok.as_keyword()),
-            TokenType::Word => self.get_word(tok.index()),
-            TokenType::Str => self.get_data_str(tok.index()).to_owned(),
-            TokenType::Data(ValueType(id)) => Self::data_display(id, tok.operand()),
+            TokenType::Keyword(key) => format!("{key:?}"),
+            TokenType::Word(name) => self.get_word(name),
+            TokenType::Str(index) => self.get_data_str(index).to_owned(),
+            TokenType::Data(ValueType(id), value) => Self::data_display(id, value),
+            TokenType::Type(_) => todo!(),
         }
     }
 

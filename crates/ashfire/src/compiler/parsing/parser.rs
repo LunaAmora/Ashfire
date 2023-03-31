@@ -104,9 +104,10 @@ impl Parser {
     }
 
     fn define_op(&mut self, tok: &IRToken, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        let &IRToken(token_type, operand, loc) = tok;
+        let &IRToken(token_type, loc) = tok;
 
-        if !(matches!(token_type, TokenType::Keyword | TokenType::Word) || self.inside_proc()) {
+        if !(matches!(token_type, TokenType::Keyword(_) | TokenType::Word(_)) || self.inside_proc())
+        {
             lazybail!(
                 |f| "{}Token type cannot be used outside of a procedure: `{}`",
                 f.format(Fmt::Loc(loc)),
@@ -115,14 +116,14 @@ impl Parser {
         };
 
         let op = match token_type {
-            TokenType::Keyword => return self.define_keyword_op(tok.as_keyword(), loc, prog),
+            TokenType::Keyword(key) => return self.define_keyword_op(key, loc, prog),
 
-            TokenType::Str => Op(OpType::IndexOp(PushStr, operand as usize), loc),
+            TokenType::Str(index) => Op(OpType::IndexOp(PushStr, index), loc),
 
-            TokenType::Data(data) => match data {
+            TokenType::Data(data, value) => match data {
                 ValueType(val) => match val {
                     TypeId::INT | TypeId::BOOL | TypeId::PTR => {
-                        Op(OpType::PushData(val, operand), loc)
+                        Op(OpType::PushData(val, value), loc)
                     }
                     TypeId(_) => lazybail!(
                         |f| "{}Value type not valid here: `{}`",
@@ -132,8 +133,8 @@ impl Parser {
                 },
             },
 
-            TokenType::Word => {
-                let word = &LocWord(tok.name(), loc);
+            TokenType::Word(name) => {
+                let word = &LocWord(name, loc);
 
                 choice!(
                     OptionErr,
@@ -146,6 +147,8 @@ impl Parser {
                     format!("Word was not declared on the program: `{}`", word.as_str(prog));
                 return err_loc(error, loc).into();
             }
+
+            TokenType::Type(_) => todo!(),
         };
 
         OptionErr::new(vec![op])
@@ -221,7 +224,7 @@ impl Parser {
                 };
 
                 match next_token.get_type() {
-                    TokenType::Keyword => {
+                    TokenType::Keyword(_) => {
                         expect_token_by(
                             Some(next_token),
                             |t| t == KeywordType::Ref,
@@ -231,9 +234,10 @@ impl Parser {
                         let word = self.expect_word("word after `.*`", loc)?;
                         Op(OpType::IndexOp(Offset, word.index()), loc)
                     }
-                    TokenType::Word => {
+
+                    TokenType::Word(name) => {
                         return OptionErr::new(vec![
-                            Op(OpType::IndexOp(Offset, next_token.index()), loc),
+                            Op(OpType::IndexOp(Offset, name.into_usize()), loc),
                             Op::from((Unpack, loc)),
                         ])
                     }
@@ -350,21 +354,21 @@ impl Parser {
         let mut colons: u8 = 0;
         while let Some(tok) = self.get(i) {
             match (colons, tok.get_type()) {
-                (1, TokenType::Data(ValueType(TypeId::INT))) => {
+                (1, TokenType::Data(ValueType(TypeId::INT), _)) => {
                     self.parse_memory(word, prog).try_success()?;
                 }
 
-                (1, TokenType::Word) if prog.get_type_index(tok.name()).is_none() => {
+                (1, TokenType::Word(name)) if prog.get_type_index(name).is_none() => {
                     return self.parse_struct(word, prog);
                 }
 
-                (_, TokenType::Word) => {}
+                (_, TokenType::Word(_)) => {}
 
-                (0, TokenType::Keyword) => {
+                (0, TokenType::Keyword(_)) => {
                     self.parse_expected_type(&mut colons, i, word, prog)?;
                 }
 
-                (1, TokenType::Keyword) => {
+                (1, TokenType::Keyword(_)) => {
                     self.parse_keyword_ctx(i, word, prog)?;
                 }
 
@@ -556,7 +560,7 @@ impl Parser {
         let value = self.expect_by(|tok| tok == TypeId::INT, "memory size after `:`", loc)?;
         self.expect_keyword(KeywordType::End, "`end` after memory size", loc)?;
 
-        let ctx = prog.push_mem_by_context(self, word.name(), value.index());
+        let ctx = prog.push_mem_by_context(self, word.name(), value.get_data().unwrap() as usize);
         self.name_scopes.register(word.name(), ctx);
 
         Ok(())
@@ -569,7 +573,7 @@ impl Parser {
         let mut members = Vec::new();
 
         while let Some(tok) = self.peek() {
-            if tok == TokenType::Keyword {
+            if tok.get_keyword().is_some() {
                 self.expect_keyword(KeywordType::End, "`end` after struct declaration", loc)?;
                 prog.register_struct(StructFields(word.name(), members));
                 success!();
@@ -635,7 +639,7 @@ impl Parser {
         let mut bindings = vec![];
 
         while let Some(tok) = self.peek() {
-            if tok == TokenType::Keyword {
+            if tok.is_keyword() {
                 self.expect_keyword(KeywordType::In, "`in` after let bind declaration", loc)?;
 
                 bindings.reverse();
@@ -799,12 +803,14 @@ impl Parser {
 
             let tok = expect_token_by(
                 prog.lex_next_token(&mut lex).value?,
-                |tok| tok == TokenType::Word,
+                |tok| tok.get_word().is_some(),
                 "include source name",
                 token.loc(),
-            )?;
+            )?
+            .get_word()
+            .unwrap();
 
-            let include_path = prog.get_word(tok.index());
+            let include_path = prog.get_word(tok);
             self.lex_source(&include_path, module, prog)?;
         }
         Ok(self)

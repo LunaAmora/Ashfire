@@ -5,9 +5,9 @@ use ashfire_types::{
     data::*,
     enums::{ControlOp, IndexOp, IntrinsicType, OpType},
     lasso::Key,
-    num::iter::range_step_from,
 };
 use firelib::{lexer::Loc, utils::BoolUtils};
+use num::iter::range_step_from;
 
 use crate::compiler::{
     program::{InternalString, Program},
@@ -51,8 +51,8 @@ impl PartialEq<Name> for LocWord {
 }
 
 impl From<LocWord> for IRToken {
-    fn from(word: LocWord) -> Self {
-        Self(TokenType::Word, word.0.into_usize() as i32, word.1)
+    fn from(LocWord(name, loc): LocWord) -> Self {
+        Self(TokenType::Word(name), loc)
     }
 }
 

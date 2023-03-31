@@ -25,7 +25,7 @@ impl Parser {
     pub fn compile_eval_n(
         &self, n: usize, prog: &mut Program, loc: Loc,
     ) -> DoubleResult<(Either<IRToken, Vec<IRToken>>, usize)> {
-        let mut stack = EvalStack::<IRToken>::default();
+        let mut stack = EvalStack::<DataToken>::default();
         let mut i = 0;
 
         while let Some(tok) = self.get_cloned(i) {
@@ -52,9 +52,9 @@ impl Parser {
 
                 return DoubleResult::new((
                     if stack.len() == 1 {
-                        Either::Left(stack.pop())
+                        Either::Left(stack.pop().into())
                     } else {
-                        Either::Right(stack.to_vec())
+                        Either::Right(stack.iter().map(|&data| data.into()).collect())
                     },
                     i + 1,
                 ));
@@ -69,78 +69,125 @@ impl Parser {
     }
 }
 
-impl Expect<'_, IRToken> for EvalStack<IRToken> {}
+#[derive(Clone, Copy)]
+struct DataToken(ValueType, i32, Loc);
+
+impl DataToken {
+    fn new(id: TypeId, value: i32, loc: Loc) -> Self {
+        Self(ValueType(id), value, loc)
+    }
+
+    fn add(self, Self(_, r_value, _): Self, loc: Loc) -> Self {
+        let Self(id, value, _) = self;
+        Self(id, value + r_value, loc)
+    }
+
+    fn sub(self, Self(_, r_value, _): Self, loc: Loc) -> Self {
+        let Self(id, value, _) = self;
+        Self(id, value - r_value, loc)
+    }
+}
+
+impl Typed for DataToken {
+    fn get_type(&self) -> TokenType {
+        self.0.get_type()
+    }
+}
+
+impl Location for DataToken {
+    fn loc(&self) -> Loc {
+        self.2
+    }
+}
+
+impl PartialEq for DataToken {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl From<DataToken> for IRToken {
+    fn from(val: DataToken) -> Self {
+        let DataToken(ValueType(id), value, loc) = val;
+        Self::data(id, value, loc)
+    }
+}
+
+impl Expect<'_, DataToken> for EvalStack<DataToken> {}
 
 pub trait Evaluator {
     fn evaluate(&mut self, item: IRToken, prog: &mut Program) -> DoubleResult<()>;
 }
 
-impl Evaluator for EvalStack<IRToken> {
+impl Evaluator for EvalStack<DataToken> {
     fn evaluate(&mut self, tok: IRToken, prog: &mut Program) -> DoubleResult<()> {
-        let IRToken(token_type, operand, loc) = tok;
+        let IRToken(token_type, loc) = tok;
 
         match token_type {
-            TokenType::Keyword => match tok.as_keyword() {
+            TokenType::Keyword(key) => match key {
                 KeywordType::Drop => {
                     self.expect_pop(loc)?;
                 }
 
-                KeywordType::Dup => self.pop_extend(|[a]| [a.clone(), a], loc)?,
+                KeywordType::Dup => self.pop_extend(|[a]| [a, a], loc)?,
                 KeywordType::Swap => self.pop_extend(|[a, b]| [b, a], loc)?,
-                KeywordType::Over => self.pop_extend(|[a, b]| [a.clone(), b, a], loc)?,
+                KeywordType::Over => self.pop_extend(|[a, b]| [a, b, a], loc)?,
                 KeywordType::Rot => self.pop_extend(|[a, b, c]| [b, c, a], loc)?,
 
                 KeywordType::Equal => self.pop_push_arity(
-                    |[a, b]| IRToken(BOOL, fold_bool!(*a == *b, 1, 0), loc),
+                    |[a, b]| DataToken::new(TypeId::BOOL, (a == b).into(), loc),
                     ArityType::Same,
                     loc,
                 )?,
 
-                _ => Err(Either::Left(IRToken(TokenType::Keyword, *tok, loc)))?,
+                _ => Err(Either::Left(tok))?,
             },
 
-            TokenType::Word => match prog.get_intrinsic_type(&prog.get_word(tok.index())) {
+            TokenType::Word(name) => match prog.get_intrinsic_type(&prog.get_word(name)) {
                 Some(intrinsic) => match intrinsic {
-                    IntrinsicType::Plus => self.pop_push_arity(
-                        |[a, b]| IRToken(a.get_type(), *a + *b, loc),
-                        ArityType::Same,
-                        loc,
-                    )?,
+                    IntrinsicType::Plus => {
+                        self.pop_push_arity(|[a, b]| a.add(b, loc), ArityType::Same, loc)?;
+                    }
 
-                    IntrinsicType::Minus => self.pop_push_arity(
-                        |[a, b]| IRToken(a.get_type(), *a - *b, loc),
-                        ArityType::Same,
-                        loc,
-                    )?,
+                    IntrinsicType::Minus => {
+                        self.pop_push_arity(|[a, b]| a.sub(b, loc), ArityType::Same, loc)?;
+                    }
 
-                    IntrinsicType::Cast(type_id) => self.pop_push_arity(
-                        |[a]| IRToken(type_id.get_type(), *a, loc),
+                    IntrinsicType::Cast(id) => self.pop_push_arity(
+                        |[a]| DataToken::new(id, a.1, loc),
                         ArityType::Any,
                         loc,
                     )?,
 
-                    _ => Err(Either::Left(IRToken(TokenType::Word, *tok, loc)))?,
+                    _ => Err(Either::Left(tok))?,
                 },
 
-                None => match prog.get_const_by_name(tok.name()) {
+                None => match prog.get_const_by_name(name) {
                     Some(TypeDescr::Primitive(unit)) => {
-                        self.push(IRToken(unit.type_id().get_type(), unit.value(), loc));
+                        self.push(DataToken::new(unit.type_id(), unit.value(), loc));
                     }
                     Some(_) => todo!("Support const use on other consts"),
                     None => Err(Either::Left(tok))?,
                 },
             },
 
-            TokenType::Str => {
-                let (size, _) = prog.get_data(tok.index()).data();
+            TokenType::Str(index) => {
+                let (size, _) = prog.get_data(index).data();
 
-                self.extend([IRToken(INT, size as i32, loc), IRToken(STR, operand, loc)]);
+                self.extend([
+                    DataToken::new(TypeId::INT, size as i32, loc),
+                    DataToken::new(TypeId::STR, index as i32, loc),
+                ]);
             }
 
-            TokenType::Data(ValueType(value)) => match value {
-                TypeId::INT | TypeId::BOOL | TypeId::PTR => self.push(tok),
+            TokenType::Data(ValueType(id), value) => match id {
+                TypeId::INT | TypeId::BOOL | TypeId::PTR => {
+                    self.push(DataToken::new(id, value, loc));
+                }
                 _ => Err(Either::Left(tok))?,
             },
+
+            TokenType::Type(_) => todo!(),
         }
 
         DoubleResult::new(())

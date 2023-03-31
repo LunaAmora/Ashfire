@@ -1,9 +1,8 @@
 use std::io::Read;
 
 use ashfire_types::{
-    core::{IRToken, TokenType, INT},
-    enums::KeywordType,
-    lasso::Key,
+    core::{IRToken, TokenType},
+    data::TypeId,
 };
 use firelib::{lazy::LazyCtx, lexer::*, ShortCircuit};
 
@@ -56,13 +55,13 @@ impl Program {
             .strip_suffix('\"')
             .with_err_ctx(move || err_loc("Missing closing `\"` in string literal", loc))
             .map(|name| self.push_data(name.to_owned(), escaped_len(name)))
-            .map(|operand| IRToken(TokenType::Str, operand as i32, loc))
+            .map(|operand| IRToken(TokenType::Str(operand), loc))
             .map(OptionErr::new)?
     }
 
     fn define_word(&mut self, tok: &Token) -> OptionErr<IRToken> {
-        let operand = self.get_or_intern(&tok.name).into_usize();
-        OptionErr::new(IRToken(TokenType::Word, operand as i32, tok.loc))
+        let name = self.get_or_intern(&tok.name);
+        OptionErr::new(IRToken(TokenType::Word(name), tok.loc))
     }
 }
 
@@ -77,7 +76,7 @@ fn parse_as_char(tok: &Token) -> OptionErr<IRToken> {
 
     parse_char(word, loc)
         .value?
-        .map(|operand| IRToken(INT, operand, loc))
+        .map(|operand| IRToken::data(TypeId::INT, operand, tok.loc))
         .into()
 }
 
@@ -119,14 +118,14 @@ fn escaped_len(name: &str) -> usize {
 fn parse_as_keyword(tok: &Token) -> Option<IRToken> {
     tok.name
         .parse()
-        .map(|k: KeywordType| IRToken(TokenType::Keyword, k as i32, tok.loc))
+        .map(|k| IRToken(TokenType::Keyword(k), tok.loc))
         .ok()
 }
 
 fn parse_as_number(tok: &Token) -> Option<IRToken> {
     tok.name
         .parse()
-        .map(|operand| IRToken(INT, operand, tok.loc))
+        .map(|operand| IRToken::data(TypeId::INT, operand, tok.loc))
         .ok()
 }
 

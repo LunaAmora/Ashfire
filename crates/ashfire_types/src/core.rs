@@ -2,7 +2,6 @@ use std::{ops::Deref, usize};
 
 use firelib::lexer::Loc;
 use lasso::Key;
-use num::FromPrimitive;
 
 use super::{data::*, enums::*};
 
@@ -45,19 +44,20 @@ impl Location for Loc {
     }
 }
 
-pub const ANY: TokenType = TokenType::Data(ValueType(TypeId::ANY));
-pub const ANY_PTR: TokenType = TokenType::Data(ValueType(TypeId::ANY_PTR));
-pub const BOOL: TokenType = TokenType::Data(ValueType(TypeId::BOOL));
-pub const INT: TokenType = TokenType::Data(ValueType(TypeId::INT));
-pub const PTR: TokenType = TokenType::Data(ValueType(TypeId::PTR));
-pub const STR: TokenType = TokenType::Data(ValueType(TypeId::STR));
+pub const ANY: TokenType = TokenType::Type(ValueType(TypeId::ANY));
+pub const ANY_PTR: TokenType = TokenType::Type(ValueType(TypeId::ANY_PTR));
+pub const BOOL: TokenType = TokenType::Type(ValueType(TypeId::BOOL));
+pub const INT: TokenType = TokenType::Type(ValueType(TypeId::INT));
+pub const PTR: TokenType = TokenType::Type(ValueType(TypeId::PTR));
+pub const STR: TokenType = TokenType::Type(ValueType(TypeId::STR));
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum TokenType {
-    Keyword,
-    Word,
-    Str,
-    Data(ValueType),
+    Keyword(KeywordType),
+    Word(Name),
+    Str(usize),
+    Type(ValueType),
+    Data(ValueType, i32),
 }
 
 impl Typed for TokenType {
@@ -66,29 +66,54 @@ impl Typed for TokenType {
     }
 }
 
-impl PartialEq<ValueType> for TokenType {
-    fn eq(&self, other: &ValueType) -> bool {
-        match self {
-            Self::Data(data) => data == other,
+impl PartialEq for TokenType {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Type(l0) | Self::Data(l0, _), Self::Type(r0) | Self::Data(r0, _)) => l0 == r0,
             _ => false,
         }
     }
 }
 
 #[derive(Clone)]
-pub struct IRToken(pub TokenType, pub i32, pub Loc);
+pub struct IRToken(pub TokenType, pub Loc);
 
 impl IRToken {
-    pub fn operand(&self) -> i32 {
-        self.1
+    pub fn data(id: TypeId, value: i32, loc: Loc) -> Self {
+        Self(TokenType::Data(ValueType(id), value), loc)
     }
 
-    pub fn index(&self) -> usize {
-        self.1 as usize
+    pub fn get_word(&self) -> Option<Name> {
+        match self.0 {
+            TokenType::Word(name) => Some(name),
+            _ => None,
+        }
     }
 
-    pub fn name(&self) -> Name {
-        name_from_usize(self.index())
+    pub fn get_data(&self) -> Option<i32> {
+        match self.0 {
+            TokenType::Data(_, value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub fn is_keyword(&self) -> bool {
+        matches!(self.0, TokenType::Keyword(_))
+    }
+
+    pub fn get_keyword(&self) -> Option<KeywordType> {
+        match self.0 {
+            TokenType::Keyword(key) => Some(key),
+            _ => None,
+        }
+    }
+
+    /// # Panics
+    ///
+    /// Will panic if the operand is not a valid `KeywordType`.
+    pub fn as_keyword(&self) -> KeywordType {
+        self.get_keyword()
+            .expect("IRToken is not a valid `KeywordType`")
     }
 }
 
@@ -100,32 +125,7 @@ impl Typed for IRToken {
 
 impl Location for IRToken {
     fn loc(&self) -> Loc {
-        self.2
-    }
-}
-
-impl IRToken {
-    pub fn get_keyword(&self) -> Option<KeywordType> {
-        if self == TokenType::Keyword {
-            FromPrimitive::from_i32(self.1)
-        } else {
-            None
-        }
-    }
-
-    /// # Panics
-    ///
-    /// Will panic if the operand is not a valid `KeywordType`.
-    pub fn as_keyword(&self) -> KeywordType {
-        FromPrimitive::from_i32(self.1).expect("IRToken is not a valid `KeywordType`")
-    }
-}
-
-impl Deref for IRToken {
-    type Target = i32;
-
-    fn deref(&self) -> &Self::Target {
-        &self.1
+        self.1
     }
 }
 
@@ -143,7 +143,10 @@ impl PartialEq<TokenType> for &IRToken {
 
 impl PartialEq<TypeId> for &IRToken {
     fn eq(&self, other: &TypeId) -> bool {
-        self.0 == ValueType(*other)
+        match self.0 {
+            TokenType::Type(id) | TokenType::Data(id, _) => id == ValueType(*other),
+            _ => false,
+        }
     }
 }
 
