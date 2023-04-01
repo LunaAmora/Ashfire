@@ -14,7 +14,7 @@ use crate::compiler::{
     typechecking::expect::Compare,
 };
 
-impl Compare<'_, IRToken> for Vec<IRToken> {}
+impl Compare<'_, DataToken> for Vec<DataToken> {}
 
 pub struct LocWord(pub Name, pub Loc);
 
@@ -131,7 +131,7 @@ impl NameScopes {
 pub trait StructUtils {
     fn get_offset(&self, word: Name) -> Option<(usize, usize)>;
     fn get_offset_local(&self, word: Name) -> Option<(usize, usize)>;
-    fn get_pointer(&self, word: &LocWord, push_type: IndexOp, type_id: TypeId) -> Vec<Op>;
+    fn get_pointer(&self, word: &LocWord, push_type: IndexOp, type_id: DataType) -> Vec<Op>;
     fn get_fields(
         &self, word: &LocWord, push_type: IndexOp, stk_def: &TypeDescr, store: bool,
     ) -> Vec<Op>;
@@ -160,7 +160,7 @@ impl StructUtils for [TypeDescr] {
         Some((offset - 1, i))
     }
 
-    fn get_pointer(&self, word: &LocWord, push_type: IndexOp, type_id: TypeId) -> Vec<Op> {
+    fn get_pointer(&self, word: &LocWord, push_type: IndexOp, type_id: DataType) -> Vec<Op> {
         let &LocWord(name, loc) = word;
         let (index, _) = if push_type == IndexOp::PushLocal {
             self.get_offset_local(name)
@@ -195,10 +195,10 @@ impl StructUtils for [TypeDescr] {
             TypeDescr::Structure(StructType(fields, _)) => fields
                 .units()
                 .conditional_rev(store)
-                .map(|v| v.type_id())
+                .map(|v| v.get_type())
                 .collect(),
-            TypeDescr::Primitive(prm) => vec![prm.type_id()],
-            TypeDescr::Reference(ptr) => vec![ptr.type_id()],
+            TypeDescr::Primitive(prm) => vec![prm.get_type()],
+            TypeDescr::Reference(ptr) => vec![ptr.get_type()],
         };
 
         for (operand, type_id) in id_range.zip(members) {

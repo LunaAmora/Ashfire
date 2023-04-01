@@ -1,5 +1,5 @@
 use ashfire_types::{
-    core::{Location, TokenType, Typed},
+    core::{Location, Typed},
     data::DataType,
 };
 use firelib::lexer::Loc;
@@ -8,8 +8,8 @@ use firelib::lexer::Loc;
 pub struct TypeFrame(pub DataType, pub Loc);
 
 impl Typed for TypeFrame {
-    fn get_type(&self) -> TokenType {
-        self.0.get_type()
+    fn get_type(&self) -> DataType {
+        self.0
     }
 }
 

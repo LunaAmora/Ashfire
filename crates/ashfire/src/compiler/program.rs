@@ -65,18 +65,18 @@ impl Program {
         let [_, any, any_ptr, bool, int, ptr, str, len, data] = intern_all(&mut interner, names);
 
         let structs_types = vec![
-            TypeDescr::primitive(any, TypeId::ANY),
-            TypeDescr::reference(any_ptr, TypeId::ANY_PTR, TypeId::ANY),
-            TypeDescr::primitive(bool, TypeId::BOOL),
-            TypeDescr::primitive(int, TypeId::INT),
-            TypeDescr::primitive(ptr, TypeId::PTR),
+            TypeDescr::primitive(any, ANY),
+            TypeDescr::reference(any_ptr, ANY_PTR, ANY),
+            TypeDescr::primitive(bool, BOOL),
+            TypeDescr::primitive(int, INT),
+            TypeDescr::primitive(ptr, PTR),
             TypeDescr::structure(
                 str,
                 vec![
-                    TypeDescr::primitive(len, TypeId::INT),
-                    TypeDescr::primitive(data, TypeId::PTR),
+                    TypeDescr::primitive(len, INT),
+                    TypeDescr::primitive(data, PTR),
                 ],
-                TypeId::STR,
+                STR,
             ),
         ];
 
@@ -184,24 +184,24 @@ impl Program {
         self.ops.len()
     }
 
-    fn data_name(&self, value: TypeId) -> String {
-        match value {
+    fn data_name(&self, data @ DataType(id): DataType) -> String {
+        match id {
             TypeId::INT => "Integer",
             TypeId::BOOL => "Boolean",
             TypeId::PTR => "Pointer",
             TypeId::STR => "String",
             TypeId::ANY => "Any",
-            TypeId(n) => self.structs_types[n].name().as_str(self),
+            _ => self.structs_types[data.id()].name().as_str(self),
         }
         .to_owned()
     }
 
-    pub fn type_name(&self, typ: TokenType) -> String {
-        match typ {
+    pub fn type_name(&self, tok: TokenType) -> String {
+        match tok {
             TokenType::Keyword(_) => "Keyword",
             TokenType::Word(_) => "Word or Intrinsic",
-            TokenType::Data(Value(DataType(val), _)) | TokenType::Type(DataType(val)) => {
-                return self.data_name(val);
+            TokenType::Data(Value(data_type, _)) | TokenType::Type(data_type) => {
+                return self.data_name(data_type);
             }
             TokenType::Str(_) => "String Id",
         }
@@ -212,12 +212,12 @@ impl Program {
         match value {
             TypeId::BOOL => fold_bool!(operand != 0, "True", "False").to_owned(),
             TypeId::PTR => format!("*{operand}"),
-            TypeId(_) => operand.to_string(),
+            _ => operand.to_string(),
         }
     }
 
-    pub fn type_display(&self, tok: &IRToken) -> String {
-        match tok.get_type() {
+    pub fn token_display(&self, IRToken(tok, _): IRToken) -> String {
+        match tok {
             TokenType::Keyword(key) => format!("{key:?}"),
             TokenType::Word(name) => self.get_word(name),
             TokenType::Str(index) => self.get_data_str(index).to_owned(),
@@ -238,8 +238,9 @@ impl Program {
     pub fn format(&self, fmt: Fmt) -> String {
         match fmt {
             Fmt::Loc(loc) => self.loc_fmt(loc),
-            Fmt::Tok(tok) => self.type_display(&tok),
-            Fmt::Typ(typ) => self.type_name(typ),
+            Fmt::Tok(tok) => self.token_display(tok),
+            Fmt::TTyp(typ) => self.type_name(typ),
+            Fmt::DTyp(typ) => self.data_name(typ),
         }
     }
 
@@ -257,11 +258,11 @@ impl Program {
         from_utf8(rest).ok().and_then(|str| self.get_key(str))
     }
 
-    fn get_cast_type(&self, rest: &[u8]) -> Option<TypeId> {
+    fn get_cast_type(&self, rest: &[u8]) -> Option<DataType> {
         self.name_from_utf8(rest).map(|key| self.get_type_id(key))?
     }
 
-    fn get_cast_type_ptr(&mut self, rest: &[u8]) -> Option<TypeId> {
+    fn get_cast_type_ptr(&mut self, rest: &[u8]) -> Option<DataType> {
         self.get_cast_type(rest).map(|id| self.get_type_ptr(id))
     }
 
@@ -271,30 +272,30 @@ impl Program {
             .position(|def| word.eq(&def.name()))
     }
 
-    pub fn get_fields_type_id(&self, fields: &StructFields) -> TypeId {
+    pub fn get_fields_type_id(&self, fields: &StructFields) -> DataType {
         self.get_type_id(fields.name())
             .expect("Fields was not constructed from a valid type id")
     }
 
-    pub fn get_type_id(&self, word: Name) -> Option<TypeId> {
-        self.get_type_index(word).map(TypeId)
+    pub fn get_type_id(&self, word: Name) -> Option<DataType> {
+        self.get_type_index(word).map(DataType::new)
     }
 
-    pub fn get_type_id_by_str(&self, word: &str) -> Option<TypeId> {
+    pub fn get_type_id_by_str(&self, word: &str) -> Option<DataType> {
         self.get_key(word).and_then(|key| self.get_type_id(key))
     }
 
-    pub fn get_type_descr(&self, type_id: TypeId) -> &TypeDescr {
-        &self.structs_types[type_id.0]
+    pub fn get_type_descr(&self, data_type: DataType) -> &TypeDescr {
+        &self.structs_types[data_type.id()]
     }
 
-    pub fn try_get_type_ptr(&self, type_id: TypeId) -> Option<TypeId> {
+    pub fn try_get_type_ptr(&self, type_id: DataType) -> Option<DataType> {
         let name = self.get_type_descr(type_id).name();
         let ptr_name = format!("*{}", name.as_str(self));
         self.get_type_id_by_str(&ptr_name)
     }
 
-    pub fn get_type_ptr(&mut self, type_id: TypeId) -> TypeId {
+    pub fn get_type_ptr(&mut self, type_id: DataType) -> DataType {
         let name = self.get_type_descr(type_id).name();
         let ptr_name = format!("*{}", name.as_str(self));
 
@@ -303,15 +304,15 @@ impl Program {
         }
 
         let word_id = self.get_or_intern(&ptr_name);
-        let new_type_id = TypeId(self.structs_types.len());
+        let new_type_id = DataType::new(self.structs_types.len());
         let stk = TypeDescr::reference(word_id, new_type_id, type_id);
 
         self.structs_types.push(stk);
         new_type_id
     }
 
-    pub fn register_struct(&mut self, stk: StructFields) -> TypeId {
-        let type_id = TypeId(self.structs_types.len());
+    pub fn register_struct(&mut self, stk: StructFields) -> DataType {
+        let type_id = DataType::new(self.structs_types.len());
         let descr = TypeDescr::Structure(StructType(stk, type_id));
         self.structs_types.push(descr);
         self.get_type_ptr(type_id); // Todo: Remove this Hack to auto register an ptr type
@@ -330,7 +331,7 @@ impl Program {
         let &Op(op_type, _) = op;
         match op_type {
             OpType::Intrinsic(IntrinsicType::Cast(type_id)) => {
-                format!("Intrinsic Cast [{}]", self.type_name(type_id.get_type()))
+                format!("Intrinsic Cast [{}]", self.data_name(type_id))
             }
 
             OpType::Intrinsic(intrinsic) => {
@@ -392,6 +393,7 @@ pub trait Visitor {
 
 pub enum Fmt {
     Loc(Loc),
-    Typ(TokenType),
+    TTyp(TokenType),
+    DTyp(DataType),
     Tok(IRToken),
 }

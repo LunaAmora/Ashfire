@@ -15,7 +15,7 @@ use crate::compiler::{
 type DoubleResult<T> = ashlib::DoubleResult<'static, T, IRToken, Fmt>;
 
 impl Parser {
-    pub fn compile_eval(&self, prog: &mut Program, loc: Loc) -> DoubleResult<(IRToken, usize)> {
+    pub fn compile_eval(&self, prog: &mut Program, loc: Loc) -> DoubleResult<(DataToken, usize)> {
         let (Either::Left(result), skip) = self.compile_eval_n(1, prog, loc)? else {
             unreachable!();
         };
@@ -24,7 +24,7 @@ impl Parser {
 
     pub fn compile_eval_n(
         &self, n: usize, prog: &mut Program, loc: Loc,
-    ) -> DoubleResult<(Either<IRToken, Vec<IRToken>>, usize)> {
+    ) -> DoubleResult<(Either<DataToken, Vec<DataToken>>, usize)> {
         let mut stack = EvalStack::<DataToken>::default();
         let mut i = 0;
 
@@ -52,9 +52,9 @@ impl Parser {
 
                 return DoubleResult::new((
                     if stack.len() == 1 {
-                        Either::Left(stack.pop().into())
+                        Either::Left(stack.pop())
                     } else {
-                        Either::Right(stack.iter().map(|&data| data.into()).collect())
+                        Either::Right(stack.to_vec())
                     },
                     i + 1,
                 ));
@@ -72,7 +72,7 @@ impl Parser {
 impl Expect<'_, DataToken> for EvalStack<DataToken> {}
 
 pub trait Evaluator {
-    fn evaluate(&mut self, item: IRToken, prog: &mut Program) -> DoubleResult<()>;
+    fn evaluate(&mut self, tok: IRToken, prog: &mut Program) -> DoubleResult<()>;
 }
 
 impl Evaluator for EvalStack<DataToken> {
@@ -91,7 +91,7 @@ impl Evaluator for EvalStack<DataToken> {
                 KeywordType::Rot => self.pop_extend(|[a, b, c]| [b, c, a], loc)?,
 
                 KeywordType::Equal => self.pop_push_arity(
-                    |[a, b]| DataToken::new(TypeId::BOOL, (a == b).into(), loc),
+                    |[a, b]| DataToken::new(BOOL, (a == b).into(), loc),
                     ArityType::Same,
                     loc,
                 )?,
@@ -120,7 +120,7 @@ impl Evaluator for EvalStack<DataToken> {
 
                 None => match prog.get_const_by_name(name) {
                     Some(TypeDescr::Primitive(unit)) => {
-                        self.push(DataToken::new(unit.type_id(), unit.value(), loc));
+                        self.push(DataToken::new(unit.get_type(), unit.value(), loc));
                     }
                     Some(_) => todo!("Support const use on other consts"),
                     None => Err(Either::Left(tok))?,
@@ -131,8 +131,8 @@ impl Evaluator for EvalStack<DataToken> {
                 let (size, _) = prog.get_data(index).data();
 
                 self.extend([
-                    DataToken::new(TypeId::INT, size as i32, loc),
-                    DataToken::new(TypeId::STR, index as i32, loc),
+                    DataToken::new(INT, size as i32, loc),
+                    DataToken::new(STR, index as i32, loc),
                 ]);
             }
 

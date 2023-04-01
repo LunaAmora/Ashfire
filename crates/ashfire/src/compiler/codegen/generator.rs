@@ -1,8 +1,8 @@
 use std::io::Write;
 
 use ashfire_types::{
-    core::{Op, WORD_SIZE, WORD_USIZE},
-    data::{Primitive, StructInfo, StructType, TypeDescr, TypeId},
+    core::{Op, Typed, WORD_SIZE, WORD_USIZE},
+    data::{DataType, Primitive, StructInfo, StructType, TypeDescr, TypeId},
     enums::{ControlOp, IndexOp, IntrinsicType, OpType, StackOp},
     proc::{Binds, Mode, Proc},
 };
@@ -148,7 +148,9 @@ impl FuncGen {
                     self.push(Call(label.into()));
                 }
 
-                IndexOp::Unpack => self.extend(unpack_struct(prog.get_type_descr(TypeId(index)))),
+                IndexOp::Unpack => {
+                    self.extend(unpack_struct(prog.get_type_descr(DataType::new(index))));
+                }
 
                 IndexOp::CallInline => {
                     let inlined_proc = prog.get_proc(index);
@@ -236,7 +238,7 @@ impl FuncGen {
 
                     for (_, typ) in bindings {
                         if let &Some(id) = typ {
-                            let type_def = prog.get_type_descr(TypeId(id));
+                            let type_def = prog.get_type_descr(id);
 
                             let sizes: Vec<_> = match type_def {
                                 TypeDescr::Structure(StructType(fields, _)) => {
@@ -265,7 +267,7 @@ impl FuncGen {
                     let Binds(bindings) = &proc.binds[index];
 
                     let size = bindings.iter().fold(0, |acc, (_, typ)| {
-                        acc + typ.map_or(WORD_USIZE, |id| prog.get_type_descr(TypeId(id)).size())
+                        acc + typ.map_or(WORD_USIZE, |id| prog.get_type_descr(id).size())
                     }) as i32;
 
                     self.extend(vec![Const(size), Call("free_local".into())]);
@@ -296,7 +298,7 @@ fn register_contract(prog: &Program, index: usize, module: &mut Module) -> Ident
 
 impl Program {
     pub fn final_value(&self, var: &Primitive) -> i32 {
-        if matches!(var.type_id(), TypeId::STR) {
+        if matches!(var.get_type().0, TypeId::STR) {
             let offset = self.get_data(var.value() as usize).value();
             return offset + self.data_start();
         }

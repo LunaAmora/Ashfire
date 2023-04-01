@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use ashfire_types::{
     core::{IRToken, Location, TokenType},
-    data::TypeId,
+    data::DataType,
     enums::{ControlOp, KeywordType, OpType},
 };
 use firelib::lexer::Loc;
@@ -13,7 +13,7 @@ use crate::compiler::{
     utils::{LazyError, LazyResult},
 };
 
-pub struct LabelKind(pub LocWord, pub Option<TypeId>);
+pub struct LabelKind(pub LocWord, pub Option<DataType>);
 
 pub trait ExpectToken<'err, S: Display + 'err> {
     fn expect_label_kind(
@@ -22,11 +22,11 @@ pub trait ExpectToken<'err, S: Display + 'err> {
 
     fn expect_type_kind(
         &mut self, error_text: S, prog: &mut Program, loc: Loc,
-    ) -> LazyResult<'err, TypeId>;
+    ) -> LazyResult<'err, DataType>;
 
     fn check_type_kind(
         &mut self, tok: IRToken, error_text: S, prog: &mut Program,
-    ) -> LazyResult<'err, TypeId>;
+    ) -> LazyResult<'err, DataType>;
 
     fn expect_keyword(
         &mut self, key: KeywordType, error_text: S, loc: Loc,
@@ -61,7 +61,7 @@ impl<'err, S: Display + 'err> ExpectToken<'err, S> for Parser {
 
     fn expect_type_kind(
         &mut self, error_text: S, prog: &mut Program, loc: Loc,
-    ) -> LazyResult<'err, TypeId> {
+    ) -> LazyResult<'err, DataType> {
         let next = self.expect_by(
             |tok| tok == KeywordType::Ref || tok.get_word().is_some(),
             error_text.to_string(),
@@ -73,7 +73,7 @@ impl<'err, S: Display + 'err> ExpectToken<'err, S> for Parser {
 
     fn check_type_kind(
         &mut self, tok: IRToken, error_text: S, prog: &mut Program,
-    ) -> LazyResult<'err, TypeId> {
+    ) -> LazyResult<'err, DataType> {
         let IRToken(token_type, loc) = tok;
         match token_type {
             TokenType::Keyword(_) => {
@@ -137,7 +137,7 @@ pub fn unexpected_token<'err, S: Display + 'err>(tok: IRToken, desc: S) -> LazyE
         format!(
             "{}Expected {desc}, but found: {} `{}`",
             f.format(Fmt::Loc(loc)),
-            f.format(Fmt::Typ(token_type)),
+            f.format(Fmt::TTyp(token_type)),
             f.format(Fmt::Tok(tok.clone()))
         )
     })
@@ -154,7 +154,7 @@ pub fn invalid_token<'err, S: Display + 'err>(tok: IRToken, error: S) -> LazyErr
         format!(
             "{}Invalid `{}` found on {error}: `{}`",
             f.format(Fmt::Loc(loc)),
-            f.format(Fmt::Typ(token_type)),
+            f.format(Fmt::TTyp(token_type)),
             f.format(Fmt::Tok(tok.clone()))
         )
     })

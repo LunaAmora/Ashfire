@@ -1,11 +1,11 @@
 use std::str::FromStr;
 
-use super::data::TypeId;
+use crate::data::DataType;
 
 #[derive(Debug, Clone, Copy)]
 pub enum OpType {
-    PushData(TypeId, i32),
-    ExpectType(TypeId),
+    PushData(DataType, i32),
+    ExpectType(DataType),
 
     IndexOp(IndexOp, usize),
     ControlOp(ControlOp, usize),
@@ -111,7 +111,7 @@ pub enum IntrinsicType {
     Store8,
     Store16,
     Store32,
-    Cast(TypeId),
+    Cast(DataType),
 }
 
 impl FromStr for IntrinsicType {

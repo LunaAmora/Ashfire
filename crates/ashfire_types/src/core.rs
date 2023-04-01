@@ -19,11 +19,11 @@ pub fn word_aligned(value: usize) -> i32 {
 }
 
 pub trait Typed {
-    fn get_type(&self) -> TokenType;
+    fn get_type(&self) -> DataType;
 }
 
 impl<T: Typed> Typed for &T {
-    fn get_type(&self) -> TokenType {
+    fn get_type(&self) -> DataType {
         (*self).get_type()
     }
 }
@@ -54,12 +54,6 @@ pub const STR: DataType = DataType(TypeId::STR);
 #[derive(Debug, Clone, Copy)]
 pub struct Value(pub DataType, pub i32);
 
-impl Value {
-    pub fn type_id(&self) -> TypeId {
-        self.0.type_id()
-    }
-}
-
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
@@ -67,14 +61,8 @@ impl PartialEq for Value {
 }
 
 impl Typed for Value {
-    fn get_type(&self) -> TokenType {
-        self.0.get_type()
-    }
-}
-
-impl From<TypeId> for Value {
-    fn from(value: TypeId) -> Self {
-        Self(DataType(value), 0)
+    fn get_type(&self) -> DataType {
+        self.0
     }
 }
 
@@ -85,12 +73,6 @@ pub enum TokenType {
     Str(usize),
     Data(Value),
     Type(DataType),
-}
-
-impl Typed for TokenType {
-    fn get_type(&self) -> TokenType {
-        *self
-    }
 }
 
 impl PartialEq for TokenType {
@@ -136,6 +118,10 @@ impl IRToken {
         }
     }
 
+    pub fn token_type(&self) -> TokenType {
+        self.0
+    }
+
     pub fn is_keyword(&self) -> bool {
         matches!(self.0, TokenType::Keyword(_))
     }
@@ -153,12 +139,6 @@ impl IRToken {
     pub fn as_keyword(&self) -> KeywordType {
         self.get_keyword()
             .expect("IRToken is not a valid `KeywordType`")
-    }
-}
-
-impl Typed for IRToken {
-    fn get_type(&self) -> TokenType {
-        self.0
     }
 }
 
@@ -180,10 +160,10 @@ impl PartialEq<TokenType> for &IRToken {
     }
 }
 
-impl PartialEq<TypeId> for &IRToken {
-    fn eq(&self, other: &TypeId) -> bool {
+impl PartialEq<DataType> for &IRToken {
+    fn eq(&self, other: &DataType) -> bool {
         match self.0 {
-            TokenType::Type(id) | TokenType::Data(Value(id, _)) => id == DataType(*other),
+            TokenType::Type(id) | TokenType::Data(Value(id, _)) => id == *other,
             _ => false,
         }
     }
@@ -193,8 +173,8 @@ impl PartialEq<TypeId> for &IRToken {
 pub struct DataToken(pub Value, pub Loc);
 
 impl DataToken {
-    pub fn new(id: TypeId, value: i32, loc: Loc) -> Self {
-        Self(Value(DataType(id), value), loc)
+    pub fn new(id: DataType, value: i32, loc: Loc) -> Self {
+        Self(Value(id, value), loc)
     }
 
     pub fn value(&self) -> i32 {
@@ -215,7 +195,7 @@ impl DataToken {
 }
 
 impl Typed for DataToken {
-    fn get_type(&self) -> TokenType {
+    fn get_type(&self) -> DataType {
         self.0.get_type()
     }
 }
@@ -232,10 +212,9 @@ impl PartialEq for DataToken {
     }
 }
 
-impl From<DataToken> for IRToken {
-    fn from(val: DataToken) -> Self {
-        let DataToken(value, loc) = val;
-        Self(TokenType::Data(value), loc)
+impl PartialEq<DataType> for DataToken {
+    fn eq(&self, other: &DataType) -> bool {
+        self.get_type() == *other
     }
 }
 
@@ -254,7 +233,7 @@ impl Op {
 impl From<(&Primitive, Loc)> for Op {
     fn from(value: (&Primitive, Loc)) -> Self {
         let (prim, loc) = value;
-        Self(OpType::PushData(prim.type_id(), prim.value()), loc)
+        Self(OpType::PushData(prim.get_type(), prim.value()), loc)
     }
 }
 
@@ -308,10 +287,10 @@ impl OffsetWord {
     }
 }
 
-pub type TypedWord = Wrapper<Name, TypeId>;
+pub type TypedWord = Wrapper<Name, DataType>;
 
 impl TypedWord {
-    pub fn new(name: Name, type_id: TypeId) -> Self {
-        Self(name, type_id)
+    pub fn new(name: Name, data_type: DataType) -> Self {
+        Self(name, data_type)
     }
 }

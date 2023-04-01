@@ -2,10 +2,10 @@ use std::{iter::once, ops::Deref};
 
 use firelib::utils::BoolUtils;
 
-use crate::core::{IRToken, Name, TokenType, Typed, Value, WORD_USIZE};
+use crate::core::{DataToken, Name, Typed, Value, WORD_USIZE};
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
-pub struct TypeId(pub usize);
+pub struct TypeId(usize);
 
 impl TypeId {
     pub const ANY: Self = Self(0);
@@ -17,8 +17,8 @@ impl TypeId {
 }
 
 impl Typed for TypeId {
-    fn get_type(&self) -> TokenType {
-        TokenType::Type(DataType(*self))
+    fn get_type(&self) -> DataType {
+        DataType(*self)
     }
 }
 
@@ -26,8 +26,13 @@ impl Typed for TypeId {
 pub struct DataType(pub TypeId);
 
 impl DataType {
-    pub fn type_id(&self) -> TypeId {
-        self.0
+    pub fn new(id: usize) -> Self {
+        Self(TypeId(id))
+    }
+
+    pub fn id(&self) -> usize {
+        let &Self(TypeId(id)) = self;
+        id
     }
 }
 
@@ -40,37 +45,28 @@ impl PartialEq for DataType {
 }
 
 impl Typed for DataType {
-    fn get_type(&self) -> TokenType {
-        TokenType::Type(*self)
+    fn get_type(&self) -> DataType {
+        *self
     }
 }
 
 #[derive(Clone)]
-pub struct Primitive(pub Name, pub Value);
+pub struct Primitive {
+    name: Name,
+    value: Value,
+}
 
 impl Primitive {
-    pub fn new(name: Name, tok: &IRToken) -> Self {
-        let TokenType::Data(value) = tok.0 else {
-            unimplemented!()
-        };
-
-        Self(name, value)
+    pub fn new(name: Name, DataToken(value, _): DataToken) -> Self {
+        Self { name, value }
     }
 
     pub fn name(&self) -> Name {
-        self.0
+        self.name
     }
 
     pub fn value(&self) -> i32 {
-        self.1.1
-    }
-
-    pub fn type_id(&self) -> TypeId {
-        self.1.type_id()
-    }
-
-    pub fn data_type(&self) -> DataType {
-        self.1.0
+        self.value.1
     }
 
     pub fn size(&self) -> usize {
@@ -78,24 +74,33 @@ impl Primitive {
     }
 }
 
+impl Typed for Primitive {
+    fn get_type(&self) -> DataType {
+        self.value.0
+    }
+}
+
 #[derive(Clone)]
-pub struct PointerType(pub Name, pub TypeId, pub TypeId);
+pub struct PointerType {
+    name: Name,
+    data_type: DataType,
+    ptr_type: DataType,
+}
 
 impl PointerType {
     pub fn as_primitive(&self, value: i32) -> Primitive {
-        Primitive(self.0, Value(DataType(self.1), value))
+        Primitive {
+            name: self.name,
+            value: Value(self.data_type, value),
+        }
     }
 
     pub fn name(&self) -> Name {
-        self.0
+        self.name
     }
 
-    pub fn type_id(&self) -> TypeId {
-        self.1
-    }
-
-    pub fn ptr_id(&self) -> TypeId {
-        self.2
+    pub fn ptr_type(&self) -> DataType {
+        self.ptr_type
     }
 
     pub fn size(&self) -> usize {
@@ -104,13 +109,13 @@ impl PointerType {
 }
 
 impl Typed for PointerType {
-    fn get_type(&self) -> TokenType {
-        self.1.get_type()
+    fn get_type(&self) -> DataType {
+        self.data_type.get_type()
     }
 }
 
 #[derive(Clone)]
-pub struct StructType(pub StructFields, pub TypeId);
+pub struct StructType(pub StructFields, pub DataType);
 
 impl StructType {
     fn name(&self) -> Name {
@@ -119,7 +124,7 @@ impl StructType {
 }
 
 impl Typed for StructType {
-    fn get_type(&self) -> TokenType {
+    fn get_type(&self) -> DataType {
         self.1.get_type()
     }
 }
@@ -173,31 +178,33 @@ pub enum TypeDescr {
 }
 
 impl TypeDescr {
-    pub fn primitive(name: Name, value_type: TypeId) -> Self {
-        Self::Primitive(Primitive(name, Value(DataType(value_type), 0)))
+    pub fn primitive(name: Name, value_type: DataType) -> Self {
+        Self::Primitive(Primitive { name, value: Value(value_type, 0) })
     }
 
-    pub fn structure(name: Name, members: Vec<Self>, reftype: TypeId) -> Self {
+    pub fn structure(name: Name, members: Vec<Self>, reftype: DataType) -> Self {
         Self::Structure(StructType(StructFields(name, members), reftype))
     }
 
-    pub fn reference(name: Name, type_id: TypeId, ptr_id: TypeId) -> Self {
-        Self::Reference(PointerType(name, type_id, ptr_id))
+    pub fn reference(name: Name, type_id: DataType, ptr_id: DataType) -> Self {
+        Self::Reference(PointerType { name, data_type: type_id, ptr_type: ptr_id })
     }
 
     pub fn name(&self) -> Name {
         match self {
-            Self::Primitive(val) => val.name(),
+            Self::Primitive(val) => val.name,
             Self::Structure(stk) => stk.name(),
-            Self::Reference(ptr) => ptr.name(),
+            Self::Reference(ptr) => ptr.name,
         }
     }
+}
 
-    pub fn type_id(&self) -> TypeId {
+impl Typed for TypeDescr {
+    fn get_type(&self) -> DataType {
         match self {
-            Self::Structure(stk) => stk.1,
-            Self::Reference(ptr) => ptr.1,
-            Self::Primitive(typ) => typ.1.type_id(),
+            Self::Structure(stk) => stk.get_type(),
+            Self::Reference(ptr) => ptr.get_type(),
+            Self::Primitive(typ) => typ.get_type(),
         }
     }
 }
@@ -210,22 +217,19 @@ pub trait Transposer<T, I> {
     fn transpose(self, rev: bool, provider: Self::Provider<'_>) -> Option<T>;
 }
 
-impl<I> Transposer<Vec<TypeDescr>, IRToken> for I
+impl<I> Transposer<Vec<TypeDescr>, DataToken> for I
 where
     I: Iterator<Item = TypeDescr>,
 {
     fn transpose(self, rev: bool, provider: Self::Provider<'_>) -> Option<Vec<TypeDescr>> {
         self.map(|descr| {
             Some(match descr {
-                TypeDescr::Primitive(unit) => {
-                    TypeDescr::Primitive(Primitive::new(unit.name(), &provider.next()?))
+                TypeDescr::Primitive(prm) => {
+                    TypeDescr::Primitive(Primitive::new(prm.name, provider.next()?))
                 }
 
                 TypeDescr::Reference(ptr) => {
-                    let TokenType::Data(Value(_, operand)) = provider.next()?.0 else {
-                        unreachable!();
-                    };
-
+                    let DataToken(Value(_, operand), _) = provider.next()?;
                     TypeDescr::Primitive(ptr.as_primitive(operand))
                 }
 
@@ -238,7 +242,7 @@ where
     }
 }
 
-impl Transposer<Vec<TypeDescr>, IRToken> for StructFields {
+impl Transposer<Vec<TypeDescr>, DataToken> for StructFields {
     fn transpose(self, rev: bool, provider: Self::Provider<'_>) -> Option<Vec<TypeDescr>> {
         self.ordered_members(rev).transpose(rev, provider)
     }

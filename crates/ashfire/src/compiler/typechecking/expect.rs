@@ -1,9 +1,6 @@
 use std::ops::Deref;
 
-use ashfire_types::{
-    core::{Location, TokenType, Typed, ANY, ANY_PTR},
-    data::DataType,
-};
+use ashfire_types::{core::*, data::DataType};
 use ashlib::UncheckedStack;
 use firelib::{lazy::LazyFormatter, lexer::Loc};
 use itertools::Itertools;
@@ -74,7 +71,7 @@ pub trait Expect<'err, T: Clone + Typed + Location + 'err>: UncheckedStack<T> {
 
         let typ = match arity {
             ArityType::Any => return Ok(()),
-            ArityType::Same => todo!(), //self.get_from_top(0).get_type(),
+            ArityType::Same => self.get_from_top(0).get_type(),
             ArityType::Type(typ) => typ,
         };
 
@@ -186,14 +183,14 @@ pub fn expect_type<'err, T: Clone + Typed + Location + 'err, V: Typed>(
 }
 
 fn format_type_diff<'err, T: Clone + Typed + Location + 'err>(
-    frame: T, expected: TokenType, loc: Loc,
+    frame: T, expected: DataType, loc: Loc,
 ) -> LazyError<'err> {
     LazyError::new(move |f| {
         format!(
             "{}Expected type `{}`, but found `{}`\n{}",
             f.format(Fmt::Loc(loc)),
-            f.format(Fmt::Typ(expected)),
-            f.format(Fmt::Typ(frame.get_type())),
+            f.format(Fmt::DTyp(expected)),
+            f.format(Fmt::DTyp(frame.get_type())),
             format_frame(&frame).apply(f)
         )
     })
@@ -209,19 +206,19 @@ pub fn format_frame<T: Typed + Location>(t: T) -> impl LazyFormatter<Fmt> {
         format!(
             "[INFO] {}Type `{}` was declared here",
             f.format(Fmt::Loc(t.loc())),
-            f.format(Fmt::Typ(t.get_type()))
+            f.format(Fmt::DTyp(t.get_type()))
         )
     }
 }
 
 pub fn format_stack<'err, T: Typed>(stack: &[T]) -> impl LazyFormatter<Fmt> + 'err {
-    let types: Vec<TokenType> = stack.iter().map(Typed::get_type).collect();
+    let types: Vec<DataType> = stack.iter().map(Typed::get_type).collect();
     lazyformat! { |f|
         format!(
             "[{}] ->",
             types
                 .iter()
-                .map(|&t| format!("<{}>", f.format(Fmt::Typ(t))))
+                .map(|&t| format!("<{}>", f.format(Fmt::DTyp(t))))
                 .join(", ")
         )
     }

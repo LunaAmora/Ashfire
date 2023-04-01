@@ -59,7 +59,7 @@ impl Default for Mode {
 }
 
 #[derive(Default)]
-pub struct Binds(pub Vec<(Name, Option<usize>)>);
+pub struct Binds(pub Vec<(Name, Option<DataType>)>);
 
 #[derive(Default)]
 pub struct Proc {
@@ -89,7 +89,7 @@ impl Proc {
         }
     }
 
-    pub fn bindings(&self) -> impl Iterator<Item = &(Name, Option<usize>)> {
+    pub fn bindings(&self) -> impl Iterator<Item = &(Name, Option<DataType>)> {
         self.binds.iter().rev().flat_map(|Binds(bind)| bind.iter())
     }
 
