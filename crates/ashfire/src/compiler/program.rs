@@ -200,7 +200,7 @@ impl Program {
         match typ {
             TokenType::Keyword(_) => "Keyword",
             TokenType::Word(_) => "Word or Intrinsic",
-            TokenType::Data(ValueType(val), _) | TokenType::Type(ValueType(val)) => {
+            TokenType::Data(Value(DataType(val), _)) | TokenType::Type(DataType(val)) => {
                 return self.data_name(val);
             }
             TokenType::Str(_) => "String Id",
@@ -221,7 +221,7 @@ impl Program {
             TokenType::Keyword(key) => format!("{key:?}"),
             TokenType::Word(name) => self.get_word(name),
             TokenType::Str(index) => self.get_data_str(index).to_owned(),
-            TokenType::Data(ValueType(id), value) => Self::data_display(id, value),
+            TokenType::Data(Value(DataType(id), value)) => Self::data_display(id, value),
             TokenType::Type(_) => todo!(),
         }
     }

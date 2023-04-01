@@ -2,7 +2,7 @@ use std::{iter::once, ops::Deref};
 
 use firelib::utils::BoolUtils;
 
-use crate::core::{IRToken, Name, TokenType, Typed, WORD_USIZE};
+use crate::core::{IRToken, Name, TokenType, Typed, Value, WORD_USIZE};
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub struct TypeId(pub usize);
@@ -18,14 +18,20 @@ impl TypeId {
 
 impl Typed for TypeId {
     fn get_type(&self) -> TokenType {
-        TokenType::Type(ValueType(*self))
+        TokenType::Type(DataType(*self))
     }
 }
 
 #[derive(Debug, Eq, Clone, Copy)]
-pub struct ValueType(pub TypeId);
+pub struct DataType(pub TypeId);
 
-impl PartialEq for ValueType {
+impl DataType {
+    pub fn type_id(&self) -> TypeId {
+        self.0
+    }
+}
+
+impl PartialEq for DataType {
     fn eq(&self, other: &Self) -> bool {
         let (Self(l), Self(r)) = (*self, *other);
 
@@ -33,22 +39,22 @@ impl PartialEq for ValueType {
     }
 }
 
-impl Typed for ValueType {
+impl Typed for DataType {
     fn get_type(&self) -> TokenType {
         TokenType::Type(*self)
     }
 }
 
 #[derive(Clone)]
-pub struct Primitive(pub Name, pub i32, pub TypeId);
+pub struct Primitive(pub Name, pub Value);
 
 impl Primitive {
-    pub fn new(name: Name, typed: &IRToken) -> Self {
-        let TokenType::Data(ValueType(id), value) = typed.get_type() else {
+    pub fn new(name: Name, tok: &IRToken) -> Self {
+        let TokenType::Data(value) = tok.0 else {
             unimplemented!()
         };
 
-        Self(name, value, id)
+        Self(name, value)
     }
 
     pub fn name(&self) -> Name {
@@ -56,21 +62,19 @@ impl Primitive {
     }
 
     pub fn value(&self) -> i32 {
-        self.1
+        self.1.1
     }
 
     pub fn type_id(&self) -> TypeId {
-        self.2
+        self.1.type_id()
+    }
+
+    pub fn data_type(&self) -> DataType {
+        self.1.0
     }
 
     pub fn size(&self) -> usize {
         WORD_USIZE
-    }
-}
-
-impl Typed for Primitive {
-    fn get_type(&self) -> TokenType {
-        self.2.get_type()
     }
 }
 
@@ -79,7 +83,7 @@ pub struct PointerType(pub Name, pub TypeId, pub TypeId);
 
 impl PointerType {
     pub fn as_primitive(&self, value: i32) -> Primitive {
-        Primitive(self.0, value, self.1)
+        Primitive(self.0, Value(DataType(self.1), value))
     }
 
     pub fn name(&self) -> Name {
@@ -170,7 +174,7 @@ pub enum TypeDescr {
 
 impl TypeDescr {
     pub fn primitive(name: Name, value_type: TypeId) -> Self {
-        Self::Primitive(Primitive(name, 0, value_type))
+        Self::Primitive(Primitive(name, Value(DataType(value_type), 0)))
     }
 
     pub fn structure(name: Name, members: Vec<Self>, reftype: TypeId) -> Self {
@@ -193,7 +197,7 @@ impl TypeDescr {
         match self {
             Self::Structure(stk) => stk.1,
             Self::Reference(ptr) => ptr.1,
-            Self::Primitive(typ) => typ.2,
+            Self::Primitive(typ) => typ.1.type_id(),
         }
     }
 }
@@ -218,7 +222,7 @@ where
                 }
 
                 TypeDescr::Reference(ptr) => {
-                    let TokenType::Data(_, operand) = provider.next()?.0 else {
+                    let TokenType::Data(Value(_, operand)) = provider.next()?.0 else {
                         unreachable!();
                     };
 

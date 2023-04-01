@@ -1,6 +1,6 @@
 use ashfire_types::{
     core::*,
-    data::{TypeDescr, TypeId, ValueType},
+    data::{DataType, TypeDescr, TypeId},
     enums::{IntrinsicType, KeywordType},
 };
 use ashlib::{Either, EvalStack, UncheckedStack};
@@ -136,9 +136,9 @@ impl Evaluator for EvalStack<DataToken> {
                 ]);
             }
 
-            TokenType::Data(ValueType(id), value) => match id {
+            TokenType::Data(value @ Value(DataType(id), _)) => match id {
                 TypeId::INT | TypeId::BOOL | TypeId::PTR => {
-                    self.push(DataToken::new(id, value, loc));
+                    self.push(DataToken(value, loc));
                 }
                 _ => Err(Either::Left(tok))?,
             },

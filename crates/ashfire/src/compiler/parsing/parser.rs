@@ -120,15 +120,15 @@ impl Parser {
 
             TokenType::Str(index) => Op(OpType::IndexOp(PushStr, index), loc),
 
-            TokenType::Data(data, value) => match data {
-                ValueType(val) => match val {
+            TokenType::Data(Value(data, value)) => match data {
+                DataType(id) => match id {
                     TypeId::INT | TypeId::BOOL | TypeId::PTR => {
-                        Op(OpType::PushData(val, value), loc)
+                        Op(OpType::PushData(id, value), loc)
                     }
                     TypeId(_) => lazybail!(
                         |f| "{}Value type not valid here: `{}`",
                         f.format(Fmt::Loc(loc)),
-                        f.format(Fmt::Typ(val.get_type()))
+                        f.format(Fmt::Typ(id.get_type()))
                     ),
                 },
             },
@@ -354,7 +354,7 @@ impl Parser {
         let mut colons: u8 = 0;
         while let Some(tok) = self.get(i) {
             match (colons, tok.get_type()) {
-                (1, TokenType::Data(ValueType(TypeId::INT), _)) => {
+                (1, TokenType::Data(Value(DataType(TypeId::INT), _))) => {
                     self.parse_memory(word, prog).try_success()?;
                 }
 
@@ -535,13 +535,11 @@ impl Parser {
                     let kind = self.check_type_kind(tok, "variable type", prog)?;
                     match prog.get_type_descr(kind) {
                         TypeDescr::Reference(ptr) => {
-                            ptr.type_id()
-                                .get_type()
-                                .conditional_push(arrow, &mut outs, &mut ins);
+                            DataType(ptr.type_id()).conditional_push(arrow, &mut outs, &mut ins);
                         }
 
                         type_def => {
-                            for typ in type_def.units().map(|u| u.get_type()) {
+                            for typ in type_def.units().map(|Primitive(_, Value(typ, _))| typ) {
                                 typ.conditional_push(arrow, &mut outs, &mut ins);
                             }
                         }
@@ -588,7 +586,7 @@ impl Parser {
                     members.push(TypeDescr::structure(member_name, fields.to_vec(), value));
                 }
                 TypeDescr::Primitive(Primitive(.., id)) => {
-                    members.push(TypeDescr::primitive(member_name, *id));
+                    members.push(TypeDescr::primitive(member_name, id.type_id()));
                 }
                 TypeDescr::Reference(_) => todo!(),
             }
@@ -706,7 +704,7 @@ impl Parser {
             }
 
             Either::Right(tokens) => {
-                let contract: Vec<_> = stk.units().map(|u| u.get_type()).collect();
+                let contract: Vec<_> = stk.units().map(|p| p.data_type()).collect();
                 tokens.expect_exact(&contract, end_loc)?;
 
                 let mut eval_items = tokens

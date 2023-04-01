@@ -64,8 +64,8 @@ impl TypeChecker {
     fn type_check_op(&mut self, ip: usize, program: &mut Program) -> LazyResult<()> {
         let &Op(op_type, loc) = &program.ops[ip];
         match op_type {
-            OpType::PushData(value, _) => match value {
-                TypeId::INT | TypeId::BOOL | TypeId::PTR => self.push_value(value, loc),
+            OpType::PushData(type_id, _) => match type_id {
+                TypeId::INT | TypeId::BOOL | TypeId::PTR => self.push_type(type_id, loc),
                 TypeId(_) => unreachable!(),
             },
 
@@ -76,39 +76,37 @@ impl TypeChecker {
                 IndexOp::PushGlobalMem |
                 IndexOp::PushLocal |
                 IndexOp::PushGlobal => {
-                    self.push_value(TypeId::PTR, loc);
+                    self.push_type(TypeId::PTR, loc);
                 }
 
-                IndexOp::Offset => match self.expect_struct_pointer(program, ip, index, loc)? {
-                    TokenType::Type(ValueType(offset_id)) => {
-                        self.push_frame(program.get_type_ptr(offset_id).get_type(), loc);
-                    }
-                    _ => todo!(),
-                },
+                IndexOp::Offset => {
+                    let type_id = self.expect_struct_pointer(program, ip, index, loc)?;
+                    self.push_type(program.get_type_ptr(type_id), loc);
+                }
 
                 IndexOp::Unpack => match self.data_stack.expect_pop(loc)?.get_type() {
-                    TokenType::Type(ValueType(id @ TypeId(index))) => {
+                    TokenType::Type(DataType(id @ TypeId(index))) => {
                         match program.get_type_descr(id) {
                             TypeDescr::Reference(ptr) => match program.get_type_descr(ptr.ptr_id())
                             {
                                 TypeDescr::Structure(StructType(fields, TypeId(ptr_id))) => {
-                                    for typ in fields.units().map(|u| u.get_type()) {
-                                        self.push_frame(typ, loc);
+                                    for primitive in fields.units() {
+                                        self.push_frame(primitive.data_type(), loc);
                                     }
 
                                     program.set_index(ip, *ptr_id);
                                 }
 
                                 TypeDescr::Primitive(_) => {
-                                    self.push_frame(ptr.ptr_id().get_type(), loc);
+                                    self.push_type(ptr.ptr_id(), loc);
                                     program.set_index(ip, index);
                                 }
 
                                 TypeDescr::Reference(_) => todo!(),
                             },
                             stk => {
-                                for typ in stk.units().map(|u| u.get_type()) {
-                                    self.push_frame(typ, loc);
+                                for primitive in stk.units() {
+                                    self.push_frame(primitive.data_type(), loc);
                                 }
                                 program.set_index(ip, index);
                             }
@@ -133,20 +131,15 @@ impl TypeChecker {
                 }
 
                 IndexOp::LoadBind => {
-                    let (typ, offset) = self.get_bind_type_offset(index);
+                    let (type_id, offset) = self.get_bind_type_offset(index);
+                    self.push_frame(type_id, loc);
 
-                    self.push_frame(typ, loc);
                     program.set_index(ip, offset);
                 }
 
                 IndexOp::PushBind => {
-                    let (typ, offset) = self.get_bind_type_offset(index);
-
-                    if let TokenType::Type(ValueType(id)) = typ {
-                        self.push_frame(program.get_type_ptr(id).get_type(), loc);
-                    } else {
-                        todo!()
-                    }
+                    let (DataType(type_id), offset) = self.get_bind_type_offset(index);
+                    self.push_type(program.get_type_ptr(type_id), loc);
 
                     program.set_index(ip, offset);
                 }
@@ -199,7 +192,7 @@ impl TypeChecker {
 
                 IntrinsicType::Cast(type_id) => {
                     self.data_stack.expect_pop(loc)?;
-                    self.push_frame(type_id.get_type(), loc);
+                    self.push_type(type_id, loc);
                 }
             },
 
@@ -369,15 +362,15 @@ impl TypeChecker {
 
                             let contract: Vec<_> = match type_def {
                                 TypeDescr::Structure(StructType(fields, _)) => {
-                                    fields.units().map(|u| u.get_type()).collect()
+                                    fields.units().map(|u| u.data_type()).collect()
                                 }
-                                TypeDescr::Primitive(prim) => vec![prim.get_type()],
-                                TypeDescr::Reference(ptr) => vec![ptr.get_type()],
+                                TypeDescr::Primitive(prim) => vec![prim.data_type()],
+                                TypeDescr::Reference(ptr) => vec![DataType(ptr.type_id())],
                             };
 
                             self.data_stack.expect_contract_pop(&contract, loc)?;
 
-                            binds.push((TypeFrame(TypeId(id).get_type(), loc), type_def.size()));
+                            binds.push((TypeFrame(DataType(TypeId(id)), loc), type_def.size()));
                         } else {
                             let top = self.data_stack.expect_pop(loc)?;
                             binds.push((top, WORD_USIZE));
@@ -404,8 +397,8 @@ impl TypeChecker {
             },
 
             OpType::ExpectType(type_id) => {
-                let typ = type_id.get_type();
-                self.data_stack.expect_peek(ArityType::Type(typ), loc)?;
+                self.data_stack
+                    .expect_peek(ArityType::Type(DataType(type_id)), loc)?;
             }
         };
         Ok(())
@@ -417,41 +410,41 @@ impl TypeChecker {
     }
 
     fn pop_push<const N: usize>(
-        &mut self, contr: [TokenType; N], token: TokenType, loc: Loc,
+        &mut self, contr: [DataType; N], token: DataType, loc: Loc,
     ) -> LazyResult<()> {
         self.data_stack.pop_push(contr, TypeFrame(token, loc), loc)
     }
 
     fn extend_value<const N: usize>(&mut self, value: [TypeId; N], loc: Loc) {
         self.data_stack
-            .extend(value.map(|v| TypeFrame(v.get_type(), loc)));
+            .extend(value.map(|v| TypeFrame(DataType(v), loc)));
     }
 
-    fn push_value(&mut self, value: TypeId, loc: Loc) {
-        self.data_stack.push(TypeFrame(value.get_type(), loc));
+    fn push_type(&mut self, type_id: TypeId, loc: Loc) {
+        self.data_stack.push(TypeFrame(DataType(type_id), loc));
     }
 
-    fn push_frame(&mut self, typ: TokenType, loc: Loc) {
+    fn push_frame(&mut self, typ: DataType, loc: Loc) {
         self.data_stack.push(TypeFrame(typ, loc));
     }
 
-    fn get_bind_type_offset(&mut self, operand: usize) -> (TokenType, usize) {
+    fn get_bind_type_offset(&mut self, operand: usize) -> (DataType, usize) {
         let mut offset = 0;
         for ((_, size), _) in self.bind_stack.iter().rev().zip(0..=operand) {
             offset += size;
         }
 
-        let (bind, _) = self.bind_stack[self.bind_stack.len() - 1 - operand];
+        let (TypeFrame(data_type, _), _) = self.bind_stack[self.bind_stack.len() - 1 - operand];
 
-        (bind.get_type(), offset)
+        (data_type, offset)
     }
 
     fn expect_struct_pointer(
         &mut self, prog: &mut Program, ip: usize, operand: usize, loc: Loc,
-    ) -> LazyResult<TokenType> {
+    ) -> LazyResult<TypeId> {
         let typ = self.data_stack.expect_pop(loc)?.get_type();
 
-        if let TokenType::Type(ValueType(id)) = typ {
+        if let TokenType::Type(DataType(id)) = typ {
             if let TypeDescr::Reference(ptr) = &prog.get_type_descr(id) {
                 match prog.get_type_descr(ptr.ptr_id()) {
                     TypeDescr::Structure(StructType(fields, _)) => {
@@ -463,7 +456,7 @@ impl TypeChecker {
                             return Err(err_loc(error, loc));
                         };
 
-                        let result = fields[index].type_id().get_type();
+                        let result = fields[index].type_id();
                         prog.set_index(ip, offset * WORD_USIZE);
 
                         return Ok(result);

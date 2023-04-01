@@ -44,20 +44,47 @@ impl Location for Loc {
     }
 }
 
-pub const ANY: TokenType = TokenType::Type(ValueType(TypeId::ANY));
-pub const ANY_PTR: TokenType = TokenType::Type(ValueType(TypeId::ANY_PTR));
-pub const BOOL: TokenType = TokenType::Type(ValueType(TypeId::BOOL));
-pub const INT: TokenType = TokenType::Type(ValueType(TypeId::INT));
-pub const PTR: TokenType = TokenType::Type(ValueType(TypeId::PTR));
-pub const STR: TokenType = TokenType::Type(ValueType(TypeId::STR));
+pub const ANY: DataType = DataType(TypeId::ANY);
+pub const ANY_PTR: DataType = DataType(TypeId::ANY_PTR);
+pub const BOOL: DataType = DataType(TypeId::BOOL);
+pub const INT: DataType = DataType(TypeId::INT);
+pub const PTR: DataType = DataType(TypeId::PTR);
+pub const STR: DataType = DataType(TypeId::STR);
+
+#[derive(Debug, Clone, Copy)]
+pub struct Value(pub DataType, pub i32);
+
+impl Value {
+    pub fn type_id(&self) -> TypeId {
+        self.0.type_id()
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Typed for Value {
+    fn get_type(&self) -> TokenType {
+        self.0.get_type()
+    }
+}
+
+impl From<TypeId> for Value {
+    fn from(value: TypeId) -> Self {
+        Self(DataType(value), 0)
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum TokenType {
     Keyword(KeywordType),
     Word(Name),
     Str(usize),
-    Type(ValueType),
-    Data(ValueType, i32),
+    Data(Value),
+    Type(DataType),
 }
 
 impl Typed for TokenType {
@@ -69,7 +96,19 @@ impl Typed for TokenType {
 impl PartialEq for TokenType {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Type(l0) | Self::Data(l0, _), Self::Type(r0) | Self::Data(r0, _)) => l0 == r0,
+            (
+                Self::Type(l0) | Self::Data(Value(l0, _)),
+                Self::Type(r0) | Self::Data(Value(r0, _)),
+            ) => l0 == r0,
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq<DataType> for TokenType {
+    fn eq(&self, other: &DataType) -> bool {
+        match self {
+            Self::Type(data_type) => data_type == other,
             _ => false,
         }
     }
@@ -80,7 +119,7 @@ pub struct IRToken(pub TokenType, pub Loc);
 
 impl IRToken {
     pub fn data(id: TypeId, value: i32, loc: Loc) -> Self {
-        Self(TokenType::Data(ValueType(id), value), loc)
+        Self(TokenType::Data(Value(DataType(id), value)), loc)
     }
 
     pub fn get_word(&self) -> Option<Name> {
@@ -92,7 +131,7 @@ impl IRToken {
 
     pub fn get_data(&self) -> Option<i32> {
         match self.0 {
-            TokenType::Data(_, value) => Some(value),
+            TokenType::Data(Value(_, value)) => Some(value),
             _ => None,
         }
     }
@@ -144,35 +183,34 @@ impl PartialEq<TokenType> for &IRToken {
 impl PartialEq<TypeId> for &IRToken {
     fn eq(&self, other: &TypeId) -> bool {
         match self.0 {
-            TokenType::Type(id) | TokenType::Data(id, _) => id == ValueType(*other),
+            TokenType::Type(id) | TokenType::Data(Value(id, _)) => id == DataType(*other),
             _ => false,
         }
     }
 }
 
-
 #[derive(Clone, Copy)]
-pub struct DataToken(ValueType, i32, Loc);
+pub struct DataToken(pub Value, pub Loc);
 
 impl DataToken {
     pub fn new(id: TypeId, value: i32, loc: Loc) -> Self {
-        Self(ValueType(id), value, loc)
+        Self(Value(DataType(id), value), loc)
     }
 
     pub fn value(&self) -> i32 {
-        self.1
+        self.0 .1
     }
 
     #[must_use]
-    pub fn add(self, Self(_, r_value, _): Self, loc: Loc) -> Self {
-        let Self(id, value, _) = self;
-        Self(id, value + r_value, loc)
+    pub fn add(self, Self(Value(_, r_value), _): Self, loc: Loc) -> Self {
+        let Self(Value(id, value), _) = self;
+        Self(Value(id, value + r_value), loc)
     }
 
     #[must_use]
-    pub fn sub(self, Self(_, r_value, _): Self, loc: Loc) -> Self {
-        let Self(id, value, _) = self;
-        Self(id, value - r_value, loc)
+    pub fn sub(self, Self(Value(_, r_value), _): Self, loc: Loc) -> Self {
+        let Self(Value(id, value), _) = self;
+        Self(Value(id, value - r_value), loc)
     }
 }
 
@@ -184,7 +222,7 @@ impl Typed for DataToken {
 
 impl Location for DataToken {
     fn loc(&self) -> Loc {
-        self.2
+        self.1
     }
 }
 
@@ -196,8 +234,8 @@ impl PartialEq for DataToken {
 
 impl From<DataToken> for IRToken {
     fn from(val: DataToken) -> Self {
-        let DataToken(ValueType(id), value, loc) = val;
-        Self::data(id, value, loc)
+        let DataToken(value, loc) = val;
+        Self(TokenType::Data(value), loc)
     }
 }
 

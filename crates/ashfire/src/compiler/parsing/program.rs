@@ -133,14 +133,14 @@ impl Program {
     ) -> OptionErr<Vec<Op>> {
         let mut result = Vec::new();
         match stk {
-            TypeDescr::Primitive(Primitive(.., type_id)) => {
+            TypeDescr::Primitive(Primitive(.., Value(DataType(id), _))) => {
                 result.push(Op(OpType::IndexOp(push_type, offset), loc));
 
                 if var_typ == VarWordType::Store {
-                    result.insert(0, Op(OpType::ExpectType(*type_id), loc));
+                    result.insert(0, Op(OpType::ExpectType(*id), loc));
                     result.push(Op::from((IntrinsicType::Store32, loc)));
                 } else if var_typ == VarWordType::Pointer {
-                    let Some(ptr_id) = self.try_get_type_ptr(*type_id) else {
+                    let Some(ptr_id) = self.try_get_type_ptr(*id) else {
                         todo!("must register the ptr type earlier");
                     };
 
@@ -148,7 +148,7 @@ impl Program {
                 } else {
                     result.extend([
                         Op::from((IntrinsicType::Load32, loc)),
-                        Op::from((IntrinsicType::Cast(*type_id), loc)),
+                        Op::from((IntrinsicType::Cast(*id), loc)),
                     ]);
                 }
             }

@@ -1,6 +1,6 @@
 use crate::{
-    core::{word_aligned, Name, OffsetWord, TokenType, WORD_SIZE},
-    data::{StructInfo, TypeDescr},
+    core::{word_aligned, Name, OffsetWord, WORD_SIZE},
+    data::{DataType, StructInfo, TypeDescr},
 };
 
 #[derive(Default)]
@@ -104,20 +104,20 @@ impl Proc {
 
 #[derive(Default)]
 pub struct Contract {
-    ins: Vec<TokenType>,
-    outs: Vec<TokenType>,
+    ins: Vec<DataType>,
+    outs: Vec<DataType>,
 }
 
 impl Contract {
-    pub fn new(ins: Vec<TokenType>, outs: Vec<TokenType>) -> Self {
+    pub fn new(ins: Vec<DataType>, outs: Vec<DataType>) -> Self {
         Self { ins, outs }
     }
 
-    pub fn ins(&self) -> &[TokenType] {
+    pub fn ins(&self) -> &[DataType] {
         &self.ins
     }
 
-    pub fn outs(&self) -> &[TokenType] {
+    pub fn outs(&self) -> &[DataType] {
         &self.outs
     }
 
