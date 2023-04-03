@@ -129,7 +129,7 @@ impl Parser {
                     _ => lazybail!(
                         |f| "{}Value type not valid here: `{}`",
                         f.format(Fmt::Loc(loc)),
-                        f.format(Fmt::DTyp(id.get_type()))
+                        f.format(Fmt::DTyp(data))
                     ),
                 },
             },
@@ -329,9 +329,9 @@ impl Parser {
     }
 
     /// Creates a logic block starting from the given [`OpType::ControlOp`].
-    fn push_control_block(&mut self, block: (ControlOp, usize, Loc)) -> Op {
+    fn push_control_block(&mut self, block @ (op, value, loc): Block) -> Op {
         self.name_scopes.push(block);
-        Op(OpType::ControlOp(block.0, block.1), block.2)
+        Op(OpType::ControlOp(op, value), loc)
     }
 
     /// Pops the last opened logic block, returning a the [`OpType::ControlOp`]
@@ -340,9 +340,7 @@ impl Parser {
     /// # Errors
     ///
     /// This function will return an error if no block is open.
-    fn pop_control_block(
-        &mut self, closing_type: KeywordType, loc: Loc,
-    ) -> LazyResult<(ControlOp, usize, Loc)> {
+    fn pop_control_block(&mut self, closing_type: KeywordType, loc: Loc) -> LazyResult<Block> {
         self.name_scopes.pop().with_err_ctx(move || {
             err_loc(format!("There are no open blocks to close with `{closing_type:?}`"), loc)
         })
@@ -540,7 +538,7 @@ impl Parser {
                         }
 
                         type_def => {
-                            for typ in type_def.units().map(|prm| prm.get_type()) {
+                            for typ in type_def.units().map(|prim| prim.get_type()) {
                                 typ.conditional_push(arrow, &mut outs, &mut ins);
                             }
                         }
@@ -583,11 +581,11 @@ impl Parser {
 
             match prog.get_type_descr(kind) {
                 TypeDescr::Structure(StructType(fields, _)) => {
-                    let value = prog.get_fields_type_id(fields);
+                    let value = prog.get_fields_data_type(fields);
                     members.push(TypeDescr::structure(member_name, fields.to_vec(), value));
                 }
-                TypeDescr::Primitive(prm) => {
-                    members.push(TypeDescr::primitive(member_name, prm.get_type()));
+                TypeDescr::Primitive(prim) => {
+                    members.push(TypeDescr::primitive(member_name, prim.get_type()));
                 }
                 TypeDescr::Reference(_) => todo!(),
             }

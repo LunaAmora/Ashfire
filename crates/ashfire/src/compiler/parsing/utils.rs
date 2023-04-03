@@ -3,11 +3,14 @@ use std::fmt::Display;
 use ashfire_types::{
     core::{IRToken, Location, TokenType},
     data::DataType,
-    enums::{ControlOp, KeywordType, OpType},
+    enums::{KeywordType, OpType},
 };
 use firelib::lexer::Loc;
 
-use super::{parser::Parser, types::LocWord};
+use super::{
+    parser::Parser,
+    types::{Block, LocWord},
+};
 use crate::compiler::{
     program::{Fmt, Program},
     utils::{LazyError, LazyResult},
@@ -80,7 +83,7 @@ impl<'err, S: Display + 'err> ExpectToken<'err, S> for Parser {
                 let word_error = format!("{error_text} after `*`");
                 let ref_word = self.expect_word(word_error.clone(), loc)?;
 
-                prog.get_type_id(ref_word.name())
+                prog.get_data_type(ref_word.name())
                     .map(|x| prog.get_type_ptr(x))
                     .map_or_else(|| Err(unexpected_token(ref_word.into(), word_error)), Ok)
             }
@@ -88,7 +91,7 @@ impl<'err, S: Display + 'err> ExpectToken<'err, S> for Parser {
             TokenType::Word(name) => {
                 let name_type = LocWord(name, loc);
 
-                prog.get_type_id(name_type.name())
+                prog.get_data_type(name_type.name())
                     .map_or_else(|| Err(unexpected_token(name_type.into(), error_text)), Ok)
             }
 
@@ -161,7 +164,7 @@ pub fn invalid_token<'err, S: Display + 'err>(tok: IRToken, error: S) -> LazyErr
 }
 
 pub fn format_block<'err, S: Display + 'err>(
-    error: S, (control, value, start_loc): (ControlOp, usize, Loc), loc: Loc,
+    error: S, (control, value, start_loc): Block, loc: Loc,
 ) -> LazyError<'err> {
     LazyError::new(move |f| {
         format!(

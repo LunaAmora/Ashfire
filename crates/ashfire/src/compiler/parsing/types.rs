@@ -74,13 +74,15 @@ pub enum ParseContext {
     Binding,
 }
 
+pub type Block = (ControlOp, usize, Loc);
+
 pub struct Scope {
-    block: (ControlOp, usize, Loc),
+    block: Block,
     names: HashMap<Name, ParseContext>,
 }
 
 impl Scope {
-    pub fn new(block: (ControlOp, usize, Loc)) -> Self {
+    pub fn new(block: Block) -> Self {
         Self { block, names: HashMap::default() }
     }
 }
@@ -119,11 +121,11 @@ impl NameScopes {
             .insert(name, ctx);
     }
 
-    pub fn push(&mut self, block: (ControlOp, usize, Loc)) {
+    pub fn push(&mut self, block: Block) {
         self.scopes.push(Scope::new(block));
     }
 
-    pub fn pop(&mut self) -> Option<(ControlOp, usize, Loc)> {
+    pub fn pop(&mut self) -> Option<Block> {
         self.scopes.pop().map(|s| s.block)
     }
 }
@@ -131,7 +133,7 @@ impl NameScopes {
 pub trait StructUtils {
     fn get_offset(&self, word: Name) -> Option<(usize, usize)>;
     fn get_offset_local(&self, word: Name) -> Option<(usize, usize)>;
-    fn get_pointer(&self, word: &LocWord, push_type: IndexOp, type_id: DataType) -> Vec<Op>;
+    fn get_pointer(&self, word: &LocWord, push_type: IndexOp, data_type: DataType) -> Vec<Op>;
     fn get_fields(
         &self, word: &LocWord, push_type: IndexOp, stk_def: &TypeDescr, store: bool,
     ) -> Vec<Op>;
@@ -160,7 +162,7 @@ impl StructUtils for [TypeDescr] {
         Some((offset - 1, i))
     }
 
-    fn get_pointer(&self, word: &LocWord, push_type: IndexOp, type_id: DataType) -> Vec<Op> {
+    fn get_pointer(&self, word: &LocWord, push_type: IndexOp, data_type: DataType) -> Vec<Op> {
         let &LocWord(name, loc) = word;
         let (index, _) = if push_type == IndexOp::PushLocal {
             self.get_offset_local(name)
@@ -171,7 +173,7 @@ impl StructUtils for [TypeDescr] {
 
         vec![
             Op(OpType::IndexOp(push_type, index), loc),
-            Op::from((IntrinsicType::Cast(type_id), loc)),
+            Op::from((IntrinsicType::Cast(data_type), loc)),
         ]
     }
 
@@ -197,13 +199,13 @@ impl StructUtils for [TypeDescr] {
                 .conditional_rev(store)
                 .map(|v| v.get_type())
                 .collect(),
-            TypeDescr::Primitive(prm) => vec![prm.get_type()],
+            TypeDescr::Primitive(prim) => vec![prim.get_type()],
             TypeDescr::Reference(ptr) => vec![ptr.get_type()],
         };
 
-        for (operand, type_id) in id_range.zip(members) {
+        for (operand, data_type) in id_range.zip(members) {
             if store {
-                result.push(Op(OpType::ExpectType(type_id), loc));
+                result.push(Op(OpType::ExpectType(data_type), loc));
             }
 
             result.push(Op(OpType::IndexOp(push_type, operand as usize), loc));
@@ -213,7 +215,7 @@ impl StructUtils for [TypeDescr] {
             } else {
                 result.extend([
                     Op::from((IntrinsicType::Load32, loc)),
-                    Op::from((IntrinsicType::Cast(type_id), loc)),
+                    Op::from((IntrinsicType::Cast(data_type), loc)),
                 ]);
             }
         }

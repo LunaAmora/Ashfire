@@ -184,14 +184,14 @@ impl Program {
         self.ops.len()
     }
 
-    fn data_name(&self, data @ DataType(id): DataType) -> String {
+    fn data_name(&self, data_type @ DataType(id): DataType) -> String {
         match id {
             TypeId::INT => "Integer",
             TypeId::BOOL => "Boolean",
             TypeId::PTR => "Pointer",
             TypeId::STR => "String",
             TypeId::ANY => "Any",
-            _ => self.structs_types[data.id()].name().as_str(self),
+            _ => self.structs_types[data_type.id()].name().as_str(self),
         }
         .to_owned()
     }
@@ -259,7 +259,8 @@ impl Program {
     }
 
     fn get_cast_type(&self, rest: &[u8]) -> Option<DataType> {
-        self.name_from_utf8(rest).map(|key| self.get_type_id(key))?
+        self.name_from_utf8(rest)
+            .map(|key| self.get_data_type(key))?
     }
 
     fn get_cast_type_ptr(&mut self, rest: &[u8]) -> Option<DataType> {
@@ -272,51 +273,51 @@ impl Program {
             .position(|def| word.eq(&def.name()))
     }
 
-    pub fn get_fields_type_id(&self, fields: &StructFields) -> DataType {
-        self.get_type_id(fields.name())
+    pub fn get_fields_data_type(&self, fields: &StructFields) -> DataType {
+        self.get_data_type(fields.name())
             .expect("Fields was not constructed from a valid type id")
     }
 
-    pub fn get_type_id(&self, word: Name) -> Option<DataType> {
+    pub fn get_data_type(&self, word: Name) -> Option<DataType> {
         self.get_type_index(word).map(DataType::new)
     }
 
-    pub fn get_type_id_by_str(&self, word: &str) -> Option<DataType> {
-        self.get_key(word).and_then(|key| self.get_type_id(key))
+    pub fn get_data_type_by_str(&self, word: &str) -> Option<DataType> {
+        self.get_key(word).and_then(|key| self.get_data_type(key))
     }
 
     pub fn get_type_descr(&self, data_type: DataType) -> &TypeDescr {
         &self.structs_types[data_type.id()]
     }
 
-    pub fn try_get_type_ptr(&self, type_id: DataType) -> Option<DataType> {
-        let name = self.get_type_descr(type_id).name();
+    pub fn try_get_type_ptr(&self, data_type: DataType) -> Option<DataType> {
+        let name = self.get_type_descr(data_type).name();
         let ptr_name = format!("*{}", name.as_str(self));
-        self.get_type_id_by_str(&ptr_name)
+        self.get_data_type_by_str(&ptr_name)
     }
 
-    pub fn get_type_ptr(&mut self, type_id: DataType) -> DataType {
-        let name = self.get_type_descr(type_id).name();
+    pub fn get_type_ptr(&mut self, data_type: DataType) -> DataType {
+        let name = self.get_type_descr(data_type).name();
         let ptr_name = format!("*{}", name.as_str(self));
 
-        if let Some(id) = self.get_type_id_by_str(&ptr_name) {
+        if let Some(id) = self.get_data_type_by_str(&ptr_name) {
             return id;
         }
 
         let word_id = self.get_or_intern(&ptr_name);
-        let new_type_id = DataType::new(self.structs_types.len());
-        let stk = TypeDescr::reference(word_id, new_type_id, type_id);
+        let new_type = DataType::new(self.structs_types.len());
+        let stk = TypeDescr::reference(word_id, new_type, data_type);
 
         self.structs_types.push(stk);
-        new_type_id
+        new_type
     }
 
     pub fn register_struct(&mut self, stk: StructFields) -> DataType {
-        let type_id = DataType::new(self.structs_types.len());
-        let descr = TypeDescr::Structure(StructType(stk, type_id));
+        let data_type = DataType::new(self.structs_types.len());
+        let descr = TypeDescr::Structure(StructType(stk, data_type));
         self.structs_types.push(descr);
-        self.get_type_ptr(type_id); // Todo: Remove this Hack to auto register an ptr type
-        type_id
+        self.get_type_ptr(data_type); // Todo: Remove this Hack to auto register an ptr type
+        data_type
     }
 
     /// Searches for a `const` that matches the given [`Name`].
@@ -330,8 +331,8 @@ impl Program {
         use ashfire_types::enums::{ControlOp, IndexOp, OpType};
         let &Op(op_type, _) = op;
         match op_type {
-            OpType::Intrinsic(IntrinsicType::Cast(type_id)) => {
-                format!("Intrinsic Cast [{}]", self.data_name(type_id))
+            OpType::Intrinsic(IntrinsicType::Cast(data_type)) => {
+                format!("Intrinsic Cast [{}]", self.data_name(data_type))
             }
 
             OpType::Intrinsic(intrinsic) => {

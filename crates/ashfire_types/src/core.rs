@@ -54,6 +54,12 @@ pub const STR: DataType = DataType(TypeId::STR);
 #[derive(Debug, Clone, Copy)]
 pub struct Value(pub DataType, pub i32);
 
+impl Value {
+    pub fn value(&self) -> i32 {
+        self.1
+    }
+}
+
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
@@ -178,7 +184,7 @@ impl DataToken {
     }
 
     pub fn value(&self) -> i32 {
-        self.0 .1
+        self.0.value()
     }
 
     #[must_use]
@@ -231,8 +237,7 @@ impl Op {
 }
 
 impl From<(&Primitive, Loc)> for Op {
-    fn from(value: (&Primitive, Loc)) -> Self {
-        let (prim, loc) = value;
+    fn from((prim, loc): (&Primitive, Loc)) -> Self {
         Self(OpType::PushData(prim.get_type(), prim.value()), loc)
     }
 }

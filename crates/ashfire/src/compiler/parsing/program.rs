@@ -108,7 +108,7 @@ impl Program {
             return self.unpack_struct(var, push_type, offset, var_typ, loc);
         }
 
-        let type_id = vars
+        let data_type = vars
             .iter()
             .any(|val| name == val.name())
             .then(|| parser.find_data_type(name))
@@ -116,13 +116,13 @@ impl Program {
             .or_return(OptionErr::default)?;
 
         OptionErr::new(if var_typ == VarWordType::Pointer {
-            let Some(stk_id) = self.try_get_type_ptr(type_id) else {
+            let Some(stk_id) = self.try_get_type_ptr(data_type) else {
                 todo!("must register the ptr type earlier");
             };
 
             vars.get_pointer(word, push_type, stk_id)
         } else {
-            let type_descr = self.get_type_descr(type_id);
+            let type_descr = self.get_type_descr(data_type);
             vars.get_fields(word, push_type, type_descr, var_typ == VarWordType::Store)
         })
     }
@@ -133,15 +133,15 @@ impl Program {
     ) -> OptionErr<Vec<Op>> {
         let mut result = Vec::new();
         match stk {
-            TypeDescr::Primitive(prm) => {
-                let id = prm.get_type();
+            TypeDescr::Primitive(prim) => {
+                let prim_type = prim.get_type();
                 result.push(Op(OpType::IndexOp(push_type, offset), loc));
 
                 if var_typ == VarWordType::Store {
-                    result.insert(0, Op(OpType::ExpectType(id), loc));
+                    result.insert(0, Op(OpType::ExpectType(prim_type), loc));
                     result.push(Op::from((IntrinsicType::Store32, loc)));
                 } else if var_typ == VarWordType::Pointer {
-                    let Some(ptr_id) = self.try_get_type_ptr(id) else {
+                    let Some(ptr_id) = self.try_get_type_ptr(prim_type) else {
                         todo!("must register the ptr type earlier");
                     };
 
@@ -149,12 +149,12 @@ impl Program {
                 } else {
                     result.extend([
                         Op::from((IntrinsicType::Load32, loc)),
-                        Op::from((IntrinsicType::Cast(id), loc)),
+                        Op::from((IntrinsicType::Cast(prim_type), loc)),
                     ]);
                 }
             }
 
-            TypeDescr::Structure(StructType(_, type_id)) => {
+            TypeDescr::Structure(StructType(_, data_type)) => {
                 if var_typ == VarWordType::Store {
                     todo!();
                 }
@@ -163,7 +163,7 @@ impl Program {
                     offset += 1;
                 }
 
-                let Some(ptr_id) = self.try_get_type_ptr(*type_id) else {
+                let Some(ptr_id) = self.try_get_type_ptr(*data_type) else {
                     todo!("must register the ptr type earlier");
                 };
 

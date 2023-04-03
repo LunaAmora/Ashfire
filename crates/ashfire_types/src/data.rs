@@ -76,7 +76,7 @@ impl Primitive {
 
 impl Typed for Primitive {
     fn get_type(&self) -> DataType {
-        self.value.0
+        self.value.get_type()
     }
 }
 
@@ -178,16 +178,16 @@ pub enum TypeDescr {
 }
 
 impl TypeDescr {
-    pub fn primitive(name: Name, value_type: DataType) -> Self {
-        Self::Primitive(Primitive { name, value: Value(value_type, 0) })
+    pub fn primitive(name: Name, data_type: DataType) -> Self {
+        Self::Primitive(Primitive { name, value: Value(data_type, 0) })
     }
 
     pub fn structure(name: Name, members: Vec<Self>, reftype: DataType) -> Self {
         Self::Structure(StructType(StructFields(name, members), reftype))
     }
 
-    pub fn reference(name: Name, type_id: DataType, ptr_id: DataType) -> Self {
-        Self::Reference(PointerType { name, data_type: type_id, ptr_type: ptr_id })
+    pub fn reference(name: Name, data_type: DataType, ptr_type: DataType) -> Self {
+        Self::Reference(PointerType { name, data_type, ptr_type })
     }
 
     pub fn name(&self) -> Name {
@@ -224,8 +224,8 @@ where
     fn transpose(self, rev: bool, provider: Self::Provider<'_>) -> Option<Vec<TypeDescr>> {
         self.map(|descr| {
             Some(match descr {
-                TypeDescr::Primitive(prm) => {
-                    TypeDescr::Primitive(Primitive::new(prm.name, provider.next()?))
+                TypeDescr::Primitive(prim) => {
+                    TypeDescr::Primitive(Primitive::new(prim.name, provider.next()?))
                 }
 
                 TypeDescr::Reference(ptr) => {

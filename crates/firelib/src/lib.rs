@@ -159,33 +159,36 @@ macro_rules! cmd_wait {
     };
 }
 
-pub struct ChildGuard(Option<Child>, String);
+pub struct ChildGuard {
+    guard: Option<Child>,
+    info: String,
+}
 
 impl ChildGuard {
     pub fn new(child: Child, info: String) -> Self {
-        Self(Some(child), info)
+        Self { guard: Some(child), info }
     }
 
     pub fn take(mut self) -> Child {
-        self.0.take().expect("Failed to take the `Child`")
+        self.guard.take().expect("Failed to take the `Child`")
     }
 
     pub fn stdin(&mut self) -> Option<ChildStdin> {
-        match &mut self.0 {
+        match &mut self.guard {
             Some(child) => child.stdin.take(),
             None => None,
         }
     }
 
     pub fn stdout(&mut self) -> Option<ChildStdout> {
-        match &mut self.0 {
+        match &mut self.guard {
             Some(child) => child.stdout.take(),
             None => None,
         }
     }
 
     pub fn wait_with_output(self) -> std::io::Result<Output> {
-        info!("[CMD] | {}", self.1);
+        info!("[CMD] | {}", self.info);
         self.take().wait_with_output()
     }
 
@@ -202,7 +205,7 @@ impl ChildGuard {
 
 impl Drop for ChildGuard {
     fn drop(&mut self) {
-        if let Some(mut child) = self.0.take() {
+        if let Some(mut child) = self.guard.take() {
             if matches!(child.try_wait(), Ok(None)) {
                 if let Err(e) = child.kill() {
                     eprintln!("Could not kill child process: {e}");

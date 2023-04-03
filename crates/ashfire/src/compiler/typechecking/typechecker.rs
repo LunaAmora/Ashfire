@@ -80,14 +80,14 @@ impl TypeChecker {
                 }
 
                 IndexOp::Offset => {
-                    let type_id = self.expect_struct_pointer(program, ip, index, loc)?;
-                    self.push_frame(program.get_type_ptr(type_id), loc);
+                    let data_type = self.expect_struct_pointer(program, ip, index, loc)?;
+                    self.push_frame(program.get_type_ptr(data_type), loc);
                 }
 
                 IndexOp::Unpack => {
-                    let id = self.data_stack.expect_pop(loc)?.get_type();
+                    let data_type = self.data_stack.expect_pop(loc)?.get_type();
 
-                    match program.get_type_descr(id) {
+                    match program.get_type_descr(data_type) {
                         TypeDescr::Reference(ptr) => match program.get_type_descr(ptr.ptr_type()) {
                             TypeDescr::Structure(StructType(fields, ptr_id)) => {
                                 for primitive in fields.units() {
@@ -123,15 +123,15 @@ impl TypeChecker {
                 }
 
                 IndexOp::LoadBind => {
-                    let (type_id, offset) = self.get_bind_type_offset(index);
-                    self.push_frame(type_id, loc);
+                    let (data_type, offset) = self.get_bind_type_offset(index);
+                    self.push_frame(data_type, loc);
 
                     program.set_index(ip, offset);
                 }
 
                 IndexOp::PushBind => {
-                    let (type_id, offset) = self.get_bind_type_offset(index);
-                    self.push_frame(program.get_type_ptr(type_id), loc);
+                    let (data_type, offset) = self.get_bind_type_offset(index);
+                    self.push_frame(program.get_type_ptr(data_type), loc);
 
                     program.set_index(ip, offset);
                 }
@@ -182,9 +182,9 @@ impl TypeChecker {
                     self.data_stack.expect_array_pop([ANY, ANY], loc)?;
                 }
 
-                IntrinsicType::Cast(type_id) => {
+                IntrinsicType::Cast(data_type) => {
                     self.data_stack.expect_pop(loc)?;
-                    self.push_frame(type_id, loc);
+                    self.push_frame(data_type, loc);
                 }
             },
 
@@ -356,7 +356,7 @@ impl TypeChecker {
                                 TypeDescr::Structure(StructType(fields, _)) => {
                                     fields.units().map(|u| u.get_type()).collect()
                                 }
-                                TypeDescr::Primitive(prm) => vec![prm.get_type()],
+                                TypeDescr::Primitive(prim) => vec![prim.get_type()],
                                 TypeDescr::Reference(ptr) => vec![ptr.get_type()],
                             };
 
@@ -388,8 +388,9 @@ impl TypeChecker {
                 ControlOp::EndCase => todo!(),
             },
 
-            OpType::ExpectType(type_id) => {
-                self.data_stack.expect_peek(ArityType::Type(type_id), loc)?;
+            OpType::ExpectType(data_type) => {
+                self.data_stack
+                    .expect_peek(ArityType::Type(data_type), loc)?;
             }
         };
         Ok(())
@@ -420,17 +421,17 @@ impl TypeChecker {
             offset += size;
         }
 
-        let (TypeFrame(data_type, _), _) = self.bind_stack[self.bind_stack.len() - 1 - operand];
+        let (frame, _) = self.bind_stack[self.bind_stack.len() - 1 - operand];
 
-        (data_type, offset)
+        (frame.get_type(), offset)
     }
 
     fn expect_struct_pointer(
         &mut self, prog: &mut Program, ip: usize, operand: usize, loc: Loc,
     ) -> LazyResult<DataType> {
-        let id = self.data_stack.expect_pop(loc)?.get_type();
+        let data_type = self.data_stack.expect_pop(loc)?.get_type();
 
-        if let TypeDescr::Reference(ptr) = &prog.get_type_descr(id) {
+        if let TypeDescr::Reference(ptr) = &prog.get_type_descr(data_type) {
             match prog.get_type_descr(ptr.ptr_type()) {
                 TypeDescr::Structure(StructType(fields, _)) => {
                     let word = name_from_usize(operand);
@@ -455,7 +456,7 @@ impl TypeChecker {
         lazybail!(
             |f| "{}Cannot `.` access elements of type: `{}`",
             f.format(Fmt::Loc(loc)),
-            f.format(Fmt::DTyp(id))
+            f.format(Fmt::DTyp(data_type))
         )
     }
 
