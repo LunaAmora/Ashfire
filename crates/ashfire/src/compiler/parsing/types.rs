@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::TryInto};
 
 use ashfire_types::{
     core::*,
     data::*,
-    enums::{ControlOp, IndexOp, IntrinsicType, OpType},
+    enums::{ControlOp, IntrinsicType, MemOp, OpType},
 };
 use firelib::{
     lexer::Loc,
@@ -96,16 +96,16 @@ impl NameScopes {
 }
 
 pub trait StructUtils {
-    fn get_offset(&self, word: Name) -> Option<(usize, usize)>;
-    fn get_offset_local(&self, word: Name) -> Option<(usize, usize)>;
-    fn get_pointer(&self, word: &LocWord, push_type: IndexOp, data_type: DataType) -> Vec<Op>;
+    fn get_offset(&self, word: Name) -> Option<(u16, usize)>;
+    fn get_offset_local(&self, word: Name) -> Option<(u16, usize)>;
+    fn get_pointer(&self, word: &LocWord, push_type: MemOp, data_type: DataType) -> Vec<Op>;
     fn get_fields(
-        &self, word: &LocWord, push_type: IndexOp, stk_def: &TypeDescr, store: bool,
+        &self, word: &LocWord, push_type: MemOp, stk_def: &TypeDescr, store: bool,
     ) -> Vec<Op>;
 }
 
 impl StructUtils for [TypeDescr] {
-    fn get_offset(&self, word: Name) -> Option<(usize, usize)> {
+    fn get_offset(&self, word: Name) -> Option<(u16, usize)> {
         let i = self.iter().position(|stk| word.eq(&stk.name()))?;
 
         let mut offset = 0;
@@ -116,7 +116,7 @@ impl StructUtils for [TypeDescr] {
         Some((offset, i))
     }
 
-    fn get_offset_local(&self, word: Name) -> Option<(usize, usize)> {
+    fn get_offset_local(&self, word: Name) -> Option<(u16, usize)> {
         let i = self.iter().position(|stk| word.eq(&stk.name()))?;
 
         let mut offset = 0;
@@ -127,9 +127,9 @@ impl StructUtils for [TypeDescr] {
         Some((offset - 1, i))
     }
 
-    fn get_pointer(&self, word: &LocWord, push_type: IndexOp, data_type: DataType) -> Vec<Op> {
+    fn get_pointer(&self, word: &LocWord, push_type: MemOp, data_type: DataType) -> Vec<Op> {
         let &(name, loc) = word;
-        let (index, _) = if push_type == IndexOp::PushLocal {
+        let (index, _) = if push_type == MemOp::PushLocal {
             self.get_offset_local(name)
         } else {
             self.get_offset(name)
@@ -137,13 +137,13 @@ impl StructUtils for [TypeDescr] {
         .expect("Should return an valid offset if the `name` is valid");
 
         vec![
-            (OpType::IndexOp(push_type, index), loc),
+            (OpType::MemOp(push_type, index), loc),
             Op::new((IntrinsicType::Cast(data_type), loc)),
         ]
     }
 
     fn get_fields(
-        &self, word: &LocWord, push_type: IndexOp, stk_def: &TypeDescr, store: bool,
+        &self, word: &LocWord, push_type: MemOp, stk_def: &TypeDescr, store: bool,
     ) -> Vec<Op> {
         let mut result = Vec::new();
         let &(name, loc) = word;
@@ -151,11 +151,13 @@ impl StructUtils for [TypeDescr] {
             .get_offset(name)
             .expect("Should return an valid offset if the `name` is valid");
 
-        let is_local = push_type == IndexOp::PushLocal;
+        let is_local = push_type == MemOp::PushLocal;
         let id_range = if store == is_local {
-            range_step_from(index as i32, 1)
+            range_step_from(index.into(), 1) //Todo: this is so dumb
         } else {
-            range_step_from((index + stk_def.count()) as i32 - 1, -1)
+            let count: u16 = stk_def.count().try_into().expect("ICE");
+            let start = count + index - 1;
+            range_step_from(start.into(), -1)
         };
 
         let members = match stk_def {
@@ -173,7 +175,8 @@ impl StructUtils for [TypeDescr] {
                 result.push((OpType::ExpectType(data_type), loc));
             }
 
-            result.push((OpType::IndexOp(push_type, operand as usize), loc));
+            let offset: u16 = operand.try_into().expect("ICE");
+            result.push((OpType::MemOp(push_type, offset * WORD_USIZE), loc));
 
             if store {
                 result.push(Op::new((IntrinsicType::Store32, loc)));

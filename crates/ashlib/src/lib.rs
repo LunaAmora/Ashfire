@@ -58,6 +58,14 @@ impl<'err, T, E> From<LazyResult<'err, Option<T>, E>> for OptionErr<'err, T, E> 
         Self { value }
     }
 }
+impl<'err, T, E> From<LazyResult<'err, T, E>> for OptionErr<'err, T, E> {
+    fn from(res: LazyResult<'err, T, E>) -> Self {
+        match res {
+            Ok(value) => Self::new(value),
+            Err(err) => Self { value: Err(err) },
+        }
+    }
+}
 
 impl<'err, T, E> From<Result<Option<T>>> for OptionErr<'err, T, E> {
     fn from(value: Result<Option<T>>) -> Self {
@@ -162,21 +170,21 @@ pub trait UncheckedStack<T>: Deref<Target = [T]> {
 #[derive(Clone)]
 pub struct EvalStack<T> {
     frames: Vec<T>,
-    min_count: i32,
-    stack_count: i32,
+    min_count: isize,
+    stack_count: isize,
 }
 
 impl<T> EvalStack<T> {
-    pub fn set_count(&mut self, min: i32, count: i32) {
+    pub fn set_count(&mut self, min: isize, count: isize) {
         self.min_count = min;
         self.stack_count = count;
     }
 
-    pub fn min(&self) -> i32 {
+    pub fn min(&self) -> isize {
         self.min_count
     }
 
-    pub fn count(&self) -> i32 {
+    pub fn count(&self) -> isize {
         self.stack_count
     }
 }
@@ -211,7 +219,8 @@ impl<T> EvalStack<T> {
     }
 
     fn stack_minus(&mut self, n: usize) {
-        self.stack_count -= n as i32;
+        let i: isize = n.try_into().expect("ICE");
+        self.stack_count -= i;
         if self.stack_count < self.min_count {
             self.min_count = self.stack_count;
         }
@@ -225,7 +234,8 @@ impl<T> UncheckedStack<T> for EvalStack<T> {
     }
 
     fn extend<const N: usize>(&mut self, items: [T; N]) {
-        self.stack_count += N as i32;
+        let n = isize::try_from(N).expect("ICE");
+        self.stack_count += n;
         self.frames.extend(items);
     }
 

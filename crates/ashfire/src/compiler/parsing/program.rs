@@ -35,7 +35,7 @@ impl Program {
         parser
             .current_proc_data(self)
             .and_then(|proc| proc.local_mems.iter().find(|mem| word.eq(mem)))
-            .map(|mem| vec![(OpType::IndexOp(PushLocalMem, mem.value()), *loc)])
+            .map(|mem| vec![(OpType::MemOp(MemOp::PushLocalMem, mem.value()), *loc)])
     }
 
     /// Searches for a `global mem` that matches the given [`LocWord`] name.
@@ -43,7 +43,7 @@ impl Program {
         self.get_memory()
             .iter()
             .find(|mem| word.eq(mem))
-            .map(|mem| vec![(OpType::IndexOp(PushGlobalMem, mem.value()), *loc)])
+            .map(|mem| vec![(OpType::MemOp(MemOp::PushGlobalMem, mem.value()), *loc)])
     }
 
     /// Searches for a `const` that matches the given[`word`][LocWord]
@@ -86,7 +86,7 @@ impl Program {
         let proc = parser
             .current_proc_data(self)
             .or_return(OptionErr::default)?;
-        self.try_get_var(word, &proc.local_vars, PushLocal, var_typ, parser)
+        self.try_get_var(word, &proc.local_vars, MemOp::PushLocal, var_typ, parser)
     }
 
     /// Searches for a global `variable` that matches the given [`word`][LocWord]
@@ -94,11 +94,11 @@ impl Program {
     pub fn get_global_var(
         &self, word: &LocWord, var_typ: VarWordType, parser: &Parser,
     ) -> OptionErr<Vec<Op>> {
-        self.try_get_var(word, &self.global_vars, PushGlobal, var_typ, parser)
+        self.try_get_var(word, &self.global_vars, MemOp::PushGlobal, var_typ, parser)
     }
 
     fn try_get_var(
-        &self, word: &LocWord, vars: &[TypeDescr], push_type: IndexOp, var_typ: VarWordType,
+        &self, word: &LocWord, vars: &[TypeDescr], push_type: MemOp, var_typ: VarWordType,
         parser: &Parser,
     ) -> OptionErr<Vec<Op>> {
         let &(name, loc) = word;
@@ -131,14 +131,13 @@ impl Program {
     }
 
     fn unpack_struct(
-        &self, stk: &TypeDescr, push_type: IndexOp, mut offset: usize, var_typ: VarWordType,
-        loc: Loc,
+        &self, stk: &TypeDescr, push_type: MemOp, mut offset: u16, var_typ: VarWordType, loc: Loc,
     ) -> OptionErr<Vec<Op>> {
         let mut result = Vec::new();
         match stk {
             TypeDescr::Primitive(prim) => {
                 let prim_type = prim.get_type();
-                result.push((OpType::IndexOp(push_type, offset), loc));
+                result.push((OpType::MemOp(push_type, offset), loc));
 
                 if var_typ == VarWordType::Store {
                     result.insert(0, (OpType::ExpectType(prim_type), loc));
@@ -162,8 +161,8 @@ impl Program {
                     todo!();
                 }
 
-                if push_type == PushLocal {
-                    offset += 1;
+                if push_type == MemOp::PushLocal {
+                    offset += WORD_USIZE;
                 }
 
                 let Some(ptr_id) = self.try_get_type_ptr(*data_type) else {
@@ -171,12 +170,12 @@ impl Program {
                 };
 
                 result.extend([
-                    (OpType::IndexOp(push_type, offset), loc),
+                    (OpType::MemOp(push_type, offset), loc),
                     Op::new((IntrinsicType::Cast(ptr_id), loc)),
                 ]);
 
                 if var_typ != VarWordType::Pointer {
-                    result.push(Op::new((Unpack, loc)));
+                    result.push((OpType::UnpackType(None), loc));
                 }
             }
 
@@ -188,7 +187,7 @@ impl Program {
 
     fn try_get_field<'t>(
         &self, word: &LocWord, vars: &'t [TypeDescr],
-    ) -> OptionErr<(&'t TypeDescr, usize)> {
+    ) -> OptionErr<(&'t TypeDescr, u16)> {
         let fields: Vec<_> = word.as_str(self).split('.').collect();
         let loc = word.loc();
 
@@ -220,12 +219,10 @@ impl Program {
             var = &fields[index];
         }
 
-        OptionErr::new((var, offset))
+        OptionErr::new((var, offset * WORD_USIZE))
     }
 
-    pub fn push_mem_by_context(
-        &mut self, parser: &Parser, word: Name, size: usize,
-    ) -> ParseContext {
+    pub fn push_mem_by_context(&mut self, parser: &Parser, word: Name, size: u16) -> ParseContext {
         let Some(proc) = parser.current_proc_mut(self) else {
             self.push_mem(word, size);
             return ParseContext::GlobalMem;

@@ -1,5 +1,5 @@
 use crate::{
-    core::{word_aligned, Name, OffsetWord, WORD_SIZE},
+    core::{word_aligned, Name, OffsetWord, WORD_USIZE},
     data::{DataType, StructInfo, TypeDescr},
 };
 
@@ -7,22 +7,21 @@ use crate::{
 pub struct Data {
     pub local_vars: Vec<TypeDescr>,
     pub local_mems: Vec<OffsetWord>,
-    mem_size: usize,
+    mem_size: u16,
 }
 
 impl Data {
-    pub fn push_mem(&mut self, word: Name, size: usize) {
+    pub fn push_mem(&mut self, word: Name, size: u16) {
         self.mem_size += size;
         self.local_mems.push(OffsetWord::new(word, self.mem_size));
     }
 
-    pub fn total_size(&self) -> i32 {
-        word_aligned(self.mem_size) +
-            self.local_vars.iter().fold(0, |acc, var| acc + var.size()) as i32
+    pub fn total_size(&self) -> u16 {
+        word_aligned(self.mem_size) + self.local_vars.iter().fold(0, |acc, var| acc + var.size())
     }
 
-    pub fn var_mem_offset(&self, index: usize) -> i32 {
-        word_aligned(self.mem_size) + ((index as i32 + 1) * WORD_SIZE)
+    pub fn var_mem_offset(&self, offset: u16) -> u16 {
+        word_aligned(self.mem_size) + WORD_USIZE + offset
     }
 }
 

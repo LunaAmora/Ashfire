@@ -1,9 +1,9 @@
 use std::io::Write;
 
 use ashfire_types::{
-    core::{DataKey, Typed, WORD_SIZE, WORD_USIZE},
+    core::{DataKey, Typed, WORD_USIZE},
     data::{DataType, Primitive, StructInfo, StructType, TypeDescr, TypeId},
-    enums::{ControlOp, IndexOp, IntrinsicType, OpType, StackOp},
+    enums::{ControlOp, DataOp, IndexOp, IntrinsicType, MemOp, OpType, StackOp},
     proc::{Binds, Mode, Proc},
 };
 use firelib::{Context, Result};
@@ -44,7 +44,7 @@ impl Generator {
         wasm.add_fn("over", i2, i3, vec![Get(local, Id(0)), Get(local, Id(1)), Get(local, Id(0))]);
         wasm.add_fn("rot", i3, i3, vec![Get(local, Id(1)), Get(local, Id(2)), Get(local, Id(0))]);
 
-        let stk = wasm.add_global("LOCAL_STACK", WasmType::I32, program.stack_start(), true);
+        let stk = wasm.add_global("LOCAL_STACK", WasmType::I32, program.stack_start().into(), true);
 
         wasm.add_fn("aloc_local", i1, &[], vec![
             Get(global, Id(stk)),
@@ -88,7 +88,7 @@ impl Generator {
             }
         }
 
-        wasm.set_data_offset(program.data_start() as usize);
+        wasm.set_data_offset(program.data_start());
 
         for data in program.get_all_data() {
             wasm.add_data(data.as_string(program));
@@ -115,41 +115,56 @@ impl FuncGen {
         match op_type {
             OpType::PushData(_, operand) => self.push(Const(operand)),
 
-            OpType::IndexOp(op, index) => match op {
-                IndexOp::PushStr => {
-                    let (size, offset) = prog.get_data(DataKey(index)).data();
-                    self.extend([Const(size as i32), Const(offset + prog.data_start())]);
+            OpType::DataOp(op, data_type) => match op {
+                DataOp::PushStr => {
+                    let (size, offset) = prog.get_data(data_type).data();
+                    let ptr = offset + prog.data_start();
+                    self.extend([Const(size.into()), Const(ptr.into())]);
+                }
+            },
+
+            OpType::MemOp(op, offset) => match op {
+                MemOp::PushLocalMem => {
+                    let ptr = self.bind_offset + offset;
+                    self.extend([Const(ptr.into()), Call("push_local".into())]);
                 }
 
-                IndexOp::PushLocalMem => {
-                    let ptr = self.bind_offset + index as i32;
-                    self.extend([Const(ptr), Call("push_local".into())]);
-                }
+                MemOp::PushGlobalMem => self.push(Const(offset.into())),
 
-                IndexOp::PushGlobalMem => self.push(Const(index as i32)),
-
-                IndexOp::PushLocal => {
+                MemOp::PushLocal => {
                     let data = proc
                         .get_data()
                         .expect("PushLocal can not be used outside of a procedure");
-                    let ptr = self.bind_offset + data.var_mem_offset(index);
-                    self.extend([Const(ptr), Call("push_local".into())]);
+                    let ptr = self.bind_offset + data.var_mem_offset(offset);
+                    self.extend([Const(ptr.into()), Call("push_local".into())]);
                 }
 
-                IndexOp::PushGlobal => {
-                    let ptr = prog.global_vars_start() + index as i32 * WORD_SIZE;
-                    self.push(Const(ptr));
+                MemOp::PushGlobal => {
+                    let ptr = prog.global_vars_start() + offset;
+                    self.push(Const(ptr.into()));
                 }
 
-                IndexOp::Offset => self.extend([Const(index as i32), I32(add)]),
+                MemOp::Offset => self.extend([Const(offset.into()), I32(add)]),
 
+                MemOp::PushBind => {
+                    self.extend([Const(offset.into()), Call("push_local".into())]);
+                }
+
+                MemOp::LoadBind => {
+                    self.extend([Const(offset.into()), Call("push_local".into()), I32(load)]);
+                }
+            },
+
+            OpType::UnpackType(None) => self.push(I32(load)),
+
+            OpType::UnpackType(Some(data_type)) => {
+                self.extend(unpack_struct(prog.get_type_descr(data_type)));
+            }
+
+            OpType::IndexOp(op, index) => match op {
                 IndexOp::Call => {
                     let label = prog.get_proc(index).name.as_str(prog);
                     self.push(Call(label.into()));
-                }
-
-                IndexOp::Unpack => {
-                    self.extend(unpack_struct(prog.get_type_descr(DataType::new(index))));
                 }
 
                 IndexOp::CallInline => {
@@ -163,13 +178,7 @@ impl FuncGen {
                     }
                 }
 
-                IndexOp::PushBind => {
-                    self.extend([Const(index as i32), Call("push_local".into())]);
-                }
-
-                IndexOp::LoadBind => {
-                    self.extend([Const(index as i32), Call("push_local".into()), I32(load)]);
-                }
+                IndexOp::PushBind | IndexOp::LoadBind => unreachable!(),
             },
 
             OpType::StackOp(op) => match op {
@@ -249,16 +258,16 @@ impl FuncGen {
                             };
 
                             for size in sizes {
-                                bind_size += size as i32;
-                                inst.extend([Const(bind_size), Call("bind_local".into())]);
+                                bind_size += size;
+                                inst.extend([Const(bind_size.into()), Call("bind_local".into())]);
                             }
                         } else {
-                            bind_size += WORD_SIZE;
-                            inst.extend([Const(bind_size), Call("bind_local".into())]);
+                            bind_size += WORD_USIZE;
+                            inst.extend([Const(bind_size.into()), Call("bind_local".into())]);
                         }
                     }
 
-                    self.extend(vec![Const(bind_size), Call("aloc_local".into())]);
+                    self.extend(vec![Const(bind_size.into()), Call("aloc_local".into())]);
                     self.extend(inst);
                     self.bind_offset += bind_size;
                 }
@@ -268,9 +277,9 @@ impl FuncGen {
 
                     let size = bindings.iter().fold(0, |acc, (_, typ)| {
                         acc + typ.map_or(WORD_USIZE, |id| prog.get_type_descr(id).size())
-                    }) as i32;
+                    });
 
-                    self.extend(vec![Const(size), Call("free_local".into())]);
+                    self.extend(vec![Const(size.into()), Call("free_local".into())]);
                 }
 
                 ControlOp::CaseStart => todo!(),
@@ -287,6 +296,7 @@ impl FuncGen {
             },
 
             OpType::ExpectType(_) => {}
+            OpType::Offset(_) => unreachable!(),
         }
     }
 }
@@ -300,9 +310,9 @@ impl Program {
     pub fn final_value(&self, var: &Primitive) -> i32 {
         match var.get_type() {
             DataType(TypeId::STR) => {
-                let index = DataKey(var.value() as usize);
-                let offset = self.get_data(index).value();
-                offset + self.data_start()
+                let index = DataKey(var.value().try_into().expect("ICE"));
+                let offset = self.get_data(index).value() + self.data_start();
+                offset.into()
             }
             _ => var.value(),
         }

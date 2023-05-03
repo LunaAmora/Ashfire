@@ -53,7 +53,7 @@ impl Generator {
             .current_func
             .insert(FuncGen::new(proc.name, &proc.contract));
 
-        let proc_size = data.total_size();
+        let proc_size = data.total_size().into();
 
         if proc_size > 0 {
             func.extend(vec![Const(proc_size), Call("aloc_local".into())]);
@@ -63,7 +63,7 @@ impl Generator {
             .local_vars
             .units()
             .zip(0..)
-            .filter_map(|(var, i)| store_if_non_zero(data.var_mem_offset(i), &var))
+            .filter_map(|(var, i)| store_if_non_zero(data.var_mem_offset(i).into(), &var))
             .flatten();
 
         func.extend(data_instructions);
@@ -88,7 +88,7 @@ impl Generator {
             .take()
             .with_context(|| "No Wasm function block is open")?;
 
-        let mem_to_free = data.total_size();
+        let mem_to_free = data.total_size().into();
 
         if mem_to_free > 0 {
             func.extend(vec![Const(mem_to_free), Call("free_local".into())]);
@@ -129,7 +129,7 @@ pub struct FuncGen {
     label: Name,
     contract: (Vec<WasmType>, Vec<WasmType>),
     code: Vec<Instruction>,
-    pub bind_offset: i32,
+    pub bind_offset: u16,
 }
 
 impl FuncGen {
@@ -157,7 +157,7 @@ impl FuncGen {
 pub fn unpack_struct(stk: &TypeDescr) -> Vec<Instruction> {
     let mut instructions = vec![];
 
-    match stk.count() as i32 {
+    match stk.count() {
         1 => instructions.push(I32(load)),
         2 => instructions.extend(vec![
             Call("dup".into()),
@@ -174,6 +174,8 @@ pub fn unpack_struct(stk: &TypeDescr) -> Vec<Instruction> {
                 Const(WORD_SIZE),
                 Call("bind_local".into()),
             ]);
+
+            let n = n.try_into().expect("ICE");
 
             for offset in 0..n {
                 instructions.extend(vec![

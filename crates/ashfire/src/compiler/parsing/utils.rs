@@ -40,6 +40,10 @@ pub trait ExpectToken<'err, S: Display + 'err> {
     fn expect_by(
         &mut self, pred: impl FnOnce(&IRToken) -> bool, error_text: S, loc: Loc,
     ) -> LazyResult<'err, IRToken>;
+
+    fn expect_by_option<T>(
+        &mut self, pred: impl FnOnce(&IRToken) -> Option<T>, error_text: S, loc: Loc,
+    ) -> LazyResult<'err, Spanned<T>>;
 }
 
 impl<'err, S: Display + 'err> ExpectToken<'err, S> for Parser {
@@ -103,14 +107,19 @@ impl<'err, S: Display + 'err> ExpectToken<'err, S> for Parser {
     }
 
     fn expect_word(&mut self, error_text: S, loc: Loc) -> LazyResult<'err, LocWord> {
-        self.expect_by(|tok| tok.get_word().is_some(), error_text, loc)
-            .map(|tok| (tok.get_word().unwrap(), tok.loc()))
+        self.expect_by_option(IRTokenExt::get_word, error_text, loc)
     }
 
     fn expect_by(
         &mut self, pred: impl FnOnce(&IRToken) -> bool, error_text: S, loc: Loc,
     ) -> LazyResult<'err, IRToken> {
         expect_token_by(self.next(), pred, error_text, loc)
+    }
+
+    fn expect_by_option<T>(
+        &mut self, pred: impl FnOnce(&IRToken) -> Option<T>, error_text: S, loc: Loc,
+    ) -> LazyResult<'err, Spanned<T>> {
+        expect_token_by_option(self.next(), pred, error_text, loc)
     }
 }
 
@@ -189,4 +198,16 @@ pub fn expect_token_by<'err, S: Display + 'err>(
         Some(tok) if pred(&tok) => Ok(tok),
         invalid => Err(invalid_option(invalid, desc, loc)),
     }
+}
+
+pub fn expect_token_by_option<'err, S: Display + 'err, T>(
+    value: Option<IRToken>, pred: impl FnOnce(&IRToken) -> Option<T>, desc: S, loc: Loc,
+) -> LazyResult<'err, Spanned<T>> {
+    if let Some(tok) = value {
+        if let Some(t) = pred(&tok) {
+            return Ok((t, tok.loc()));
+        }
+    }
+
+    Err(invalid_option(value, desc, loc))
 }

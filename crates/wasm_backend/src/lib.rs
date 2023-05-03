@@ -16,7 +16,7 @@ pub struct Module {
     imports: Vec<Import>,
     exports: Vec<Export>,
     globals: Vec<Global>,
-    data: (Vec<String>, usize),
+    data: (Vec<String>, u16),
     funcs: Vec<Func>,
     func_map: HashMap<String, usize>,
     global_map: HashMap<String, usize>,
@@ -87,7 +87,7 @@ impl Module {
         self.types.len() - 1
     }
 
-    pub fn set_data_offset(&mut self, offset: usize) {
+    pub fn set_data_offset(&mut self, offset: u16) {
         self.data.1 = offset;
     }
 

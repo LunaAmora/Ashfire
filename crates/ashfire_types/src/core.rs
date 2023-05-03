@@ -12,10 +12,10 @@ pub fn name_from_usize(value: usize) -> Name {
 }
 
 pub const WORD_SIZE: i32 = 4;
-pub const WORD_USIZE: usize = 4;
+pub const WORD_USIZE: u16 = 4;
 
-pub fn word_aligned(value: usize) -> i32 {
-    ((value as i32 + WORD_SIZE - 1) / WORD_SIZE) * WORD_SIZE
+pub fn word_aligned(value: u16) -> u16 {
+    ((value + WORD_USIZE - 1) / WORD_USIZE) * WORD_USIZE
 }
 
 pub trait Typed {
@@ -144,9 +144,9 @@ impl IRToken {
         }
     }
 
-    pub fn get_data(&self) -> Option<i32> {
+    pub fn get_data(&self, data_type: DataType) -> Option<i32> {
         match self.0 {
-            TokenType::Data(Value(_, value)) => Some(value),
+            TokenType::Data(Value(typ, value)) if typ == data_type => Some(value),
             _ => None,
         }
     }
@@ -229,16 +229,6 @@ impl PartialEq<DataType> for DataToken {
 
 pub type Op = Spanned<OpType>;
 
-#[ext(OpExt)]
-impl Op {
-    pub fn set_index(&mut self, value: usize) {
-        match &mut self.0 {
-            OpType::IndexOp(_, index) | OpType::ControlOp(_, index) => *index = value,
-            _ => todo!(),
-        }
-    }
-}
-
 pub struct Wrapper<T, O>(T, O);
 
 impl<T, O: Copy> Wrapper<T, O> {
@@ -255,26 +245,26 @@ impl<T, O> Deref for Wrapper<T, O> {
     }
 }
 
-pub type OffsetData = Wrapper<OffsetWord, i32>;
+pub type OffsetData = Wrapper<OffsetWord, u16>;
 
 impl OffsetData {
-    pub fn new(name: Name, size: usize, offset: i32) -> Self {
+    pub fn new(name: Name, size: u16, offset: u16) -> Self {
         Self(OffsetWord::new(name, size), offset)
     }
 
-    pub fn data(&self) -> (usize, i32) {
+    pub fn data(&self) -> (u16, u16) {
         (self.size(), self.value())
     }
 
-    pub fn size(&self) -> usize {
+    pub fn size(&self) -> u16 {
         self.0.value()
     }
 }
 
-pub type OffsetWord = Wrapper<Name, usize>;
+pub type OffsetWord = Wrapper<Name, u16>;
 
 impl OffsetWord {
-    pub fn new(name: Name, offset: usize) -> Self {
+    pub fn new(name: Name, offset: u16) -> Self {
         Self(name, offset)
     }
 }

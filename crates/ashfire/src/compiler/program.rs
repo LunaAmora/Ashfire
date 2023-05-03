@@ -68,9 +68,9 @@ pub struct Program {
     included_sources: HashMap<Name, Name>,
     consts: Vec<TypeDescr>,
     interner: Rodeo,
-    mem_size: usize,
+    mem_size: u16,
     memory: Vec<OffsetWord>,
-    data_size: usize,
+    data_size: u16,
     data: Vec<OffsetData>,
 }
 
@@ -121,19 +121,19 @@ impl Program {
         skey.into_usize()
     }
 
-    pub fn push_mem(&mut self, word: Name, size: usize) {
+    pub fn push_mem(&mut self, word: Name, size: u16) {
         let value = OffsetWord::new(word, self.mem_size);
         self.memory.push(value);
         self.mem_size += size;
     }
 
-    pub fn push_data(&mut self, mut word: String, size: usize) -> DataKey {
+    pub fn push_data(&mut self, mut word: String, size: u16) -> DataKey {
         if word.ends_with("\\0") {
             word.push('0');
         };
 
         let name = self.get_or_intern(&word);
-        let value = OffsetData::new(name, size, self.data_size as i32);
+        let value = OffsetData::new(name, size, self.data_size);
         self.data.push(value);
         self.data_size += size;
         DataKey(self.data.len() - 1)
@@ -143,23 +143,23 @@ impl Program {
         self.consts.push(struct_type);
     }
 
-    pub fn data_size(&self) -> usize {
+    pub fn data_size(&self) -> u16 {
         self.data_size
     }
 
-    pub fn data_start(&self) -> i32 {
+    pub fn data_start(&self) -> u16 {
         word_aligned(self.mem_size)
     }
 
-    pub fn global_vars_start(&self) -> i32 {
+    pub fn global_vars_start(&self) -> u16 {
         self.data_start() + word_aligned(self.data_size)
     }
 
-    pub fn global_vars_size(&self) -> i32 {
-        self.global_vars.iter().fold(0, |acc, var| acc + var.size()) as i32
+    pub fn global_vars_size(&self) -> u16 {
+        self.global_vars.iter().fold(0, |acc, var| acc + var.size())
     }
 
-    pub fn stack_start(&self) -> i32 {
+    pub fn stack_start(&self) -> u16 {
         self.global_vars_start() + self.global_vars_size()
     }
 

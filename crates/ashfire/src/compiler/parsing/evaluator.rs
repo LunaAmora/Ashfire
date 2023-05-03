@@ -131,8 +131,8 @@ impl Evaluator for EvalStack<DataToken> {
                 let (size, _) = prog.get_data(key).data();
 
                 self.extend([
-                    DataToken::new(INT, size as i32, loc),
-                    DataToken::new(STR, index as i32, loc),
+                    DataToken::new(INT, size.into(), loc),
+                    DataToken::new(STR, index.try_into().expect("ICE"), loc),
                 ]);
             }
 

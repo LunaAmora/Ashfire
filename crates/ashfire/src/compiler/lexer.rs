@@ -54,7 +54,7 @@ impl Program {
             .with_err_ctx(move || err_loc("Missing closing `\"` in string literal", loc))
             .map(|name| self.push_data(name.to_owned(), escaped_len(name)))
             .map(|operand| (TokenType::Str(operand), loc))
-            .map(OptionErr::new)?
+            .into()
     }
 
     fn define_word(&mut self, &(ref name, loc): &Token) -> OptionErr<IRToken> {
@@ -80,35 +80,53 @@ fn parse_char(word: &str, loc: Loc) -> OptionErr<i32> {
     word.strip_prefix('\\').map_or_else(
         || match word.len() {
             0 => err_loc("Char literals have to contain at leat on char", loc).into(),
+
             2.. => {
                 err_loc(format!("Char literals cannot contain more than one char: `{word}`"), loc)
                     .into()
             }
-            _ => word.chars().next().map(|char| char as i32).into(),
+
+            _ => word
+                .chars()
+                .next()
+                .map(|char| u8::try_from(char).expect("ICE").into())
+                .into(),
         },
         |escaped| parse_scaped(escaped.to_owned(), loc),
     )
 }
 
 fn parse_scaped(escaped: String, loc: Loc) -> OptionErr<i32> {
-    OptionErr::new(match escaped.as_str() {
-        "t" => '\t' as i32,
-        "n" => '\n' as i32,
-        "r" => '\r' as i32,
-        "\'" => '\'' as i32,
-        "\\" => '\\' as i32,
-        _ if escaped.len() == 2 => try_parse_hex(&escaped).with_err_ctx(move || {
-            err_loc(format!("Invalid characters found on char literal: `\\{escaped}`"), loc)
-        })?,
+    let char = match escaped.as_str() {
+        "t" => '\t',
+        "n" => '\n',
+        "r" => '\r',
+        "\'" => '\'',
+        "\\" => '\\',
+
+        _ if escaped.len() == 2 => {
+            return try_parse_hex(&escaped)
+                .with_err_ctx(move || {
+                    err_loc(format!("Invalid characters found on char literal: `\\{escaped}`"), loc)
+                })
+                .into();
+        }
+
         _ => lazybail!(
             |f| "{}Invalid escaped character sequence found on char literal: `{escaped}`",
             f.format(Fmt::Loc(loc))
         ),
-    })
+    };
+
+    OptionErr::new(u8::try_from(char).expect("ICE").into())
 }
 
-fn escaped_len(name: &str) -> usize {
-    name.chars().filter(|&c| c != '\\').count()
+fn escaped_len(name: &str) -> u16 {
+    name.chars()
+        .filter(|&c| c != '\\')
+        .count()
+        .try_into()
+        .expect("ICE")
 }
 
 fn parse_as_keyword((name, loc): &Token) -> Option<IRToken> {
@@ -122,5 +140,5 @@ fn parse_as_number((name, loc): &Token) -> Option<IRToken> {
 }
 
 fn try_parse_hex(word: &str) -> Option<i32> {
-    i64::from_str_radix(word, 16).map(|h| h as i32).ok()
+    i32::from_str_radix(word, 16).ok()
 }

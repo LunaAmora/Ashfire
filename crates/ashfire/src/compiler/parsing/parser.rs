@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, fs::File, ops::Index, path::Path};
 
-use ashfire_types::{core::*, data::*, enums::*, lasso::Key, proc::*};
+use ashfire_types::{core::*, data::*, enums::*, proc::*};
 use ashlib::Either;
 use firelib::{
     lazy::LazyCtx,
@@ -10,7 +10,6 @@ use firelib::{
     Context, TrySuccess,
 };
 use ControlOp::*;
-use IndexOp::*;
 
 use super::{types::*, utils::*};
 use crate::compiler::{
@@ -115,7 +114,7 @@ impl Parser {
         let op = match token_type {
             TokenType::Keyword(key) => return self.define_keyword_op(key, loc, prog),
 
-            TokenType::Str(DataKey(index)) => (OpType::IndexOp(PushStr, index), loc),
+            TokenType::Str(data_key) => (OpType::DataOp(DataOp::PushStr, data_key), loc),
 
             TokenType::Data(Value(data, value)) => match data {
                 DataType(id) => match id {
@@ -178,8 +177,8 @@ impl Parser {
                 };
 
                 return OptionErr::new(vec![
-                    (OpType::IndexOp(Offset, key.into_usize()), word.loc()),
-                    Op::new((Unpack, word.loc())),
+                    (OpType::Offset(key), word.loc()),
+                    (OpType::UnpackType(None), word.loc()),
                 ]);
             }
             _ => return OptionErr::default(),
@@ -214,7 +213,7 @@ impl Parser {
             KeywordType::Over => Op::new((StackOp::Over, loc)),
             KeywordType::Rot => Op::new((StackOp::Rot, loc)),
             KeywordType::Equal => Op::new((StackOp::Equal, loc)),
-            KeywordType::At => Op::new((Unpack, loc)),
+            KeywordType::At => (OpType::UnpackType(None), loc),
 
             KeywordType::Dot => {
                 let Some(next_token) = self.next() else {
@@ -230,13 +229,13 @@ impl Parser {
                             loc,
                         )?;
                         let (word, _) = self.expect_word("word after `.*`", loc)?;
-                        (OpType::IndexOp(Offset, word.into_usize()), loc)
+                        (OpType::Offset(word), loc)
                     }
 
                     TokenType::Word(name) => {
                         return OptionErr::new(vec![
-                            (OpType::IndexOp(Offset, name.into_usize()), loc),
-                            Op::new((Unpack, loc)),
+                            (OpType::Offset(name), loc),
+                            (OpType::UnpackType(None), loc),
                         ])
                     }
                     _ => todo!(),
@@ -551,10 +550,12 @@ impl Parser {
         let loc = word.loc();
 
         self.expect_keyword(KeywordType::Colon, "`:` after `mem`", loc)?;
-        let value = self.expect_by(|tok| tok == INT, "memory size after `:`", loc)?;
+        let (mem_size, _) =
+            self.expect_by_option(|tok| tok.get_data(INT), "memory size after `:`", loc)?;
         self.expect_keyword(KeywordType::End, "`end` after memory size", loc)?;
 
-        let ctx = prog.push_mem_by_context(self, word.name(), value.get_data().unwrap() as usize);
+        let size = mem_size.try_into().expect("ICE"); //Todo: explain this error
+        let ctx = prog.push_mem_by_context(self, word.name(), size);
         self.name_scopes.register(word.name(), ctx);
 
         Ok(())
@@ -795,14 +796,12 @@ impl Parser {
                 continue;
             }
 
-            let tok = expect_token_by(
+            let (tok, _) = expect_token_by_option(
                 prog.lex_next_token(&mut lex).value?,
-                |tok| tok.get_word().is_some(),
+                IRTokenExt::get_word,
                 "include source name",
                 token.loc(),
-            )?
-            .get_word()
-            .unwrap();
+            )?;
 
             let include_path = prog.get_word(tok);
             self.lex_source(&include_path, module, prog)?;

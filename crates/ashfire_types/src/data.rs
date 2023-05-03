@@ -77,7 +77,7 @@ impl Primitive {
         self.value.1
     }
 
-    pub fn size(&self) -> usize {
+    pub fn size(&self) -> u16 {
         WORD_USIZE
     }
 }
@@ -117,7 +117,7 @@ impl PointerType {
         self.ptr_type
     }
 
-    pub fn size(&self) -> usize {
+    pub fn size(&self) -> u16 {
         WORD_USIZE
     }
 }
@@ -146,7 +146,7 @@ impl Typed for StructType {
 pub trait StructInfo {
     fn units(&self) -> Box<dyn DoubleEndedIterator<Item = Primitive> + '_>;
     fn count(&self) -> usize;
-    fn size(&self) -> usize;
+    fn size(&self) -> u16;
 }
 
 #[derive(Clone)]
@@ -179,7 +179,7 @@ impl StructInfo for [TypeDescr] {
         self.iter().fold(0, |acc, member| acc + member.count())
     }
 
-    fn size(&self) -> usize {
+    fn size(&self) -> u16 {
         self.iter().fold(0, |acc, member| acc + member.size())
     }
 }
@@ -278,7 +278,7 @@ impl StructInfo for TypeDescr {
         }
     }
 
-    fn size(&self) -> usize {
+    fn size(&self) -> u16 {
         match self {
             Self::Structure(StructType(fields, _)) => fields.size(),
             Self::Primitive(v) => v.size(),

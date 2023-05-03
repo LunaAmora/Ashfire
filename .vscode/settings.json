@@ -10,10 +10,6 @@
         "-Wclippy::pedantic",
         "-Aclippy::missing_errors_doc",
         "-Aclippy::missing_panics_doc",
-
-        "-Aclippy::cast_possible_truncation",
-        "-Aclippy::cast_possible_wrap",
-        "-Aclippy::cast_sign_loss",
         
         "-Aclippy::module_name_repetitions",
         "-Aclippy::must_use_candidate",

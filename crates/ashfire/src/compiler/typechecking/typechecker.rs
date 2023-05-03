@@ -1,7 +1,7 @@
 use ashfire_types::{
     core::*,
     data::*,
-    enums::{ControlOp, IndexOp, IntrinsicType, OpType, StackOp},
+    enums::{ControlOp, DataOp, IndexOp, IntrinsicType, MemOp, OpType, StackOp},
     proc::{Binds, Mode},
 };
 use ashlib::{EvalStack, UncheckedStack};
@@ -21,7 +21,7 @@ struct TypeBlock(DataStack, usize);
 #[derive(Default)]
 pub struct TypeChecker {
     block_stack: Vec<TypeBlock>,
-    bind_stack: Vec<(TypeFrame, usize)>,
+    bind_stack: Vec<(TypeFrame, u16)>,
     data_stack: DataStack,
     current_proc: Option<usize>,
 }
@@ -70,51 +70,61 @@ impl TypeChecker {
                 _ => unreachable!(),
             },
 
-            OpType::IndexOp(op, index) => match op {
-                IndexOp::PushStr => self.extend_value([INT, PTR], loc),
+            OpType::DataOp(op, _) => match op {
+                DataOp::PushStr => self.extend_value([INT, PTR], loc),
+            },
 
-                IndexOp::PushLocalMem |
-                IndexOp::PushGlobalMem |
-                IndexOp::PushLocal |
-                IndexOp::PushGlobal => {
+            OpType::Offset(word) => {
+                let (data_type, offset) = self.expect_struct_pointer(program, word, loc)?;
+                program.update_op(ip, |op| *op = OpType::MemOp(MemOp::Offset, offset));
+
+                self.push_frame(program.get_type_ptr(data_type), loc);
+            }
+
+            OpType::MemOp(op, _) => match op {
+                MemOp::PushLocalMem |
+                MemOp::PushGlobalMem |
+                MemOp::PushLocal |
+                MemOp::PushGlobal => {
                     self.push_frame(PTR, loc);
                 }
 
-                IndexOp::Offset => {
-                    let data_type = self.expect_struct_pointer(program, ip, index, loc)?;
-                    self.push_frame(program.get_type_ptr(data_type), loc);
-                }
+                MemOp::Offset | MemOp::PushBind | MemOp::LoadBind => unreachable!(),
+            },
 
-                IndexOp::Unpack => {
-                    let data_type = self.data_stack.expect_pop(loc)?.get_type();
+            OpType::UnpackType(Some(_)) => todo!(),
 
-                    match program.get_type_descr(data_type) {
-                        TypeDescr::Reference(ptr) => match program.get_type_descr(ptr.ptr_type()) {
-                            TypeDescr::Structure(StructType(fields, ptr_id)) => {
-                                for primitive in fields.units() {
-                                    self.push_frame(primitive.get_type(), loc);
-                                }
+            OpType::UnpackType(_) => {
+                let data_type = self.data_stack.expect_pop(loc)?.get_type();
 
-                                program.set_index(ip, ptr_id.id());
-                            }
-
-                            TypeDescr::Primitive(_) => {
-                                self.push_frame(ptr.ptr_type(), loc);
-                                program.set_index(ip, index);
-                            }
-
-                            TypeDescr::Reference(_) => todo!(),
-                        },
-
-                        stk => {
-                            for primitive in stk.units() {
+                match program.get_type_descr(data_type) {
+                    TypeDescr::Reference(ptr) => match program.get_type_descr(ptr.ptr_type()) {
+                        TypeDescr::Structure(StructType(fields, ptr_id)) => {
+                            for primitive in fields.units() {
                                 self.push_frame(primitive.get_type(), loc);
                             }
-                            program.set_index(ip, index);
-                        }
-                    }
-                }
 
+                            let ptr_id = *ptr_id;
+
+                            let (OpType::UnpackType(unpack_type), _) = &mut program.ops[ip] else {
+                                unreachable!()
+                            };
+
+                            unpack_type.replace(ptr_id);
+                        }
+
+                        TypeDescr::Primitive(_) => {
+                            self.push_frame(ptr.ptr_type(), loc);
+                        }
+
+                        TypeDescr::Reference(_) => todo!(),
+                    },
+
+                    _ => todo!(),
+                };
+            }
+
+            OpType::IndexOp(op, index) => match op {
                 IndexOp::Call | IndexOp::CallInline => {
                     let contr = &program.get_proc(index).contract;
                     self.data_stack.expect_contract_pop(contr.ins(), loc)?;
@@ -127,14 +137,14 @@ impl TypeChecker {
                     let (data_type, offset) = self.get_bind_type_offset(index);
                     self.push_frame(data_type, loc);
 
-                    program.set_index(ip, offset);
+                    program.update_op(ip, |op| *op = OpType::MemOp(MemOp::LoadBind, offset));
                 }
 
                 IndexOp::PushBind => {
                     let (data_type, offset) = self.get_bind_type_offset(index);
                     self.push_frame(program.get_type_ptr(data_type), loc);
 
-                    program.set_index(ip, offset);
+                    program.update_op(ip, |op| *op = OpType::MemOp(MemOp::PushBind, offset));
                 }
             },
 
@@ -254,7 +264,7 @@ impl TypeChecker {
 
                     program
                         .block_contracts
-                        .insert(start_op, (ins as usize, out as usize));
+                        .insert(start_op, (ins.unsigned_abs(), out.unsigned_abs()));
 
                     let old_count = expected.count();
                     self.data_stack
@@ -278,7 +288,7 @@ impl TypeChecker {
 
                     program
                         .block_contracts
-                        .insert(start_op, (ins as usize, out as usize));
+                        .insert(start_op, (ins.unsigned_abs(), out.unsigned_abs()));
 
                     let TypeBlock(old_stack, _) = self.block_stack_pop();
 
@@ -320,16 +330,23 @@ impl TypeChecker {
                         ),
                     )?;
 
-                    let ins = (self.data_stack.min()).min(expected.min()).abs();
-                    let out = (self.data_stack.count()).max(expected.count()) + ins;
-
                     let TypeBlock(old_stack, start_op) = self.block_stack_pop();
 
-                    let ip_dif = ip - start_op;
-                    program.set_index(start_op, ip_dif);
-                    program.set_index(ip, ip_dif);
+                    let updater = |op: &mut OpType| {
+                        let OpType::ControlOp(_, operand) = op else {
+                            panic!("ICE");
+                        };
 
-                    let contr = (ins as usize, out as usize);
+                        *operand = ip - start_op;
+                    };
+
+                    program.update_op(start_op, updater);
+                    program.update_op(ip, updater);
+
+                    let ins = (self.data_stack.min()).min(expected.min()).abs();
+                    let out = (self.data_stack.count()).max(expected.count()) + ins;
+                    let contr = (ins.unsigned_abs(), out.unsigned_abs());
+
                     program
                         .block_contracts
                         .extend([(do_op, contr), (start_op, contr)]);
@@ -414,7 +431,7 @@ impl TypeChecker {
         self.data_stack.push((data_type, loc));
     }
 
-    fn get_bind_type_offset(&mut self, operand: usize) -> (DataType, usize) {
+    fn get_bind_type_offset(&mut self, operand: usize) -> (DataType, u16) {
         let mut offset = 0;
         for ((_, size), _) in self.bind_stack.iter().rev().zip(0..=operand) {
             offset += size;
@@ -426,37 +443,32 @@ impl TypeChecker {
     }
 
     fn expect_struct_pointer(
-        &mut self, prog: &mut Program, ip: usize, operand: usize, loc: Loc,
-    ) -> LazyResult<DataType> {
+        &mut self, prog: &mut Program, word: Name, loc: Loc,
+    ) -> LazyResult<(DataType, u16)> {
         let data_type = self.data_stack.expect_pop(loc)?.get_type();
 
-        if let TypeDescr::Reference(ptr) = &prog.get_type_descr(data_type) {
-            match prog.get_type_descr(ptr.ptr_type()) {
-                TypeDescr::Structure(StructType(fields, _)) => {
-                    let word = name_from_usize(operand);
+        let TypeDescr::Reference(ptr) = &prog.get_type_descr(data_type) else {
+            lazybail!(
+                |f| "{}Cannot `.` access elements of type: `{}`",
+                f.format(Fmt::Loc(loc)),
+                f.format(Fmt::DTyp(data_type))
+            )
+        };
 
-                    let Some((offset, index)) = fields.get_offset(word) else {
+        match prog.get_type_descr(ptr.ptr_type()) {
+            TypeDescr::Structure(StructType(fields, _)) => {
+                let Some((offset, index)) = fields.get_offset(word) else {
                             let error = format!("The struct {} does not contain a member with name: `{}`",
                                 fields.name().as_str(prog), word.as_str(prog));
                             return Err(err_loc(error, loc));
                         };
 
-                    let result = fields[index].get_type();
-                    prog.set_index(ip, offset * WORD_USIZE);
-
-                    return Ok(result);
-                }
-
-                TypeDescr::Primitive(_) => todo!(),
-                TypeDescr::Reference(_) => todo!(),
+                Ok((fields[index].get_type(), offset * WORD_USIZE))
             }
-        }
 
-        lazybail!(
-            |f| "{}Cannot `.` access elements of type: `{}`",
-            f.format(Fmt::Loc(loc)),
-            f.format(Fmt::DTyp(data_type))
-        )
+            TypeDescr::Primitive(_) => todo!(),
+            TypeDescr::Reference(_) => todo!(),
+        }
     }
 
     fn expect_stack_arity(
@@ -469,9 +481,9 @@ impl TypeChecker {
 }
 
 impl Program {
-    fn set_index(&mut self, ip: usize, value: usize) {
-        let op = &mut self.ops[ip];
-        op.set_index(value);
+    fn update_op(&mut self, ip: usize, setter: impl Fn(&mut OpType)) {
+        let (op, _) = &mut self.ops[ip];
+        setter(op);
     }
 
     pub fn type_check(&mut self) -> Result<&mut Self> {
