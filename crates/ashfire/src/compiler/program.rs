@@ -18,6 +18,21 @@ pub type LazyError = utils::LazyError<'static>;
 pub trait InternalString {
     fn as_str<'p>(&self, prog: &'p Program) -> &'p str;
     fn as_string(&self, prog: &Program) -> String;
+    fn name(&self) -> Name;
+}
+
+impl<T: InternalString, O> InternalString for (T, O) {
+    fn as_str<'p>(&self, prog: &'p Program) -> &'p str {
+        self.0.as_str(prog)
+    }
+
+    fn as_string(&self, prog: &Program) -> String {
+        self.0.as_string(prog)
+    }
+
+    fn name(&self) -> Name {
+        self.0.name()
+    }
 }
 
 impl InternalString for Name {
@@ -27,6 +42,10 @@ impl InternalString for Name {
 
     fn as_string(&self, prog: &Program) -> String {
         prog.interner.resolve(self).to_owned()
+    }
+
+    fn name(&self) -> Name {
+        *self
     }
 }
 
@@ -108,7 +127,7 @@ impl Program {
         self.mem_size += size;
     }
 
-    pub fn push_data(&mut self, mut word: String, size: usize) -> usize {
+    pub fn push_data(&mut self, mut word: String, size: usize) -> DataKey {
         if word.ends_with("\\0") {
             word.push('0');
         };
@@ -117,7 +136,7 @@ impl Program {
         let value = OffsetData::new(name, size, self.data_size as i32);
         self.data.push(value);
         self.data_size += size;
-        self.data.len() - 1
+        DataKey(self.data.len() - 1)
     }
 
     pub fn register_const(&mut self, struct_type: TypeDescr) {
@@ -156,11 +175,11 @@ impl Program {
         self.interner.resolve(&name).to_owned()
     }
 
-    pub fn get_data(&self, index: usize) -> &OffsetData {
+    pub fn get_data(&self, DataKey(index): DataKey) -> &OffsetData {
         &self.data[index]
     }
 
-    pub fn get_data_str(&self, index: usize) -> &str {
+    pub fn get_data_str(&self, index: DataKey) -> &str {
         self.get_data(index).as_str(self)
     }
 
@@ -184,14 +203,14 @@ impl Program {
         self.ops.len()
     }
 
-    fn data_name(&self, data_type @ DataType(id): DataType) -> String {
+    fn data_name(&self, DataType(id): DataType) -> String {
         match id {
             TypeId::INT => "Integer",
             TypeId::BOOL => "Boolean",
             TypeId::PTR => "Pointer",
             TypeId::STR => "String",
             TypeId::ANY => "Any",
-            _ => self.structs_types[data_type.id()].name().as_str(self),
+            _ => self.structs_types[id].name().as_str(self),
         }
         .to_owned()
     }
@@ -216,7 +235,7 @@ impl Program {
         }
     }
 
-    pub fn token_display(&self, IRToken(tok, _): IRToken) -> String {
+    pub fn token_display(&self, (tok, _): IRToken) -> String {
         match tok {
             TokenType::Keyword(key) => format!("{key:?}"),
             TokenType::Word(name) => self.get_word(name),
@@ -267,27 +286,24 @@ impl Program {
         self.get_cast_type(rest).map(|id| self.get_type_ptr(id))
     }
 
-    pub fn get_type_index(&self, word: Name) -> Option<usize> {
-        self.structs_types
-            .iter()
-            .position(|def| word.eq(&def.name()))
-    }
-
     pub fn get_fields_data_type(&self, fields: &StructFields) -> DataType {
         self.get_data_type(fields.name())
             .expect("Fields was not constructed from a valid type id")
     }
 
     pub fn get_data_type(&self, word: Name) -> Option<DataType> {
-        self.get_type_index(word).map(DataType::new)
+        self.structs_types
+            .iter()
+            .position(|def| word.eq(&def.name()))
+            .map(DataType::new)
     }
 
     pub fn get_data_type_by_str(&self, word: &str) -> Option<DataType> {
         self.get_key(word).and_then(|key| self.get_data_type(key))
     }
 
-    pub fn get_type_descr(&self, data_type: DataType) -> &TypeDescr {
-        &self.structs_types[data_type.id()]
+    pub fn get_type_descr(&self, DataType(id): DataType) -> &TypeDescr {
+        &self.structs_types[id]
     }
 
     pub fn try_get_type_ptr(&self, data_type: DataType) -> Option<DataType> {
@@ -327,9 +343,8 @@ impl Program {
 
     #[cfg(debug_assertions)]
     #[allow(dead_code)]
-    fn op_debug(&self, op: &Op) -> String {
+    fn op_debug(&self, &(op_type, _): &Op) -> String {
         use ashfire_types::enums::{ControlOp, IndexOp, OpType};
-        let &Op(op_type, _) = op;
         match op_type {
             OpType::Intrinsic(IntrinsicType::Cast(data_type)) => {
                 format!("Intrinsic Cast [{}]", self.data_name(data_type))
@@ -392,6 +407,7 @@ pub trait Visitor {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum Fmt {
     Loc(Loc),
     TTyp(TokenType),

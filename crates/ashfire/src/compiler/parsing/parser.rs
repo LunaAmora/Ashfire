@@ -5,6 +5,7 @@ use ashlib::Either;
 use firelib::{
     lazy::LazyCtx,
     lexer::{Lexer, Loc},
+    span::Span,
     utils::*,
     Context, TrySuccess,
 };
@@ -66,10 +67,6 @@ impl Parser {
         self.ir_tokens.get(index)
     }
 
-    pub fn get_cloned(&self, index: usize) -> Option<IRToken> {
-        self.ir_tokens.get(index).cloned()
-    }
-
     /// Pops `n` elements and returns the last [`IRToken`] of this [`Parser`].
     pub fn skip(&mut self, n: usize) -> Option<IRToken> {
         let mut result = None;
@@ -104,7 +101,7 @@ impl Parser {
     }
 
     fn define_op(&mut self, tok: &IRToken, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        let &IRToken(token_type, loc) = tok;
+        let &(token_type, loc) = tok;
 
         if !(matches!(token_type, TokenType::Keyword(_) | TokenType::Word(_)) || self.inside_proc())
         {
@@ -118,12 +115,12 @@ impl Parser {
         let op = match token_type {
             TokenType::Keyword(key) => return self.define_keyword_op(key, loc, prog),
 
-            TokenType::Str(index) => Op(OpType::IndexOp(PushStr, index), loc),
+            TokenType::Str(DataKey(index)) => (OpType::IndexOp(PushStr, index), loc),
 
             TokenType::Data(Value(data, value)) => match data {
                 DataType(id) => match id {
                     TypeId::INT | TypeId::BOOL | TypeId::PTR => {
-                        Op(OpType::PushData(data, value), loc)
+                        (OpType::PushData(data, value), loc)
                     }
 
                     _ => lazybail!(
@@ -135,7 +132,7 @@ impl Parser {
             },
 
             TokenType::Word(name) => {
-                let word = &LocWord(name, loc);
+                let word = &(name, loc);
 
                 choice!(
                     OptionErr,
@@ -181,8 +178,8 @@ impl Parser {
                 };
 
                 return OptionErr::new(vec![
-                    Op(OpType::IndexOp(Offset, key.into_usize()), word.loc()),
-                    Op::from((Unpack, word.loc())),
+                    (OpType::IndexOp(Offset, key.into_usize()), word.loc()),
+                    Op::new((Unpack, word.loc())),
                 ]);
             }
             _ => return OptionErr::default(),
@@ -198,7 +195,7 @@ impl Parser {
             _ => todo!(),
         };
 
-        let word = LocWord(key, word.loc());
+        let word = (key, word.loc());
 
         if local {
             prog.get_local_var(&word, var_typ, self)
@@ -211,13 +208,13 @@ impl Parser {
         &mut self, key: KeywordType, loc: Loc, prog: &mut Program,
     ) -> OptionErr<Vec<Op>> {
         let op = match key {
-            KeywordType::Drop => Op::from((StackOp::Drop, loc)),
-            KeywordType::Dup => Op::from((StackOp::Dup, loc)),
-            KeywordType::Swap => Op::from((StackOp::Swap, loc)),
-            KeywordType::Over => Op::from((StackOp::Over, loc)),
-            KeywordType::Rot => Op::from((StackOp::Rot, loc)),
-            KeywordType::Equal => Op::from((StackOp::Equal, loc)),
-            KeywordType::At => Op::from((Unpack, loc)),
+            KeywordType::Drop => Op::new((StackOp::Drop, loc)),
+            KeywordType::Dup => Op::new((StackOp::Dup, loc)),
+            KeywordType::Swap => Op::new((StackOp::Swap, loc)),
+            KeywordType::Over => Op::new((StackOp::Over, loc)),
+            KeywordType::Rot => Op::new((StackOp::Rot, loc)),
+            KeywordType::Equal => Op::new((StackOp::Equal, loc)),
+            KeywordType::At => Op::new((Unpack, loc)),
 
             KeywordType::Dot => {
                 let Some(next_token) = self.next() else {
@@ -232,14 +229,14 @@ impl Parser {
                             "word or `*` after `.`",
                             loc,
                         )?;
-                        let word = self.expect_word("word after `.*`", loc)?;
-                        Op(OpType::IndexOp(Offset, word.index()), loc)
+                        let (word, _) = self.expect_word("word after `.*`", loc)?;
+                        (OpType::IndexOp(Offset, word.into_usize()), loc)
                     }
 
                     TokenType::Word(name) => {
                         return OptionErr::new(vec![
-                            Op(OpType::IndexOp(Offset, name.into_usize()), loc),
-                            Op::from((Unpack, loc)),
+                            (OpType::IndexOp(Offset, name.into_usize()), loc),
+                            Op::new((Unpack, loc)),
                         ])
                     }
                     _ => todo!(),
@@ -290,22 +287,22 @@ impl Parser {
             },
 
             KeywordType::End => match self.pop_control_block(key, loc)? {
-                (IfStart, ..) => Op::from((EndIf, loc)),
-                (Else, ..) => Op::from((EndElse, loc)),
-                (Do, ..) => Op::from((EndWhile, loc)),
+                (IfStart, ..) => Op::new((EndIf, loc)),
+                (Else, ..) => Op::new((EndElse, loc)),
+                (Do, ..) => Op::new((EndWhile, loc)),
 
-                (BindStack, operand, _) => Op(OpType::ControlOp(PopBind, operand), loc),
+                (BindStack, operand, _) => (OpType::ControlOp(PopBind, operand), loc),
 
                 (CaseOption, ..) => todo!(),
 
                 (PrepProc, operand, _) => {
                     self.exit_proc();
-                    Op(OpType::ControlOp(EndProc, operand), loc)
+                    (OpType::ControlOp(EndProc, operand), loc)
                 }
 
                 (PrepInline, operand, _) => {
                     self.exit_proc();
-                    Op(OpType::ControlOp(EndInline, operand), loc)
+                    (OpType::ControlOp(EndInline, operand), loc)
                 }
 
                 op => Err(format_block("Expected `end` to close a valid block", op, loc))?,
@@ -331,7 +328,7 @@ impl Parser {
     /// Creates a logic block starting from the given [`OpType::ControlOp`].
     fn push_control_block(&mut self, block @ (op, value, loc): Block) -> Op {
         self.name_scopes.push(block);
-        Op(OpType::ControlOp(op, value), loc)
+        (OpType::ControlOp(op, value), loc)
     }
 
     /// Pops the last opened logic block, returning a the [`OpType::ControlOp`]
@@ -357,7 +354,7 @@ impl Parser {
                     self.parse_memory(word, prog).try_success()?;
                 }
 
-                (1, TokenType::Word(name)) if prog.get_type_index(name).is_none() => {
+                (1, TokenType::Word(name)) if prog.get_data_type(name).is_none() => {
                     return self.parse_struct(word, prog);
                 }
 
@@ -371,7 +368,7 @@ impl Parser {
                     self.parse_keyword_ctx(i, word, prog)?;
                 }
 
-                _ => return invalid_context(tok.clone(), word.as_str(prog)).into(),
+                _ => return invalid_context(*tok, word.as_str(prog)).into(),
             }
             i += 1;
         }
@@ -426,7 +423,7 @@ impl Parser {
                 err_loc(error, word.loc()).into()
             }
 
-            _ => invalid_context(tok.clone(), word.as_str(prog)).into(),
+            _ => invalid_context(*tok, word.as_str(prog)).into(),
         }
     }
 
@@ -457,7 +454,7 @@ impl Parser {
 
             KeywordType::Ref => OptionErr::default(),
 
-            _ => invalid_context(tok.clone(), word.as_str(prog)).into(),
+            _ => invalid_context(*tok, word.as_str(prog)).into(),
         }
     }
 
@@ -576,7 +573,7 @@ impl Parser {
                 success!();
             }
 
-            let LocWord(member_name, _) = self.expect_word("struct member name", loc)?;
+            let (member_name, _) = self.expect_word("struct member name", loc)?;
             let kind = self.expect_type_kind("struct member type", prog, loc)?;
 
             match prog.get_type_descr(kind) {
@@ -653,7 +650,7 @@ impl Parser {
                 return OptionErr::new(vec![result]);
             }
 
-            let LabelKind(LocWord(word, _), typ) = self.expect_label_kind("bind", loc, prog)?;
+            let LabelKind((word, _), typ) = self.expect_label_kind("bind", loc, prog)?;
             self.name_scopes.register(word, ParseContext::Binding);
 
             bindings.push((word, typ));
@@ -666,7 +663,7 @@ impl Parser {
         &mut self, is_constant: bool, word: &LocWord, reftype: DataType, prog: &mut Program,
     ) -> LazyResult<()> {
         let stk = prog.get_type_descr(reftype).clone();
-        let &LocWord(name, loc) = word;
+        let &(name, loc) = word;
 
         let (result, skip) = match self.compile_eval_n(stk.count(), prog, loc).value {
             Ok(value) => value,

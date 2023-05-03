@@ -95,6 +95,7 @@ dependencies = [
 name = "ashfire_types"
 version = "0.1.0"
 dependencies = [
+ "easy-ext",
  "either",
  "firelib",
  "lasso",
@@ -359,6 +360,12 @@ dependencies = [
  "quote",
  "syn 1.0.109",
 ]
+
+[[package]]
+name = "easy-ext"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49457524c7e65648794c98283282a0b7c73b10018e7091f1cdcfff314fd7ae59"
 
 [[package]]
 name = "either"

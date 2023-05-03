@@ -3,7 +3,7 @@ use std::{
     io::{BufRead, BufReader, Read},
 };
 
-use crate::utils::strip_trailing_newline;
+use crate::{span::Spanned, utils::strip_trailing_newline};
 
 pub struct LexerBuilder {
     matches: Vec<Match>,
@@ -114,7 +114,7 @@ impl<'r> Lexer<'r> {
 
     fn next_token(&mut self) -> Option<Token> {
         self.seek_next_token()
-            .then(|| Token::new(self.read_token(), self.current_loc()))
+            .then(|| (self.read_token(), self.current_loc()))
     }
 
     fn read_token(&mut self) -> String {
@@ -238,16 +238,7 @@ impl<'r> Lexer<'r> {
     }
 }
 
-pub struct Token {
-    pub name: String,
-    pub loc: Loc,
-}
-
-impl Token {
-    fn new(name: String, loc: Loc) -> Self {
-        Self { name, loc }
-    }
-}
+pub type Token = Spanned<String>;
 
 #[derive(Clone, Copy, Default)]
 pub struct Loc {

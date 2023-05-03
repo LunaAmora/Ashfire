@@ -28,7 +28,7 @@ impl Parser {
         let mut stack = EvalStack::<DataToken>::default();
         let mut i = 0;
 
-        while let Some(tok) = self.get_cloned(i) {
+        while let Some(tok) = self.get(i).copied() {
             if &tok == KeywordType::End {
                 if stack.is_empty() && i == 0 {
                     todo!()
@@ -77,7 +77,7 @@ pub trait Evaluator {
 
 impl Evaluator for EvalStack<DataToken> {
     fn evaluate(&mut self, tok: IRToken, prog: &mut Program) -> DoubleResult<()> {
-        let IRToken(token_type, loc) = tok;
+        let (token_type, loc) = tok;
 
         match token_type {
             TokenType::Keyword(key) => match key {
@@ -91,7 +91,7 @@ impl Evaluator for EvalStack<DataToken> {
                 KeywordType::Rot => self.pop_extend(|[a, b, c]| [b, c, a], loc)?,
 
                 KeywordType::Equal => self.pop_push_arity(
-                    |[a, b]| DataToken::new(BOOL, (a == b).into(), loc),
+                    |[a, b]| DataToken::new(BOOL, (a.value() == b.value()).into(), loc),
                     ArityType::Same,
                     loc,
                 )?,
@@ -127,8 +127,8 @@ impl Evaluator for EvalStack<DataToken> {
                 },
             },
 
-            TokenType::Str(index) => {
-                let (size, _) = prog.get_data(index).data();
+            TokenType::Str(key @ DataKey(index)) => {
+                let (size, _) = prog.get_data(key).data();
 
                 self.extend([
                     DataToken::new(INT, size as i32, loc),
@@ -138,7 +138,7 @@ impl Evaluator for EvalStack<DataToken> {
 
             TokenType::Data(value @ Value(DataType(id), _)) => match id {
                 TypeId::INT | TypeId::BOOL | TypeId::PTR => {
-                    self.push(DataToken(value, loc));
+                    self.push((value, loc));
                 }
                 _ => Err(Either::Left(tok))?,
             },

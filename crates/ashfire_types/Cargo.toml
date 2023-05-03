@@ -10,4 +10,5 @@ license-file.workspace = true
 [dependencies]
 lasso = "0.6.0"
 either = "1.8.1"
+easy-ext = "1.0.1"
 firelib = {path = "../firelib"}

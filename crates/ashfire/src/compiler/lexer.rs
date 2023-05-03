@@ -1,7 +1,7 @@
 use std::io::Read;
 
 use ashfire_types::{
-    core::{IRToken, TokenType},
+    core::{IRToken, IRTokenExt, TokenType},
     data::TypeId,
 };
 use firelib::{lazy::LazyCtx, lexer::*, ShortCircuit};
@@ -47,28 +47,24 @@ impl Program {
         )
     }
 
-    fn parse_as_string(&mut self, tok: &Token) -> OptionErr<IRToken> {
-        let loc = tok.loc;
-        tok.name
-            .strip_prefix('\"')
+    fn parse_as_string(&mut self, &(ref name, loc): &Token) -> OptionErr<IRToken> {
+        name.strip_prefix('\"')
             .or_return(OptionErr::default)?
             .strip_suffix('\"')
             .with_err_ctx(move || err_loc("Missing closing `\"` in string literal", loc))
             .map(|name| self.push_data(name.to_owned(), escaped_len(name)))
-            .map(|operand| IRToken(TokenType::Str(operand), loc))
+            .map(|operand| (TokenType::Str(operand), loc))
             .map(OptionErr::new)?
     }
 
-    fn define_word(&mut self, tok: &Token) -> OptionErr<IRToken> {
-        let name = self.get_or_intern(&tok.name);
-        OptionErr::new(IRToken(TokenType::Word(name), tok.loc))
+    fn define_word(&mut self, &(ref name, loc): &Token) -> OptionErr<IRToken> {
+        let name = self.get_or_intern(name);
+        OptionErr::new((TokenType::Word(name), loc))
     }
 }
 
-fn parse_as_char(tok: &Token) -> OptionErr<IRToken> {
-    let loc = tok.loc;
-    let word = tok
-        .name
+fn parse_as_char(&(ref name, loc): &Token) -> OptionErr<IRToken> {
+    let word = name
         .strip_prefix('\'')
         .or_return(OptionErr::default)?
         .strip_suffix('\'')
@@ -76,7 +72,7 @@ fn parse_as_char(tok: &Token) -> OptionErr<IRToken> {
 
     parse_char(word, loc)
         .value?
-        .map(|operand| IRToken::data(TypeId::INT, operand, tok.loc))
+        .map(|operand| IRToken::data(TypeId::INT, operand, loc))
         .into()
 }
 
@@ -115,17 +111,13 @@ fn escaped_len(name: &str) -> usize {
     name.chars().filter(|&c| c != '\\').count()
 }
 
-fn parse_as_keyword(tok: &Token) -> Option<IRToken> {
-    tok.name
-        .parse()
-        .map(|k| IRToken(TokenType::Keyword(k), tok.loc))
-        .ok()
+fn parse_as_keyword((name, loc): &Token) -> Option<IRToken> {
+    name.parse().map(|k| (TokenType::Keyword(k), *loc)).ok()
 }
 
-fn parse_as_number(tok: &Token) -> Option<IRToken> {
-    tok.name
-        .parse()
-        .map(|operand| IRToken::data(TypeId::INT, operand, tok.loc))
+fn parse_as_number((name, loc): &Token) -> Option<IRToken> {
+    name.parse()
+        .map(|operand| IRToken::data(TypeId::INT, operand, *loc))
         .ok()
 }
 

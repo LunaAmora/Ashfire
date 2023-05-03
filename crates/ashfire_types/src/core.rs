@@ -1,6 +1,6 @@
 use std::{ops::Deref, usize};
 
-use firelib::lexer::Loc;
+use firelib::{lexer::Loc, span::Spanned};
 use lasso::Key;
 
 use super::{data::*, enums::*};
@@ -28,6 +28,18 @@ impl<T: Typed> Typed for &T {
     }
 }
 
+impl Typed for DataType {
+    fn get_type(&self) -> DataType {
+        *self
+    }
+}
+
+impl<T: Typed> Typed for Spanned<T> {
+    fn get_type(&self) -> DataType {
+        self.0.get_type()
+    }
+}
+
 pub trait Location {
     fn loc(&self) -> Loc;
 }
@@ -41,6 +53,12 @@ impl<T: Location> Location for &T {
 impl Location for Loc {
     fn loc(&self) -> Loc {
         *self
+    }
+}
+
+impl<T> Location for Spanned<T> {
+    fn loc(&self) -> Loc {
+        self.1
     }
 }
 
@@ -73,12 +91,21 @@ impl Typed for Value {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct DataKey(pub usize);
+
+#[derive(Debug, Clone, Copy)]
 pub enum TokenType {
     Keyword(KeywordType),
     Word(Name),
-    Str(usize),
+    Str(DataKey),
     Data(Value),
     Type(DataType),
+}
+
+impl From<Name> for TokenType {
+    fn from(name: Name) -> Self {
+        Self::Word(name)
+    }
 }
 
 impl PartialEq for TokenType {
@@ -102,12 +129,12 @@ impl PartialEq<DataType> for TokenType {
     }
 }
 
-#[derive(Clone)]
-pub struct IRToken(pub TokenType, pub Loc);
+pub type IRToken = Spanned<TokenType>;
 
+#[ext(IRTokenExt)]
 impl IRToken {
     pub fn data(id: TypeId, value: i32, loc: Loc) -> Self {
-        Self(TokenType::Data(Value(DataType(id), value)), loc)
+        (TokenType::Data(Value(DataType(id), value)), loc)
     }
 
     pub fn get_word(&self) -> Option<Name> {
@@ -148,12 +175,6 @@ impl IRToken {
     }
 }
 
-impl Location for IRToken {
-    fn loc(&self) -> Loc {
-        self.1
-    }
-}
-
 impl PartialEq<KeywordType> for &IRToken {
     fn eq(&self, other: &KeywordType) -> bool {
         self.get_keyword().map_or(false, |key| other == &key)
@@ -175,12 +196,12 @@ impl PartialEq<DataType> for &IRToken {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct DataToken(pub Value, pub Loc);
+pub type DataToken = Spanned<Value>;
 
+#[ext(DataTokenExt)]
 impl DataToken {
     pub fn new(id: DataType, value: i32, loc: Loc) -> Self {
-        Self(Value(id, value), loc)
+        (Value(id, value), loc)
     }
 
     pub fn value(&self) -> i32 {
@@ -188,33 +209,15 @@ impl DataToken {
     }
 
     #[must_use]
-    pub fn add(self, Self(Value(_, r_value), _): Self, loc: Loc) -> Self {
-        let Self(Value(id, value), _) = self;
-        Self(Value(id, value + r_value), loc)
+    pub fn add(self, (Value(_, r_value), _): Self, loc: Loc) -> Self {
+        let (Value(id, value), _) = self;
+        (Value(id, value + r_value), loc)
     }
 
     #[must_use]
-    pub fn sub(self, Self(Value(_, r_value), _): Self, loc: Loc) -> Self {
-        let Self(Value(id, value), _) = self;
-        Self(Value(id, value - r_value), loc)
-    }
-}
-
-impl Typed for DataToken {
-    fn get_type(&self) -> DataType {
-        self.0.get_type()
-    }
-}
-
-impl Location for DataToken {
-    fn loc(&self) -> Loc {
-        self.1
-    }
-}
-
-impl PartialEq for DataToken {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
+    pub fn sub(self, (Value(_, r_value), _): Self, loc: Loc) -> Self {
+        let (Value(id, value), _) = self;
+        (Value(id, value - r_value), loc)
     }
 }
 
@@ -224,31 +227,15 @@ impl PartialEq<DataType> for DataToken {
     }
 }
 
-#[derive(Clone)]
-pub struct Op(pub OpType, pub Loc);
+pub type Op = Spanned<OpType>;
 
+#[ext(OpExt)]
 impl Op {
     pub fn set_index(&mut self, value: usize) {
         match &mut self.0 {
             OpType::IndexOp(_, index) | OpType::ControlOp(_, index) => *index = value,
             _ => todo!(),
         }
-    }
-}
-
-impl From<(&Primitive, Loc)> for Op {
-    fn from((prim, loc): (&Primitive, Loc)) -> Self {
-        Self(OpType::PushData(prim.get_type(), prim.value()), loc)
-    }
-}
-
-impl<T> From<(T, Loc)> for Op
-where
-    OpType: From<T>,
-{
-    fn from(value: (T, Loc)) -> Self {
-        let (from, loc) = value;
-        Self(from.into(), loc)
     }
 }
 

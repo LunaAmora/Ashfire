@@ -16,6 +16,7 @@ use log::info;
 pub mod choice;
 pub mod lazy;
 pub mod lexer;
+pub mod span;
 pub mod utils;
 
 /// Provides the [`success`][Success::success_value] method

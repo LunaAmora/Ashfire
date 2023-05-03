@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use ashfire_types::{
-    core::{Op, Typed, WORD_SIZE, WORD_USIZE},
+    core::{DataKey, Typed, WORD_SIZE, WORD_USIZE},
     data::{DataType, Primitive, StructInfo, StructType, TypeDescr, TypeId},
     enums::{ControlOp, IndexOp, IntrinsicType, OpType, StackOp},
     proc::{Binds, Mode, Proc},
@@ -71,7 +71,7 @@ impl Generator {
         wasm.add_fn("push_local", i1, i1, vec![Get(global, Id(stk)), Get(local, Id(0)), I32(sub)]);
 
         let mut proc = None;
-        for (ip, &Op(op_type, _)) in program.ops.iter().enumerate() {
+        for (ip, &(op_type, _)) in program.ops.iter().enumerate() {
             match (op_type, proc) {
                 (OpType::ControlOp(ControlOp::PrepProc | ControlOp::PrepInline, proc_ip), _) => {
                     proc = self.prep_proc(program, proc_ip)?;
@@ -111,13 +111,13 @@ impl Generator {
 
 impl FuncGen {
     fn append_op(&mut self, prog: &Program, ip: usize, proc: &Proc, module: &mut Module) {
-        let Op(op_type, _) = prog.ops[ip];
+        let (op_type, _) = prog.ops[ip];
         match op_type {
             OpType::PushData(_, operand) => self.push(Const(operand)),
 
             OpType::IndexOp(op, index) => match op {
                 IndexOp::PushStr => {
-                    let (size, offset) = prog.get_data(index).data();
+                    let (size, offset) = prog.get_data(DataKey(index)).data();
                     self.extend([Const(size as i32), Const(offset + prog.data_start())]);
                 }
 
@@ -298,12 +298,14 @@ fn register_contract(prog: &Program, index: usize, module: &mut Module) -> Ident
 
 impl Program {
     pub fn final_value(&self, var: &Primitive) -> i32 {
-        if matches!(var.get_type().0, TypeId::STR) {
-            let offset = self.get_data(var.value() as usize).value();
-            return offset + self.data_start();
+        match var.get_type() {
+            DataType(TypeId::STR) => {
+                let index = DataKey(var.value() as usize);
+                let offset = self.get_data(index).value();
+                offset + self.data_start()
+            }
+            _ => var.value(),
         }
-
-        var.value()
     }
 
     pub fn generate_wasm(&self, writer: impl Write, target: Target) -> Result<()> {

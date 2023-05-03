@@ -4,9 +4,12 @@ use ashfire_types::{
     core::*,
     data::*,
     enums::{ControlOp, IndexOp, IntrinsicType, OpType},
-    lasso::Key,
 };
-use firelib::{lexer::Loc, utils::BoolUtils};
+use firelib::{
+    lexer::Loc,
+    span::{Span, Spanned},
+    utils::BoolUtils,
+};
 use num::iter::range_step_from;
 
 use crate::compiler::{
@@ -16,45 +19,7 @@ use crate::compiler::{
 
 impl Compare<'_, DataToken> for Vec<DataToken> {}
 
-pub struct LocWord(pub Name, pub Loc);
-
-impl LocWord {
-    pub fn name(&self) -> Name {
-        self.0
-    }
-
-    pub fn index(&self) -> usize {
-        self.0.into_usize()
-    }
-}
-
-impl Location for LocWord {
-    fn loc(&self) -> Loc {
-        self.1
-    }
-}
-
-impl InternalString for LocWord {
-    fn as_str<'p>(&self, prog: &'p Program) -> &'p str {
-        self.0.as_str(prog)
-    }
-
-    fn as_string(&self, prog: &Program) -> String {
-        self.0.as_string(prog)
-    }
-}
-
-impl PartialEq<Name> for LocWord {
-    fn eq(&self, other: &Name) -> bool {
-        self.0 == *other
-    }
-}
-
-impl From<LocWord> for IRToken {
-    fn from(LocWord(name, loc): LocWord) -> Self {
-        Self(TokenType::Word(name), loc)
-    }
-}
+pub type LocWord = Spanned<Name>;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum VarWordType {
@@ -163,7 +128,7 @@ impl StructUtils for [TypeDescr] {
     }
 
     fn get_pointer(&self, word: &LocWord, push_type: IndexOp, data_type: DataType) -> Vec<Op> {
-        let &LocWord(name, loc) = word;
+        let &(name, loc) = word;
         let (index, _) = if push_type == IndexOp::PushLocal {
             self.get_offset_local(name)
         } else {
@@ -172,8 +137,8 @@ impl StructUtils for [TypeDescr] {
         .expect("Should return an valid offset if the `name` is valid");
 
         vec![
-            Op(OpType::IndexOp(push_type, index), loc),
-            Op::from((IntrinsicType::Cast(data_type), loc)),
+            (OpType::IndexOp(push_type, index), loc),
+            Op::new((IntrinsicType::Cast(data_type), loc)),
         ]
     }
 
@@ -181,7 +146,7 @@ impl StructUtils for [TypeDescr] {
         &self, word: &LocWord, push_type: IndexOp, stk_def: &TypeDescr, store: bool,
     ) -> Vec<Op> {
         let mut result = Vec::new();
-        let &LocWord(name, loc) = word;
+        let &(name, loc) = word;
         let (index, _) = self
             .get_offset(name)
             .expect("Should return an valid offset if the `name` is valid");
@@ -205,17 +170,17 @@ impl StructUtils for [TypeDescr] {
 
         for (operand, data_type) in id_range.zip(members) {
             if store {
-                result.push(Op(OpType::ExpectType(data_type), loc));
+                result.push((OpType::ExpectType(data_type), loc));
             }
 
-            result.push(Op(OpType::IndexOp(push_type, operand as usize), loc));
+            result.push((OpType::IndexOp(push_type, operand as usize), loc));
 
             if store {
-                result.push(Op::from((IntrinsicType::Store32, loc)));
+                result.push(Op::new((IntrinsicType::Store32, loc)));
             } else {
                 result.extend([
-                    Op::from((IntrinsicType::Load32, loc)),
-                    Op::from((IntrinsicType::Cast(data_type), loc)),
+                    Op::new((IntrinsicType::Load32, loc)),
+                    Op::new((IntrinsicType::Cast(data_type), loc)),
                 ]);
             }
         }

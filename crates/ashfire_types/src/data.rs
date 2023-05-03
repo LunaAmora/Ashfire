@@ -1,8 +1,14 @@
-use std::{iter::once, ops::Deref};
+use std::{
+    iter::once,
+    ops::{Deref, Index},
+};
 
 use firelib::utils::BoolUtils;
 
-use crate::core::{DataToken, Name, Typed, Value, WORD_USIZE};
+use crate::{
+    core::{DataToken, Name, Typed, Value, WORD_USIZE},
+    enums::OpType,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub struct TypeId(usize);
@@ -19,6 +25,14 @@ impl TypeId {
 impl Typed for TypeId {
     fn get_type(&self) -> DataType {
         DataType(*self)
+    }
+}
+
+impl<TypeDescr> Index<TypeId> for Vec<TypeDescr> {
+    type Output = TypeDescr;
+
+    fn index(&self, TypeId(id): TypeId) -> &Self::Output {
+        &self[id]
     }
 }
 
@@ -44,12 +58,6 @@ impl PartialEq for DataType {
     }
 }
 
-impl Typed for DataType {
-    fn get_type(&self) -> DataType {
-        *self
-    }
-}
-
 #[derive(Clone)]
 pub struct Primitive {
     name: Name,
@@ -57,7 +65,7 @@ pub struct Primitive {
 }
 
 impl Primitive {
-    pub fn new(name: Name, DataToken(value, _): DataToken) -> Self {
+    pub fn new(name: Name, (value, _): DataToken) -> Self {
         Self { name, value }
     }
 
@@ -77,6 +85,12 @@ impl Primitive {
 impl Typed for Primitive {
     fn get_type(&self) -> DataType {
         self.value.get_type()
+    }
+}
+
+impl From<&Primitive> for OpType {
+    fn from(prim: &Primitive) -> Self {
+        Self::PushData(prim.get_type(), prim.value())
     }
 }
 
@@ -229,7 +243,7 @@ where
                 }
 
                 TypeDescr::Reference(ptr) => {
-                    let DataToken(Value(_, operand), _) = provider.next()?;
+                    let (Value(_, operand), _) = provider.next()?;
                     TypeDescr::Primitive(ptr.as_primitive(operand))
                 }
 

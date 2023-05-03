@@ -5,11 +5,12 @@ use ashfire_types::{
     proc::{Binds, Mode},
 };
 use ashlib::{EvalStack, UncheckedStack};
-use firelib::{lazy::LazyErrCtx, lexer::Loc, Result};
+use firelib::{lazy::LazyErrCtx, lexer::Loc, span::Spanned, Result};
 
-use super::{expect::*, types::TypeFrame};
+use super::expect::*;
 use crate::compiler::{parsing::types::StructUtils, program::*, utils::err_loc};
 
+type TypeFrame = Spanned<DataType>;
 type DataStack = EvalStack<TypeFrame>;
 
 impl Expect<'_, TypeFrame> for DataStack {}
@@ -62,7 +63,7 @@ impl TypeChecker {
     }
 
     fn type_check_op(&mut self, ip: usize, program: &mut Program) -> LazyResult<()> {
-        let &Op(op_type, loc) = &program.ops[ip];
+        let &(op_type, loc) = &program.ops[ip];
         match op_type {
             OpType::PushData(data @ DataType(id), _) => match id {
                 TypeId::INT | TypeId::BOOL | TypeId::PTR => self.push_frame(data, loc),
@@ -148,11 +149,8 @@ impl TypeChecker {
                 StackOp::Rot => self.data_stack.pop_extend(|[a, b, c]| [b, c, a], loc)?,
 
                 StackOp::Equal => {
-                    self.data_stack.pop_push_arity(
-                        |[_, _]| TypeFrame(BOOL, loc),
-                        ArityType::Same,
-                        loc,
-                    )?;
+                    self.data_stack
+                        .pop_push_arity(|[_, _]| (BOOL, loc), ArityType::Same, loc)?;
                 }
             },
 
@@ -349,8 +347,8 @@ impl TypeChecker {
                     let mut binds = vec![];
 
                     for (_, typ) in bindings.iter() {
-                        if let &Some(id) = typ {
-                            let type_def = program.get_type_descr(id);
+                        if let &Some(data_type) = typ {
+                            let type_def = program.get_type_descr(data_type);
 
                             let contract: Vec<_> = match type_def {
                                 TypeDescr::Structure(StructType(fields, _)) => {
@@ -362,7 +360,7 @@ impl TypeChecker {
 
                             self.data_stack.expect_contract_pop(&contract, loc)?;
 
-                            binds.push((TypeFrame(id, loc), type_def.size()));
+                            binds.push(((data_type, loc), type_def.size()));
                         } else {
                             let top = self.data_stack.expect_pop(loc)?;
                             binds.push((top, WORD_USIZE));
@@ -402,17 +400,18 @@ impl TypeChecker {
     }
 
     fn pop_push<const N: usize>(
-        &mut self, contr: [DataType; N], token: DataType, loc: Loc,
+        &mut self, contr: [DataType; N], data_type: DataType, loc: Loc,
     ) -> LazyResult<()> {
-        self.data_stack.pop_push(contr, TypeFrame(token, loc), loc)
+        self.data_stack.pop_push(contr, (data_type, loc), loc)
     }
 
     fn extend_value<const N: usize>(&mut self, value: [DataType; N], loc: Loc) {
-        self.data_stack.extend(value.map(|v| TypeFrame(v, loc)));
+        self.data_stack
+            .extend(value.map(|data_type| (data_type, loc)));
     }
 
-    fn push_frame(&mut self, typ: DataType, loc: Loc) {
-        self.data_stack.push(TypeFrame(typ, loc));
+    fn push_frame(&mut self, data_type: DataType, loc: Loc) {
+        self.data_stack.push((data_type, loc));
     }
 
     fn get_bind_type_offset(&mut self, operand: usize) -> (DataType, usize) {
