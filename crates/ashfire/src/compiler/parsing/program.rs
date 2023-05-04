@@ -1,6 +1,6 @@
 use std::{io::Read, path::Path};
 
-use ashfire_types::{core::*, data::*, enums::*, proc::Mode};
+use ashfire_types::{core::*, data::*, enums::*, proc::ModeData};
 use firelib::{lazy::LazyErrCtx, lexer::Loc, Result, ShortCircuit};
 use IndexOp::*;
 
@@ -70,8 +70,8 @@ impl Program {
             .enumerate()
             .find(|(_, proc)| word.eq(&proc.name))
             .map(|(index, proc)| {
-                let call = match &proc.mode {
-                    Mode::Inlined(..) => CallInline,
+                let call = match &proc.mode_data {
+                    ModeData::Inlined(..) => CallInline,
                     _ => Call,
                 };
                 vec![(OpType::IndexOp(call, index), *loc)]
@@ -188,20 +188,20 @@ impl Program {
     fn try_get_field<'t>(
         &self, word: &LocWord, vars: &'t [TypeDescr],
     ) -> OptionErr<(&'t TypeDescr, u16)> {
-        let fields: Vec<_> = word.as_str(self).split('.').collect();
+        let names: Vec<_> = word.as_str(self).split('.').collect();
         let loc = word.loc();
 
-        let Some(first) = self.get_key(fields[0]) else {
+        let Some(first) = self.get_key(names[0]) else {
             todo!()
         };
 
         let (mut offset, i) = vars.get_offset(first).or_return(OptionErr::default)?;
 
-        let fields = fields.into_iter().skip(1);
+        let field_names = names.into_iter().skip(1);
         let mut var = &vars[i];
 
-        for field_name in fields {
-            let TypeDescr::Structure(StructType(fields, _)) = var else {
+        for field_name in field_names {
+            let TypeDescr::Structure(StructType(stk_fields, _)) = var else {
                 todo!()
             };
 
@@ -209,14 +209,14 @@ impl Program {
                 todo!()
             };
 
-            let Some((diff, index)) = fields.get_offset(field_key) else {
+            let Some((diff, index)) = stk_fields.get_offset(field_key) else {
                 let error = format!("The variable `{}` does not contain the field `{field_name}`",
                     var.name().as_str(self));
                 return err_loc(error, loc).into();
             };
 
             offset += diff;
-            var = &fields[index];
+            var = &stk_fields[index];
         }
 
         OptionErr::new((var, offset * WORD_USIZE))

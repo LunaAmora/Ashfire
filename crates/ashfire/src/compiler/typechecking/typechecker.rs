@@ -2,7 +2,7 @@ use ashfire_types::{
     core::*,
     data::*,
     enums::{ControlOp, DataOp, IndexOp, IntrinsicType, MemOp, OpType, StackOp},
-    proc::{Binds, Mode},
+    proc::{Binds, ModeData},
 };
 use ashlib::{EvalStack, UncheckedStack};
 use firelib::{lazy::LazyErrCtx, lexer::Loc, span::Spanned, Result};
@@ -104,13 +104,13 @@ impl TypeChecker {
                                 self.push_frame(primitive.get_type(), loc);
                             }
 
-                            let ptr_id = *ptr_id;
+                            let new_data_type = *ptr_id;
 
                             let (OpType::UnpackType(unpack_type), _) = &mut program.ops[ip] else {
                                 unreachable!()
                             };
 
-                            unpack_type.replace(ptr_id);
+                            unpack_type.replace(new_data_type);
                         }
 
                         TypeDescr::Primitive(_) => {
@@ -124,7 +124,7 @@ impl TypeChecker {
                 };
             }
 
-            OpType::IndexOp(op, index) => match op {
+            OpType::IndexOp(index_op, index) => match index_op {
                 IndexOp::Call | IndexOp::CallInline => {
                     let contr = &program.get_proc(index).contract;
                     self.data_stack.expect_contract_pop(contr.ins(), loc)?;
@@ -200,7 +200,7 @@ impl TypeChecker {
                 ControlOp::PrepProc | ControlOp::PrepInline => {
                     let proc = self.visit_proc(program, index);
 
-                    if matches!(proc.mode, Mode::Imported) {
+                    if matches!(proc.mode_data, ModeData::Imported) {
                         return Ok(());
                     }
 
@@ -214,7 +214,7 @@ impl TypeChecker {
                         .current_proc_mut(program)
                         .expect("Expected to be used inside a procedure");
 
-                    if matches!(proc.mode, Mode::Imported) {
+                    if matches!(proc.mode_data, ModeData::Imported) {
                         return Ok(());
                     }
 
@@ -228,8 +228,8 @@ impl TypeChecker {
 
                     self.data_stack = EvalStack::default();
 
-                    if let Mode::Inlined(start, _) = proc.mode {
-                        proc.mode = Mode::Inlined(start, ip);
+                    if let ModeData::Inlined(start, _) = proc.mode_data {
+                        proc.mode_data = ModeData::Inlined(start, ip);
                     }
 
                     self.exit_proc();
@@ -332,8 +332,8 @@ impl TypeChecker {
 
                     let TypeBlock(old_stack, start_op) = self.block_stack_pop();
 
-                    let updater = |op: &mut OpType| {
-                        let OpType::ControlOp(_, operand) = op else {
+                    let updater = |control_op: &mut OpType| {
+                        let OpType::ControlOp(_, operand) = control_op else {
                             panic!("ICE");
                         };
 

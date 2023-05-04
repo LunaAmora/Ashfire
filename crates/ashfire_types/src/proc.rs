@@ -33,14 +33,14 @@ pub enum ModeType {
     Inline(usize),
 }
 
-pub enum Mode {
+pub enum ModeData {
     Imported,
     Exported(Data),
     Declared(Data),
     Inlined(usize, usize),
 }
 
-impl From<ModeType> for Mode {
+impl From<ModeType> for ModeData {
     fn from(value: ModeType) -> Self {
         match value {
             ModeType::Import => Self::Imported,
@@ -51,7 +51,7 @@ impl From<ModeType> for Mode {
     }
 }
 
-impl Default for Mode {
+impl Default for ModeData {
     fn default() -> Self {
         Self::Declared(Data::default())
     }
@@ -64,26 +64,26 @@ pub struct Binds(pub Vec<(Name, Option<DataType>)>);
 pub struct Proc {
     pub name: Name,
     pub contract: Contract,
-    pub mode: Mode,
+    pub mode_data: ModeData,
     pub binds: Vec<Binds>,
 }
 
 impl Proc {
     pub fn new(name: Name, contract: Contract, mode: ModeType) -> Self {
-        let mode = Mode::from(mode);
-        Self { name, contract, mode, ..Default::default() }
+        let mode_data = ModeData::from(mode);
+        Self { name, contract, mode_data, ..Default::default() }
     }
 
     pub fn get_data(&self) -> Option<&Data> {
-        match &self.mode {
-            Mode::Declared(data) | Mode::Exported(data) => Some(data),
+        match &self.mode_data {
+            ModeData::Declared(data) | ModeData::Exported(data) => Some(data),
             _ => None,
         }
     }
 
     pub fn get_data_mut(&mut self) -> Option<&mut Data> {
-        match &mut self.mode {
-            Mode::Declared(data) | Mode::Exported(data) => Some(data),
+        match &mut self.mode_data {
+            ModeData::Declared(data) | ModeData::Exported(data) => Some(data),
             _ => None,
         }
     }
@@ -93,11 +93,11 @@ impl Proc {
     }
 
     pub fn is_import(&self) -> bool {
-        matches!(self.mode, Mode::Imported)
+        matches!(self.mode_data, ModeData::Imported)
     }
 
     pub fn is_export(&self) -> bool {
-        matches!(self.mode, Mode::Exported(_))
+        matches!(self.mode_data, ModeData::Exported(_))
     }
 }
 

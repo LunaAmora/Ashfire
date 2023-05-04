@@ -150,7 +150,7 @@ pub trait Compare<'err, T: Clone + Typed + Location + 'err>: Deref<Target = [T]>
     }
 
     fn format_stack_diff<V: Typed>(&self, contract: &[V], loc: Loc) -> LazyError<'err> {
-        let contract = format_stack(contract);
+        let contr = format_stack(contract);
         let stack = format_stack(self);
         let frame = format_frames(self);
 
@@ -162,7 +162,7 @@ pub trait Compare<'err, T: Clone + Typed + Location + 'err>: Deref<Target = [T]>
                     "[INFO] {}Actual types:   {}\n{}"
                 ),
                 f.format(Fmt::Loc(loc)),
-                contract.apply(f),
+                contr.apply(f),
                 f.format(Fmt::Loc(loc)),
                 stack.apply(f),
                 frame.apply(f)

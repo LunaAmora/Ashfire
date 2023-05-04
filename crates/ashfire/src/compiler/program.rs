@@ -106,7 +106,7 @@ impl Program {
         if let (Some(src), Some(modl)) = (self.interner.get(source), self.interner.get(module)) {
             self.included_sources
                 .get(&src)
-                .map_or(false, |module| module == &modl)
+                .map_or(false, |module_src| module_src == &modl)
         } else {
             false
         }

@@ -17,5 +17,7 @@
         "-Aclippy::enum_glob_use",
         "-Aclippy::too_many_lines",
         "-Aclippy::similar_names",
+
+        "-Wclippy::shadow_unrelated",
     ]
 }

@@ -257,7 +257,7 @@ impl<T> UncheckedStack<T> for EvalStack<T> {
         let range = (len - N)..;
         let drain: Vec<T> = self.frames.drain(range).collect();
 
-        drain.try_into().map_or_else(|_| panic!(), |drain| drain)
+        drain.try_into().map_or_else(|_| panic!(), |array| array)
     }
 
     fn peek(&mut self) -> &T {

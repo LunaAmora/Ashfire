@@ -194,12 +194,12 @@ impl Parser {
             _ => todo!(),
         };
 
-        let word = (key, word.loc());
+        let field_word = (key, word.loc());
 
         if local {
-            prog.get_local_var(&word, var_typ, self)
+            prog.get_local_var(&field_word, var_typ, self)
         } else {
-            prog.get_global_var(&word, var_typ, self)
+            prog.get_global_var(&field_word, var_typ, self)
         }
     }
 

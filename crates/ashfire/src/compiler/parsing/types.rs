@@ -63,8 +63,8 @@ impl NameScopes {
         //Todo: there must be a better way to support `.` accessing structs
         let word = name.as_str(prog);
         if word.contains('.') {
-            let name = word.split('.').next().unwrap();
-            if let Some(key) = prog.get_key(name) {
+            let field_name = word.split('.').next().unwrap();
+            if let Some(key) = prog.get_key(field_name) {
                 return self.lookup(key, prog);
             }
         }

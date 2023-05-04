@@ -4,7 +4,7 @@ use ashfire_types::{
     core::{DataKey, Typed, WORD_USIZE},
     data::{DataType, Primitive, StructInfo, StructType, TypeDescr, TypeId},
     enums::{ControlOp, DataOp, IndexOp, IntrinsicType, MemOp, OpType, StackOp},
-    proc::{Binds, Mode, Proc},
+    proc::{Binds, ModeData, Proc},
 };
 use firelib::{Context, Result};
 use wasm_backend::{wasm_types::*, Module};
@@ -70,16 +70,16 @@ impl Generator {
 
         wasm.add_fn("push_local", i1, i1, vec![Get(global, Id(stk)), Get(local, Id(0)), I32(sub)]);
 
-        let mut proc = None;
+        let mut proc_ctx = None;
         for (ip, &(op_type, _)) in program.ops.iter().enumerate() {
-            match (op_type, proc) {
+            match (op_type, proc_ctx) {
                 (OpType::ControlOp(ControlOp::PrepProc | ControlOp::PrepInline, proc_ip), _) => {
-                    proc = self.prep_proc(program, proc_ip)?;
+                    proc_ctx = self.prep_proc(program, proc_ip)?;
                 }
 
                 (OpType::ControlOp(ControlOp::EndProc, _), _) => {
                     self.end_proc(program, &mut wasm)?;
-                    proc = None;
+                    proc_ctx = None;
                 }
 
                 (_, Some(proc)) => self.current_fn()?.append_op(program, ip, proc, &mut wasm),
@@ -169,12 +169,12 @@ impl FuncGen {
 
                 IndexOp::CallInline => {
                     let inlined_proc = prog.get_proc(index);
-                    let Mode::Inlined(start, end) = inlined_proc.mode else {
+                    let ModeData::Inlined(start, end) = inlined_proc.mode_data else {
                         unreachable!();
                     };
 
-                    for ip in (start + 1)..end {
-                        self.append_op(prog, ip, inlined_proc, module);
+                    for inlined_ip in (start + 1)..end {
+                        self.append_op(prog, inlined_ip, inlined_proc, module);
                     }
                 }
 

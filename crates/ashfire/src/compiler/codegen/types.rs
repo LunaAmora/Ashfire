@@ -167,7 +167,7 @@ pub fn unpack_struct(stk: &TypeDescr) -> Vec<Instruction> {
             I32(add),
             I32(load),
         ]),
-        n => {
+        count => {
             instructions.extend(vec![
                 Const(WORD_SIZE),
                 Call("aloc_local".into()),
@@ -175,9 +175,9 @@ pub fn unpack_struct(stk: &TypeDescr) -> Vec<Instruction> {
                 Call("bind_local".into()),
             ]);
 
-            let n = n.try_into().expect("ICE");
+            let count = count.try_into().expect("ICE");
 
-            for offset in 0..n {
+            for offset in 0..count {
                 instructions.extend(vec![
                     Const(WORD_SIZE),
                     Call("push_local".into()),
