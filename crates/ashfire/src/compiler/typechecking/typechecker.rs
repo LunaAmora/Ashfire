@@ -474,9 +474,9 @@ impl TypeChecker {
     fn expect_stack_arity(
         &self, expected: &[TypeFrame], loc: Loc, error_text: String,
     ) -> LazyResult<()> {
-        self.data_stack.expect_exact(expected, loc).map_err(|err| {
-            LazyError::new(move |f| format!("{}\n[ERROR] {}", error_text, err.apply(f)))
-        })
+        self.data_stack
+            .expect_exact(expected, loc)
+            .map_err(|err| lazyerr!(|f| "{}\n[ERROR] {}", error_text, err.apply(f)))
     }
 }
 

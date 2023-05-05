@@ -154,20 +154,18 @@ pub trait Compare<'err, T: Clone + Typed + Location + 'err>: Deref<Target = [T]>
         let stack = format_stack(self);
         let frame = format_frames(self);
 
-        LazyError::new(move |f| {
-            format!(
-                concat!(
-                    "Found stack does not match the expected types:\n",
-                    "[INFO] {}Expected types: {}\n",
-                    "[INFO] {}Actual types:   {}\n{}"
-                ),
-                f.format(Fmt::Loc(loc)),
-                contr.apply(f),
-                f.format(Fmt::Loc(loc)),
-                stack.apply(f),
-                frame.apply(f)
-            )
-        })
+        lazyerr!(
+            |f| concat!(
+                "Found stack does not match the expected types:\n",
+                "[INFO] {}Expected types: {}\n",
+                "[INFO] {}Actual types:   {}\n{}"
+            ),
+            f.format(Fmt::Loc(loc)),
+            contr.apply(f),
+            f.format(Fmt::Loc(loc)),
+            stack.apply(f),
+            frame.apply(f)
+        )
     }
 }
 
@@ -185,41 +183,35 @@ pub fn expect_type<'err, T: Clone + Typed + Location + 'err, V: Typed>(
 fn format_type_diff<'err, T: Clone + Typed + Location + 'err>(
     frame: T, expected: DataType, loc: Loc,
 ) -> LazyError<'err> {
-    LazyError::new(move |f| {
-        format!(
-            "{}Expected type `{}`, but found `{}`\n{}",
-            f.format(Fmt::Loc(loc)),
-            f.format(Fmt::DTyp(expected)),
-            f.format(Fmt::DTyp(frame.get_type())),
-            format_frame(&frame).apply(f)
-        )
-    })
+    lazyerr!(
+        |f| "{}Expected type `{}`, but found `{}`\n{}",
+        f.format(Fmt::Loc(loc)),
+        f.format(Fmt::DTyp(expected)),
+        f.format(Fmt::DTyp(frame.get_type())),
+        format_frame(&frame).apply(f)
+    )
 }
 
 pub fn format_frames<T: Clone + Typed + Location>(stack: &[T]) -> impl LazyFormatter<Fmt> {
     let copied = stack.to_vec();
-    lazyformat! { |f| copied.iter().map(|t| format_frame(t).apply(f)).join("\n") }
+    lazyformatter!(|f| copied.iter().map(|t| format_frame(t).apply(f)).join("\n"))
 }
 
 pub fn format_frame<T: Typed + Location>(t: T) -> impl LazyFormatter<Fmt> {
-    lazyformat! { |f|
-        format!(
-            "[INFO] {}Type `{}` was declared here",
-            f.format(Fmt::Loc(t.loc())),
-            f.format(Fmt::DTyp(t.get_type()))
-        )
-    }
+    lazyformat!(
+        |f| "[INFO] {}Type `{}` was declared here",
+        f.format(Fmt::Loc(t.loc())),
+        f.format(Fmt::DTyp(t.get_type()))
+    )
 }
 
 pub fn format_stack<'err, T: Typed>(stack: &[T]) -> impl LazyFormatter<Fmt> + 'err {
     let types: Vec<DataType> = stack.iter().map(Typed::get_type).collect();
-    lazyformat! { |f|
-        format!(
-            "[{}] ->",
-            types
-                .iter()
-                .map(|&t| format!("<{}>", f.format(Fmt::DTyp(t))))
-                .join(", ")
-        )
-    }
+    lazyformat!(
+        |f| "[{}] ->",
+        types
+            .iter()
+            .map(|&t| format!("<{}>", f.format(Fmt::DTyp(t))))
+            .join(", ")
+    )
 }

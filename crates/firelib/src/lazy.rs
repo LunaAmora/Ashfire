@@ -153,15 +153,29 @@ impl<'err, R, T: 'err, A: private::SealedT<'err, T, Internal = R>> LazyErrCtx<'e
 
 #[macro_export]
 macro_rules! lazybail {
-    ( |$i:pat_param| $($fmt:expr ),* ) => {
-        Err($crate::lazy::LazyError::new(move |$i| {
+    (| $i:pat_param | $($fmt:expr ),* ) => {
+        Err(lazyerr!(|$i| $($fmt),* ))?
+    };
+}
+
+#[macro_export]
+macro_rules! lazyerr {
+    (| $i:pat_param | $($fmt:expr ),* ) => {
+        $crate::lazy::LazyError::new(move |$i| {
             format!( $( $fmt ),* )
-        }))?
+        })
     };
 }
 
 #[macro_export]
 macro_rules! lazyformat {
+    (| $i:pat_param | $($fmt:expr ),*) => {
+        move |$i: &dyn $crate::lazy::Formatter<_>| format!( $( $fmt ),* )
+    };
+}
+
+#[macro_export]
+macro_rules! lazyformatter {
     (| $i:pat_param | $fmt:expr) => {
         move |$i: &dyn $crate::lazy::Formatter<_>| $fmt
     };
@@ -227,15 +241,17 @@ mod tests {
     use crate::lazy::LazyErrCtx;
 
     #[test]
-    fn lazybail_test() {
-        let err = lazybail_error(69).try_or_apply(&int_error_fmt).unwrap_err();
+    fn lazyerr_test() {
+        let lazyerr = |i| -> LazyResult<'_, (), i32> { Err(lazyerr!(|f| "{}", f.format(i))) };
+        let err = lazyerr(69).try_or_apply(&int_error_fmt).unwrap_err();
 
         assert_eq!("Error: `69`", err.to_string());
     }
 
     #[test]
     fn ctx_test() {
-        let err = with_ctx_error(None, 420)
+        let err = None::<()>
+            .with_ctx(|f| f.format(420))
             .try_or_apply(&int_error_fmt)
             .unwrap_err();
 
@@ -244,29 +260,20 @@ mod tests {
 
     #[test]
     fn ctx_ok_test() {
-        with_ctx_error(Some(true), 0)
+        Some(())
+            .with_ctx(|f| f.format(0))
             .try_or_apply(&int_error_fmt)
             .unwrap();
     }
 
     #[test]
     fn ctx_chain_test() {
-        let err = create_res::<(), i32>(69)
-            .with_err_ctx(|| create_err(420))
+        let err = new_lazy_result::<(), i32>(69)
+            .with_err_ctx(|| new_lazy_err(420))
             .try_or_apply(&int_error_fmt)
             .unwrap_err();
 
         assert_eq!("Value: Error: `420`\nValue: Error: `69`", err.to_string());
-    }
-
-    fn with_ctx_error<'a>(option: Option<bool>, err_val: i32) -> LazyResult<'a, bool, i32> {
-        let unwraped_option: bool = option.with_ctx(move |f| f.format(err_val))?;
-
-        Ok(unwraped_option)
-    }
-
-    fn lazybail_error<'a>(i: i32) -> LazyResult<'a, bool, i32> {
-        lazybail!(|f| "{}", f.format(i))
     }
 
     fn int_error_fmt(i: i32) -> String {
@@ -275,8 +282,8 @@ mod tests {
 
     #[test]
     fn lifetimes_test() {
-        let a = format_mutate_format(&create_err(34), &mut Program(25));
-        let b = format_mutate_format(&create_err(40), &mut Program(19));
+        let a = format_mutate_format(&new_lazy_err(34), &mut Program(25));
+        let b = format_mutate_format(&new_lazy_err(40), &mut Program(19));
         assert_eq!(a, b);
     }
 
@@ -288,12 +295,12 @@ mod tests {
         format!("{first}. {second}")
     }
 
-    fn create_res<'err, V, T: Copy + 'err>(value: T) -> LazyResult<'err, V, T> {
-        Err(create_err(value))
+    fn new_lazy_result<'err, V, T: Copy + 'err>(value: T) -> LazyResult<'err, V, T> {
+        Err(new_lazy_err(value))
     }
 
-    fn create_err<'err, T: Copy + 'err>(value: T) -> LazyError<'err, T> {
-        LazyError::new(move |f| format!("Value: {}", f.format(value)))
+    fn new_lazy_err<'err, T: Copy + 'err>(value: T) -> LazyError<'err, T> {
+        lazyerr!(|f| "Value: {}", f.format(value))
     }
 
     struct Program(i32);

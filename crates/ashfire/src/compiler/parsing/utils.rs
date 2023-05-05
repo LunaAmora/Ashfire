@@ -134,9 +134,7 @@ pub fn invalid_option<'err, S: Display + 'err>(
 }
 
 pub fn unexpected_end<'err, S: Display + 'err>(desc: S, loc: Loc) -> LazyError<'err> {
-    LazyError::new(move |f| {
-        format!("{}Expected {desc}, but found nothing", f.format(Fmt::Loc(loc)))
-    })
+    lazyerr!(|f| "{}Expected {desc}, but found nothing", f.format(Fmt::Loc(loc)))
 }
 
 pub fn unexpected_token<'err, S: Display + 'err, T>(
@@ -147,14 +145,12 @@ where
 {
     let tok @ (token_type, loc) = (t.into(), loc);
 
-    LazyError::new(move |f| {
-        format!(
-            "{}Expected {desc}, but found: {} `{}`",
-            f.format(Fmt::Loc(loc)),
-            f.format(Fmt::TTyp(token_type)),
-            f.format(Fmt::Tok(tok))
-        )
-    })
+    lazyerr!(
+        |f| "{}Expected {desc}, but found: {} `{}`",
+        f.format(Fmt::Loc(loc)),
+        f.format(Fmt::TTyp(token_type)),
+        f.format(Fmt::Tok(tok))
+    )
 }
 
 pub fn invalid_context<'err>(tok: IRToken, word: &str) -> LazyError<'err> {
@@ -163,32 +159,27 @@ pub fn invalid_context<'err>(tok: IRToken, word: &str) -> LazyError<'err> {
 
 pub fn invalid_token<'err, S: Display + 'err>(tok: IRToken, error: S) -> LazyError<'err> {
     let (token_type, loc) = tok;
-
-    LazyError::new(move |f| {
-        format!(
-            "{}Invalid `{}` found on {error}: `{}`",
-            f.format(Fmt::Loc(loc)),
-            f.format(Fmt::TTyp(token_type)),
-            f.format(Fmt::Tok(tok))
-        )
-    })
+    lazyerr!(
+        |f| "{}Invalid `{}` found on {error}: `{}`",
+        f.format(Fmt::Loc(loc)),
+        f.format(Fmt::TTyp(token_type)),
+        f.format(Fmt::Tok(tok))
+    )
 }
 
 pub fn format_block<'err, S: Display + 'err>(
     error: S, (control, value, start_loc): Block, loc: Loc,
 ) -> LazyError<'err> {
-    LazyError::new(move |f| {
-        format!(
-            concat!(
-                "{}{}, but found a `{:?}` block instead\n",
-                "[INFO] {}The found block started here."
-            ),
-            f.format(Fmt::Loc(loc)),
-            error,
-            OpType::ControlOp(control, value),
-            f.format(Fmt::Loc(start_loc))
-        )
-    })
+    lazyerr!(
+        |f| concat!(
+            "{}{}, but found a `{:?}` block instead\n",
+            "[INFO] {}The found block started here."
+        ),
+        f.format(Fmt::Loc(loc)),
+        error,
+        OpType::ControlOp(control, value),
+        f.format(Fmt::Loc(start_loc))
+    )
 }
 
 pub fn expect_token_by<'err, S: Display + 'err>(
