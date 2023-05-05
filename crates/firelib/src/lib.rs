@@ -119,27 +119,6 @@ macro_rules! equals_any {
     };
 }
 
-/// Ternary-like macro with special support to [`Option`],
-/// returning a [`None`] if the condition was false and
-/// no false branch was given.
-#[macro_export]
-macro_rules! fold_bool {
-    ($expression:expr, $true:expr) => {
-        if $expression {
-            $true
-        } else {
-            None
-        }
-    };
-    ($expression:expr, $true:expr, $false:expr) => {
-        if $expression {
-            $true
-        } else {
-            $false
-        }
-    };
-}
-
 pub fn command_info(cmd: &Command) -> String {
     format!("{cmd:?}").replace('\"', "")
 }

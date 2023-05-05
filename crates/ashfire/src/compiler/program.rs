@@ -229,7 +229,7 @@ impl Program {
 
     fn data_display(value: TypeId, operand: i32) -> String {
         match value {
-            TypeId::BOOL => fold_bool!(operand != 0, "True", "False").to_owned(),
+            TypeId::BOOL => (if operand == 0 { "False" } else { "True" }).to_owned(),
             TypeId::PTR => format!("*{operand}"),
             _ => operand.to_string(),
         }

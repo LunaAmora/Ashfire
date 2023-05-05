@@ -498,8 +498,12 @@ impl Parser {
         self.name_scopes
             .register(name.name(), ParseContext::ProcName);
 
-        let prep =
-            fold_bool!(matches!(mode, ModeType::Declare | ModeType::Export), PrepProc, PrepInline);
+        let prep = if matches!(mode, ModeType::Declare | ModeType::Export) {
+            PrepProc
+        } else {
+            PrepInline
+        };
+
         Ok(self.push_control_block((prep, operand, loc)))
     }
 

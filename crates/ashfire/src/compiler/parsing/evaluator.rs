@@ -44,7 +44,7 @@ impl Parser {
                         ),
                         f.format(Fmt::Loc(tok.loc())),
                         n,
-                        fold_bool!(n > 1, "s", ""),
+                        if n > 1 { "s" } else { "" },
                         len,
                         frames.apply(f)
                     );
