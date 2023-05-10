@@ -17,7 +17,7 @@ wasm_backend = { path = "../wasm_backend" }
 ashfire_types = { path = "../ashfire_types" }
 
 [dev-dependencies]
-criterion = "0.4"
+criterion = { default-features = false, version = "0.4" }
 
 [[bench]]
 name = "compilation_test"
