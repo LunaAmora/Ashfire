@@ -148,7 +148,7 @@ where
     lazyerr!(
         |f| "{}Expected {desc}, but found: {} `{}`",
         f.format(Fmt::Loc(loc)),
-        f.format(Fmt::TTyp(token_type)),
+        f.format(Fmt::Typ(token_type)),
         f.format(Fmt::Tok(tok))
     )
 }
@@ -162,7 +162,7 @@ pub fn invalid_token<'err, S: Display + 'err>(tok: IRToken, error: S) -> LazyErr
     lazyerr!(
         |f| "{}Invalid `{}` found on {error}: `{}`",
         f.format(Fmt::Loc(loc)),
-        f.format(Fmt::TTyp(token_type)),
+        f.format(Fmt::Typ(token_type)),
         f.format(Fmt::Tok(tok))
     )
 }

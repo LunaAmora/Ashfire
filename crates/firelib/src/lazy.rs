@@ -154,7 +154,7 @@ impl<'err, R, T: 'err, A: private::SealedT<'err, T, Internal = R>> LazyErrCtx<'e
 #[macro_export]
 macro_rules! lazybail {
     (| $i:pat_param | $($fmt:expr ),* ) => {
-        Err(lazyerr!(|$i| $($fmt),* ))?
+        Err($crate::lazyerr!(|$i| $($fmt),* ))?
     };
 }
 
@@ -218,18 +218,13 @@ pub(crate) mod private {
     pub trait SealedT<'err, T> {
         type Internal;
 
-        fn lazy_value(self) -> LazyResult<'err, Self::Internal, T>
-        where
-            Self: Sized;
+        fn lazy_value(self) -> LazyResult<'err, Self::Internal, T>;
     }
 
     impl<'err, R, T> SealedT<'err, T> for LazyResult<'err, R, T> {
         type Internal = R;
 
-        fn lazy_value(self) -> LazyResult<'err, R, T>
-        where
-            Self: Sized,
-        {
+        fn lazy_value(self) -> LazyResult<'err, R, T> {
             self
         }
     }

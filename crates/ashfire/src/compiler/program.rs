@@ -256,10 +256,11 @@ impl Program {
 
     pub fn format(&self, fmt: Fmt) -> String {
         match fmt {
-            Fmt::Loc(loc) => self.loc_fmt(loc),
             Fmt::Tok(tok) => self.token_display(tok),
-            Fmt::TTyp(typ) => self.type_name(typ),
-            Fmt::DTyp(typ) => self.data_name(typ),
+            Fmt::Typ(typ) => self.type_name(typ),
+            Fmt::Dat(typ) => self.data_name(typ),
+            Fmt::Key(key) => key.as_string(self),
+            Fmt::Loc(loc) => self.loc_fmt(loc),
         }
     }
 
@@ -409,8 +410,9 @@ pub trait Visitor {
 
 #[derive(Clone, Copy)]
 pub enum Fmt {
-    Loc(Loc),
-    TTyp(TokenType),
-    DTyp(DataType),
+    Typ(TokenType),
+    Dat(DataType),
     Tok(IRToken),
+    Key(Name),
+    Loc(Loc),
 }

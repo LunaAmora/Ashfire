@@ -5,10 +5,15 @@ use ashfire_types::{
     proc::{Binds, ModeData},
 };
 use ashlib::{EvalStack, UncheckedStack};
-use firelib::{lazy::LazyErrCtx, lexer::Loc, span::Spanned, Result};
+use firelib::{
+    lazy::{LazyCtx, LazyErrCtx},
+    lexer::Loc,
+    span::Spanned,
+    Result,
+};
 
 use super::expect::*;
-use crate::compiler::{parsing::types::StructUtils, program::*, utils::err_loc};
+use crate::compiler::{parsing::types::StructUtils, program::*};
 
 type TypeFrame = Spanned<DataType>;
 type DataStack = EvalStack<TypeFrame>;
@@ -451,19 +456,24 @@ impl TypeChecker {
             lazybail!(
                 |f| "{}Cannot `.` access elements of type: `{}`",
                 f.format(Fmt::Loc(loc)),
-                f.format(Fmt::DTyp(data_type))
+                f.format(Fmt::Dat(data_type))
             )
         };
 
         match prog.get_type_descr(ptr.ptr_type()) {
             TypeDescr::Structure(StructType(fields, _)) => {
-                let Some((offset, index)) = fields.get_offset(word) else {
-                            let error = format!("The struct {} does not contain a member with name: `{}`",
-                                fields.name().as_str(prog), word.as_str(prog));
-                            return Err(err_loc(error, loc));
-                        };
-
-                Ok((fields[index].get_type(), offset * WORD_USIZE))
+                let struct_name = fields.name();
+                fields
+                    .get_offset(word)
+                    .with_err_ctx(move || {
+                        lazyerr!(
+                            |f| "{}The struct {} does not contain a member with name: `{}`",
+                            f.format(Fmt::Loc(loc)),
+                            f.format(Fmt::Key(struct_name)),
+                            f.format(Fmt::Key(word))
+                        )
+                    })
+                    .map(|(offset, index)| (fields[index].get_type(), offset * WORD_USIZE))
             }
 
             TypeDescr::Primitive(_) => todo!(),

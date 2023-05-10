@@ -10,6 +10,7 @@
         "-Wclippy::pedantic",
         "-Aclippy::missing_errors_doc",
         "-Aclippy::missing_panics_doc",
+        "-Aclippy::uninlined-format-args",
         
         "-Aclippy::module_name_repetitions",
         "-Aclippy::must_use_candidate",

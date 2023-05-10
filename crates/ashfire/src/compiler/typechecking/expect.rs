@@ -186,8 +186,8 @@ fn format_type_diff<'err, T: Clone + Typed + Location + 'err>(
     lazyerr!(
         |f| "{}Expected type `{}`, but found `{}`\n{}",
         f.format(Fmt::Loc(loc)),
-        f.format(Fmt::DTyp(expected)),
-        f.format(Fmt::DTyp(frame.get_type())),
+        f.format(Fmt::Dat(expected)),
+        f.format(Fmt::Dat(frame.get_type())),
         format_frame(&frame).apply(f)
     )
 }
@@ -201,7 +201,7 @@ pub fn format_frame<T: Typed + Location>(t: T) -> impl LazyFormatter<Fmt> {
     lazyformat!(
         |f| "[INFO] {}Type `{}` was declared here",
         f.format(Fmt::Loc(t.loc())),
-        f.format(Fmt::DTyp(t.get_type()))
+        f.format(Fmt::Dat(t.get_type()))
     )
 }
 
@@ -211,7 +211,7 @@ pub fn format_stack<'err, T: Typed>(stack: &[T]) -> impl LazyFormatter<Fmt> + 'e
         |f| "[{}] ->",
         types
             .iter()
-            .map(|&t| format!("<{}>", f.format(Fmt::DTyp(t))))
+            .map(|&t| format!("<{}>", f.format(Fmt::Dat(t))))
             .join(", ")
     )
 }

@@ -107,7 +107,7 @@ impl Parser {
             lazybail!(
                 |f| "{}Token type cannot be used outside of a procedure: `{}`",
                 f.format(Fmt::Loc(loc)),
-                f.format(Fmt::TTyp(token_type))
+                f.format(Fmt::Typ(token_type))
             );
         };
 
@@ -125,7 +125,7 @@ impl Parser {
                     _ => lazybail!(
                         |f| "{}Value type not valid here: `{}`",
                         f.format(Fmt::Loc(loc)),
-                        f.format(Fmt::DTyp(data))
+                        f.format(Fmt::Dat(data))
                     ),
                 },
             },
