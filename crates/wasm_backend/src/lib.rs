@@ -5,7 +5,6 @@ use std::{
     io::{Result, Write},
 };
 
-use hexstring::LowerHexString;
 use itertools::Itertools;
 use wasm_types::*;
 
@@ -96,7 +95,7 @@ impl Module {
     }
 
     pub fn add_data_value(&mut self, data: i32) {
-        self.add_data(inverse_hex_representation(data));
+        self.add_data(wasm_data_format(data));
     }
 
     fn func_label_by_id(&self, id: &Ident) -> String {
@@ -260,42 +259,30 @@ impl Module {
     }
 }
 
-fn inverse_hex_representation(data: i32) -> String {
-    bytes_from_value(data)
-        .into_iter()
-        .rev()
-        .flat_map(u8_to_hex_representation)
+fn wasm_data_format(data: i32) -> String {
+    let b_to_hex_b = |b| match b {
+        b'A'..=b'F' => b - b'A' + 10,
+        b'a'..=b'f' => b - b'a' + 10,
+        b'0'..=b'9' => b - b'0',
+        _ => unreachable!(),
+    };
+
+    format!("{data:08x}")
+        .as_bytes()
+        .rchunks(2)
+        .map(|pair| b_to_hex_b(pair[0]) << 4 | b_to_hex_b(pair[1]))
+        .flat_map(u8_to_escaped_hex)
         .collect()
 }
 
-fn bytes_from_value(data: i32) -> Vec<u8> {
-    LowerHexString::new(format!("{data:08x}")).unwrap().into()
+fn u8_to_escaped_hex(byte: u8) -> [char; 3] {
+    let (high, low) = byte2hex(byte, b"0123456789abcdef");
+    ['\\', high, low]
 }
 
-fn u8_to_hex_representation(b: u8) -> [char; 3] {
-    let upper = nibble_to_hexchar((b & 0xf0) >> 4).unwrap();
-    let lower = nibble_to_hexchar(b & 0x0f).unwrap();
-    ['\\', upper, lower]
-}
+fn byte2hex(byte: u8, table: &[u8; 16]) -> (char, char) {
+    let high = table[((byte & 0xf0) >> 4) as usize] as char;
+    let low = table[(byte & 0x0f) as usize] as char;
 
-fn nibble_to_hexchar(b: u8) -> Option<char> {
-    Some(match b {
-        0 => '0',
-        1 => '1',
-        2 => '2',
-        3 => '3',
-        4 => '4',
-        5 => '5',
-        6 => '6',
-        7 => '7',
-        8 => '8',
-        9 => '9',
-        10 => 'a',
-        11 => 'b',
-        12 => 'c',
-        13 => 'd',
-        14 => 'e',
-        15 => 'f',
-        _ => return None,
-    })
+    (high, low)
 }

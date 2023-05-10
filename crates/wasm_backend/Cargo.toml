@@ -9,4 +9,3 @@ license-file.workspace = true
 
 [dependencies]
 itertools = "0.10.5"
-hexstring = { default-features = false, version = "0.1.3" }
