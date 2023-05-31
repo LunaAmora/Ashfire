@@ -140,9 +140,11 @@ impl Parser {
                     self.define_context(word, prog)
                 )?;
 
-                let error =
-                    format!("Word was not declared on the program: `{}`", word.as_str(prog));
-                return err_loc(error, loc).into();
+                lazybail!(
+                    |f| "{}Word was not declared on the program: `{}`",
+                    f.format(Fmt::Loc(loc)),
+                    f.format(Fmt::Key(name))
+                )
             }
 
             TokenType::Type(_) => todo!(),

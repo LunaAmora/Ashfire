@@ -1,14 +1,15 @@
 use std::{io::Read, path::Path};
 
 use ashfire_types::{core::*, data::*, enums::*, proc::ModeData};
-use firelib::{lazy::LazyErrCtx, lexer::Loc, Result, ShortCircuit};
+use firelib::{
+    lazy::{LazyCtx, LazyErrCtx},
+    lexer::Loc,
+    Result, ShortCircuit,
+};
 use IndexOp::*;
 
 use super::{parser::Parser, types::*};
-use crate::{
-    compiler::{program::*, utils::err_loc},
-    firelib::span::Span,
-};
+use crate::{compiler::program::*, firelib::span::Span};
 
 impl Program {
     /// Searches for a `binding` to load that matches the given [`word`][LocWord]
@@ -209,11 +210,14 @@ impl Program {
                 todo!()
             };
 
-            let Some((diff, index)) = stk_fields.get_offset(field_key) else {
-                let error = format!("The variable `{}` does not contain the field `{field_name}`",
-                    var.name().as_str(self));
-                return err_loc(error, loc).into();
-            };
+            let var_name = var.name();
+
+            let (diff, index) = stk_fields.get_offset(field_key).with_err_ctx(lazyctx!(
+                |f| "{}The variable `{}` does not contain the field `{}`",
+                f.format(Fmt::Loc(loc)),
+                f.format(Fmt::Key(var_name)),
+                f.format(Fmt::Key(field_key))
+            ))?;
 
             offset += diff;
             var = &stk_fields[index];

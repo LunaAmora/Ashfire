@@ -465,14 +465,12 @@ impl TypeChecker {
                 let struct_name = fields.name();
                 fields
                     .get_offset(word)
-                    .with_err_ctx(move || {
-                        lazyerr!(
-                            |f| "{}The struct {} does not contain a member with name: `{}`",
-                            f.format(Fmt::Loc(loc)),
-                            f.format(Fmt::Key(struct_name)),
-                            f.format(Fmt::Key(word))
-                        )
-                    })
+                    .with_err_ctx(lazyctx!(
+                        |f| "{}The struct {} does not contain a member with name: `{}`",
+                        f.format(Fmt::Loc(loc)),
+                        f.format(Fmt::Key(struct_name)),
+                        f.format(Fmt::Key(word))
+                    ))
                     .map(|(offset, index)| (fields[index].get_type(), offset * WORD_USIZE))
             }
 

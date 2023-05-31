@@ -159,6 +159,13 @@ macro_rules! lazybail {
 }
 
 #[macro_export]
+macro_rules! lazyctx {
+    (| $i:pat_param | $($fmt:expr ),* ) => {
+        move || $crate::lazyerr!(|$i| $($fmt),* )
+    };
+}
+
+#[macro_export]
 macro_rules! lazyerr {
     (| $i:pat_param | $($fmt:expr ),* ) => {
         $crate::lazy::LazyError::new(move |$i| {
