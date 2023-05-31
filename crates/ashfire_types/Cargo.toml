@@ -8,7 +8,7 @@ readme.workspace = true
 license-file.workspace = true
 
 [dependencies]
-lasso = "0.7.0"
+lasso = "0.7.2"
 either = "1.8.1"
 easy-ext = "1.0.1"
 firelib = {path = "../firelib"}
