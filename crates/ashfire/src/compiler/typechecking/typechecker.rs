@@ -258,8 +258,8 @@ impl TypeChecker {
                     self.expect_stack_arity(
                         &expected,
                         loc,
-                        format!(
-                            "Else-less if block is not allowed to alter {}",
+                        concat!(
+                            "Else-less if block is not allowed to alter ",
                             "the types of the arguments on the data stack."
                         ),
                     )?;
@@ -282,8 +282,8 @@ impl TypeChecker {
                     self.expect_stack_arity(
                         &expected,
                         loc,
-                        format!(
-                            "Both branches of the if-block must produce {}",
+                        concat!(
+                            "Both branches of the if-block must produce ",
                             "the same types of the arguments on the data stack"
                         ),
                     )?;
@@ -313,8 +313,8 @@ impl TypeChecker {
                     self.expect_stack_arity(
                         &expected,
                         loc,
-                        format!(
-                            "While block is not allowed to alter {}",
+                        concat!(
+                            "While block is not allowed to alter ",
                             "the types of the arguments on the data stack"
                         ),
                     )?;
@@ -329,8 +329,8 @@ impl TypeChecker {
                     self.expect_stack_arity(
                         &expected,
                         loc,
-                        format!(
-                            "Do block is not allowed to alter {}",
+                        concat!(
+                            "Do block is not allowed to alter ",
                             "the types of the arguments on the data stack"
                         ),
                     )?;
@@ -479,12 +479,12 @@ impl TypeChecker {
         }
     }
 
-    fn expect_stack_arity(
-        &self, expected: &[TypeFrame], loc: Loc, error_text: String,
-    ) -> LazyResult<()> {
+    fn expect_stack_arity<'a>(
+        &self, expected: &[TypeFrame], loc: Loc, error_text: &'a str,
+    ) -> crate::compiler::utils::LazyResult<'a, ()> {
         self.data_stack
             .expect_exact(expected, loc)
-            .map_err(|err| lazyerr!(|f| "{}\n[ERROR] {}", error_text, err.apply(f)))
+            .map_err(move |err| lazyerr!(|f| "{}\n[ERROR] {}", error_text, err.apply(f)))
     }
 }
 
