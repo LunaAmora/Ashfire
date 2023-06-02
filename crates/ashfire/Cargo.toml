@@ -22,3 +22,6 @@ criterion = { default-features = false, version = "0.5" }
 [[bench]]
 name = "compilation_test"
 harness = false
+
+[lints]
+workspace = true

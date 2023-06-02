@@ -31,3 +31,8 @@ version = "0.1.0"
 edition = "2021"
 readme = "README.md"
 license-file = "LICENSE"
+
+[workspace.lints.clippy]
+all = "warn"
+nursery = "warn"
+missing_const_for_fn = "allow"

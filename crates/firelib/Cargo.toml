@@ -16,3 +16,6 @@ firelib_macro = {path = "../firelib_macro", optional = true}
 [features]
 default = ["derive"]
 derive = ["firelib_macro"]
+
+[lints]
+workspace = true

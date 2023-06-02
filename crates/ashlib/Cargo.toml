@@ -10,3 +10,6 @@ license-file.workspace = true
 [dependencies]
 either = "1.8.1"
 firelib = {path = "../firelib"}
+
+[lints]
+workspace = true
