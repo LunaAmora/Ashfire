@@ -7,7 +7,7 @@ pub enum Target {
 impl Target {
     pub fn module(&self) -> &str {
         match self {
-            Self::Wasi => "wasi_unstable",
+            Self::Wasi => "wasi_snapshot_preview1",
             Self::Wasm4 => "env",
         }
     }
