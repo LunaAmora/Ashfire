@@ -48,7 +48,7 @@ impl TypeChecker {
 
     pub fn type_check(&mut self, program: &mut Program) -> LazyResult<()> {
         let mut ip = 0;
-        while ip < program.ops.len() {
+        while ip < program.ops().len() {
             self.type_check_op(ip, program)?;
             ip += 1;
         }
@@ -68,7 +68,7 @@ impl TypeChecker {
     }
 
     fn type_check_op(&mut self, ip: usize, program: &mut Program) -> LazyResult<()> {
-        let &(op_type, loc) = &program.ops[ip];
+        let &(op_type, loc) = &program.ops()[ip];
         match op_type {
             OpType::PushData(data @ DataType(id), _) => match id {
                 TypeId::INT | TypeId::BOOL | TypeId::PTR => self.push_frame(data, loc),
@@ -111,7 +111,7 @@ impl TypeChecker {
 
                             let new_data_type = *ptr_id;
 
-                            let (OpType::UnpackType(unpack_type), _) = &mut program.ops[ip] else {
+                            let (OpType::UnpackType(unpack_type), _) = &mut program.ops_mut()[ip] else {
                                 unreachable!()
                             };
 
@@ -268,7 +268,7 @@ impl TypeChecker {
                     let out = self.data_stack.count() + ins;
 
                     program
-                        .block_contracts
+                        .block_contracts()
                         .insert(start_op, (ins.unsigned_abs(), out.unsigned_abs()));
 
                     let old_count = expected.count();
@@ -292,7 +292,7 @@ impl TypeChecker {
                     let out = (self.data_stack.count()).max(expected.count()) + ins;
 
                     program
-                        .block_contracts
+                        .block_contracts()
                         .insert(start_op, (ins.unsigned_abs(), out.unsigned_abs()));
 
                     let TypeBlock(old_stack, _) = self.block_stack_pop();
@@ -353,7 +353,7 @@ impl TypeChecker {
                     let contr = (ins.unsigned_abs(), out.unsigned_abs());
 
                     program
-                        .block_contracts
+                        .block_contracts()
                         .extend([(do_op, contr), (start_op, contr)]);
 
                     let old_count = old_stack.count();
@@ -490,7 +490,7 @@ impl TypeChecker {
 
 impl Program {
     fn update_op(&mut self, ip: usize, setter: impl Fn(&mut OpType)) {
-        let (op, _) = &mut self.ops[ip];
+        let (op, _) = &mut self.ops_mut()[ip];
         setter(op);
     }
 

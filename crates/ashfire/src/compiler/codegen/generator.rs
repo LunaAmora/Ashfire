@@ -25,7 +25,7 @@ impl Generator {
         let mut wasm = Module::new();
 
         let module = &target.module();
-        for import in program.procs.iter().filter(|p| p.is_import()) {
+        for import in program.procs().iter().filter(|p| p.is_import()) {
             let (ins, outs) = import.contract.as_vec(WasmType::I32, WasmType::I32);
             let name = &import.name.as_str(program);
             wasm.add_import(module, name, name, &ins, &outs);
@@ -71,7 +71,7 @@ impl Generator {
         wasm.add_fn("push_local", i1, i1, vec![Get(global, Id(stk)), Get(local, Id(0)), I32(sub)]);
 
         let mut proc_ctx = None;
-        for (ip, &(op_type, _)) in program.ops.iter().enumerate() {
+        for (ip, &(op_type, _)) in program.ops().iter().enumerate() {
             match (op_type, proc_ctx) {
                 (OpType::ControlOp(ControlOp::PrepProc | ControlOp::PrepInline, proc_ip), _) => {
                     proc_ctx = self.prep_proc(program, proc_ip)?;
@@ -94,13 +94,13 @@ impl Generator {
             wasm.add_data(data.as_string(program));
         }
 
-        if !program.global_vars.is_empty() {
+        if !program.global_vars().is_empty() {
             let padding = WORD_USIZE - program.data_size() % WORD_USIZE;
             if padding < WORD_USIZE {
                 wasm.add_data((0..padding).map(|_| "\\00").collect());
             }
 
-            for var in program.global_vars.units() {
+            for var in program.global_vars().units() {
                 wasm.add_data_value(program.final_value(&var));
             }
         }
@@ -111,7 +111,7 @@ impl Generator {
 
 impl FuncGen {
     fn append_op(&mut self, prog: &Program, ip: usize, proc: &Proc, module: &mut Module) {
-        let (op_type, _) = prog.ops[ip];
+        let (op_type, _) = prog.ops()[ip];
         match op_type {
             OpType::PushData(_, operand) => self.push(Const(operand)),
 

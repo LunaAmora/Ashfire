@@ -60,10 +60,10 @@ fn intern_all<const N: usize>(rodeo: &mut Rodeo, strings: [&'static str; N]) -> 
 
 #[derive(Default)]
 pub struct Program {
-    pub ops: Vec<Op>,
-    pub procs: Vec<Proc>,
-    pub global_vars: Vec<TypeDescr>,
-    pub block_contracts: HashMap<usize, (usize, usize)>,
+    ops: Vec<Op>,
+    procs: Vec<Proc>,
+    global_vars: Vec<TypeDescr>,
+    block_contracts: HashMap<usize, (usize, usize)>,
     structs_types: Vec<TypeDescr>,
     included_sources: HashMap<Name, Name>,
     consts: Vec<TypeDescr>,
@@ -100,6 +100,36 @@ impl Program {
         ];
 
         Self { structs_types, interner, ..Default::default() }
+    }
+
+    pub fn ops(&self) -> &[Op] {
+        &self.ops
+    }
+
+    pub fn ops_mut(&mut self) -> &mut Vec<Op> {
+        &mut self.ops
+    }
+
+    pub fn procs(&self) -> &[Proc] {
+        &self.procs
+    }
+
+    pub fn push_proc(&mut self, proc: Proc) -> usize {
+        let len = self.procs.len();
+        self.procs.push(proc);
+        len
+    }
+
+    pub fn global_vars(&self) -> &[TypeDescr] {
+        &self.global_vars
+    }
+
+    pub fn push_global_var(&mut self, var: TypeDescr) {
+        self.global_vars.push(var)
+    }
+
+    pub fn block_contracts(&mut self) -> &mut HashMap<usize, (usize, usize)> {
+        &mut self.block_contracts
     }
 
     pub fn has_source(&self, source: &str, module: &str) -> bool {

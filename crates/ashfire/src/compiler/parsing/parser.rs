@@ -93,25 +93,22 @@ impl Parser {
     pub fn parse_tokens(&mut self, prog: &mut Program) -> LazyResult<()> {
         while let Some(token) = self.next() {
             if let Some(mut op) = self.define_op(&token, prog).value? {
-                prog.ops.append(&mut op);
+                prog.ops_mut().append(&mut op);
             }
         }
         Ok(())
     }
 
-    fn define_op(&mut self, tok: &IRToken, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        let &(token_type, loc) = tok;
-
-        if !(matches!(token_type, TokenType::Keyword(_) | TokenType::Word(_)) || self.inside_proc())
-        {
+    fn define_op(&mut self, &(tok_typ, loc): &IRToken, prog: &mut Program) -> OptionErr<Vec<Op>> {
+        if !(matches!(tok_typ, TokenType::Keyword(_) | TokenType::Word(_)) || self.inside_proc()) {
             lazybail!(
                 |f| "{}Token type cannot be used outside of a procedure: `{}`",
                 f.format(Fmt::Loc(loc)),
-                f.format(Fmt::Typ(token_type))
+                f.format(Fmt::Typ(tok_typ))
             );
         };
 
-        let op = match token_type {
+        let op = match tok_typ {
             TokenType::Keyword(key) => return self.define_keyword_op(key, loc, prog),
 
             TokenType::Str(data_key) => (OpType::DataOp(DataOp::PushStr, data_key), loc),
@@ -155,7 +152,7 @@ impl Parser {
 
     fn lookup_context(&self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
         let Some(ctx) = self.name_scopes.lookup(word.name(), prog) else {
-            return self.lookup_modfied_var(word, prog);
+            return self.lookup_modified_var(word, prog);
         };
 
         match ctx {
@@ -170,8 +167,8 @@ impl Parser {
         .into()
     }
 
-    fn lookup_modfied_var(&self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        let (rest, var_typ) = match word.as_str(prog).split_at(1) {
+    fn lookup_modified_var(&self, &(name, loc): &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
+        let (rest, var_typ) = match name.as_str(prog).split_at(1) {
             ("!", rest) => (rest, VarWordType::Store),
             (".", rest) => {
                 let Some(key) = prog.get_key(rest) else {
@@ -179,8 +176,8 @@ impl Parser {
                 };
 
                 return OptionErr::new(vec![
-                    (OpType::Offset(key), word.loc()),
-                    (OpType::UnpackType(None), word.loc()),
+                    (OpType::Offset(key), loc),
+                    (OpType::UnpackType(None), loc),
                 ]);
             }
             _ => return OptionErr::default(),
@@ -196,12 +193,10 @@ impl Parser {
             _ => todo!(),
         };
 
-        let field_word = (key, word.loc());
-
         if local {
-            prog.get_local_var(&field_word, var_typ, self)
+            prog.get_local_var(&(key, loc), var_typ, self)
         } else {
-            prog.get_global_var(&field_word, var_typ, self)
+            prog.get_global_var(&(key, loc), var_typ, self)
         }
     }
 
@@ -446,7 +441,7 @@ impl Parser {
 
             KeywordType::End => {
                 if top_index == 0 {
-                    todo!("Unitialized, unknown type");
+                    todo!("Uninitialized, unknown type");
                 } else {
                     self.skip(1);
                     self.parse_var(word, prog, false).try_success()?
@@ -482,23 +477,19 @@ impl Parser {
     }
 
     fn define_proc(
-        &mut self, name: &LocWord, contract: Contract, prog: &mut Program, mode: ModeType,
+        &mut self, &(name, loc): &LocWord, contract: Contract, prog: &mut Program, mode: ModeType,
     ) -> LazyResult<Op> {
-        let loc = name.loc();
-
         if self.inside_proc() {
             let error = "Cannot define a procedure inside of another procedure";
             return Err(err_loc(error, loc));
         };
 
-        let proc = Proc::new(name.name(), contract, mode);
+        let proc = Proc::new(name, contract, mode);
 
-        let operand = prog.procs.len();
+        let operand = prog.push_proc(proc);
         self.enter_proc(operand);
-        prog.procs.push(proc);
 
-        self.name_scopes
-            .register(name.name(), ParseContext::ProcName);
+        self.name_scopes.register(name, ParseContext::ProcName);
 
         let prep = if matches!(mode, ModeType::Declare | ModeType::Export) {
             PrepProc
@@ -676,18 +667,17 @@ impl Parser {
             Ok(value) => value,
             Err(either) => {
                 return Err(either.either(
-                    |tok| {
-                        err_loc("Failed to parse an valid struct value at compile-time", tok.loc())
+                    |(_, loc)| {
+                        err_loc("Failed to parse an valid struct value at compile-time", loc)
                     },
                     |err| err,
                 ))
             }
         };
 
-        let end_loc = self
+        let (_, end_loc) = self
             .skip(skip)
-            .expect("Should not fail if `compile_eval_n` was sucessfull")
-            .loc();
+            .expect("Should not fail if `compile_eval_n` was successful");
 
         let struct_type = match result {
             Either::Left(tok) => {
@@ -718,7 +708,7 @@ impl Parser {
                     TypeDescr::Structure(StructType(fields, _)) => fields
                         .transpose(self.inside_proc(), &mut eval_items)
                         .expect(
-                            "Should not fail if `fields` and `eval_items` have the same lenght",
+                            "Should not fail if `fields` and `eval_items` have the same length",
                         ),
                     TypeDescr::Primitive(_) => todo!(),
                     TypeDescr::Reference(_) => todo!(),
@@ -756,7 +746,7 @@ impl Parser {
             data.local_vars.push(struct_word);
             ParseContext::LocalVar
         } else {
-            prog.global_vars.push(struct_word);
+            prog.push_global_var(struct_word);
             ParseContext::GlobalVar
         }
     }

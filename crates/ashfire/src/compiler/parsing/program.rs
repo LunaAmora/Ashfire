@@ -66,7 +66,7 @@ impl Program {
     }
 
     pub fn get_proc_name(&self, (word, loc): &LocWord) -> Option<Vec<Op>> {
-        self.procs
+        self.procs()
             .iter()
             .enumerate()
             .find(|(_, proc)| word.eq(&proc.name))
@@ -95,7 +95,7 @@ impl Program {
     pub fn get_global_var(
         &self, word: &LocWord, var_typ: VarWordType, parser: &Parser,
     ) -> OptionErr<Vec<Op>> {
-        self.try_get_var(word, &self.global_vars, MemOp::PushGlobal, var_typ, parser)
+        self.try_get_var(word, self.global_vars(), MemOp::PushGlobal, var_typ, parser)
     }
 
     fn try_get_var(

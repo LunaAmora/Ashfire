@@ -156,7 +156,7 @@ impl<'err, T, E, F> FromResidual<Result<Infallible, LazyError<'err, F>>>
 ///
 /// # Panics
 ///
-/// Can panic if the underlying stack lenght is not checked beforehand.
+/// Can panic if the underlying stack length is not checked beforehand.
 pub trait UncheckedStack<T>: Deref<Target = [T]> {
     fn push(&mut self, item: T);
     fn extend<const N: usize>(&mut self, items: [T; N]);
