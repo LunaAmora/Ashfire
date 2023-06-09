@@ -2,7 +2,7 @@ use std::io::Write;
 
 use ashfire_types::{
     core::{DataKey, Typed, WORD_USIZE},
-    data::{DataType, Primitive, StructInfo, StructType, TypeDescr, TypeId},
+    data::{DataType, Primitive, StructInfo, TypeId},
     enums::{ControlOp, DataOp, IndexOp, IntrinsicType, MemOp, OpType, StackOp},
     proc::{Binds, ModeData, Proc},
 };
@@ -13,7 +13,7 @@ use Instruction::*;
 use NumMethod::*;
 use Scope::*;
 
-use super::types::{unpack_struct, FuncGen, Generator};
+use super::types::{unpack_type, FuncGen, Generator};
 use crate::{compiler::program::*, target::Target};
 
 impl Generator {
@@ -158,12 +158,12 @@ impl FuncGen {
             OpType::UnpackType(None) => self.push(I32(load)),
 
             OpType::UnpackType(Some(data_type)) => {
-                self.extend(unpack_struct(prog.get_type_descr(data_type)));
+                self.extend(unpack_type(&prog.get_type_descr(data_type)));
             }
 
             OpType::IndexOp(op, index) => match op {
                 IndexOp::Call => {
-                    let label = prog.get_proc(index).name.as_str(prog);
+                    let label: &str = &prog.get_proc(index).name.as_str(prog);
                     self.push(Call(label.into()));
                 }
 
@@ -247,17 +247,7 @@ impl FuncGen {
 
                     for (_, typ) in bindings {
                         if let &Some(id) = typ {
-                            let type_def = prog.get_type_descr(id);
-
-                            let sizes: Vec<_> = match type_def {
-                                TypeDescr::Structure(StructType(fields, _)) => {
-                                    fields.units().map(|unit| unit.size()).collect()
-                                }
-                                TypeDescr::Primitive(prim) => vec![prim.size()],
-                                TypeDescr::Reference(ptr) => vec![ptr.size()],
-                            };
-
-                            for size in sizes {
+                            for size in prog.get_type_descr(id).units().map(|unit| unit.size()) {
                                 bind_size += size;
                                 inst.extend([Const(bind_size.into()), Call("bind_local".into())]);
                             }

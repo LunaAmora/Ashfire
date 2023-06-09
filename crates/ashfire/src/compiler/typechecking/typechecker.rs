@@ -80,7 +80,7 @@ impl TypeChecker {
             },
 
             OpType::Offset(word) => {
-                let (data_type, offset) = self.expect_struct_pointer(program, word, loc)?;
+                let (data_type, offset) = self.expect_type_ref(program, word, loc)?;
                 program.update_op(ip, |op| *op = OpType::MemOp(MemOp::Offset, offset));
 
                 self.push_frame(program.get_type_ptr(data_type), loc);
@@ -99,23 +99,17 @@ impl TypeChecker {
 
             OpType::UnpackType(Some(_)) => todo!(),
 
-            OpType::UnpackType(_) => {
+            OpType::UnpackType(None) => {
                 let data_type = self.data_stack.expect_pop(loc)?.get_type();
+                let mut update_op = None;
 
-                match program.get_type_descr(data_type) {
-                    TypeDescr::Reference(ptr) => match program.get_type_descr(ptr.ptr_type()) {
+                match &*program.get_type_descr(data_type) {
+                    TypeDescr::Reference(ptr) => match &*program.get_type_descr(ptr.ptr_type()) {
                         TypeDescr::Structure(StructType(fields, ptr_id)) => {
                             for primitive in fields.units() {
                                 self.push_frame(primitive.get_type(), loc);
                             }
-
-                            let new_data_type = *ptr_id;
-
-                            let (OpType::UnpackType(unpack_type), _) = &mut program.ops_mut()[ip] else {
-                                unreachable!()
-                            };
-
-                            unpack_type.replace(new_data_type);
+                            update_op = Some(*ptr_id)
                         }
 
                         TypeDescr::Primitive(_) => {
@@ -126,7 +120,11 @@ impl TypeChecker {
                     },
 
                     _ => todo!(),
-                };
+                }
+
+                if let Some(ptr_id) = update_op {
+                    program.update_op(ip, |op| *op = OpType::UnpackType(Some(ptr_id)));
+                }
             }
 
             OpType::IndexOp(index_op, index) => match index_op {
@@ -372,14 +370,7 @@ impl TypeChecker {
                         if let &Some(data_type) = typ {
                             let type_def = program.get_type_descr(data_type);
 
-                            let contract: Vec<_> = match type_def {
-                                TypeDescr::Structure(StructType(fields, _)) => {
-                                    fields.units().map(|u| u.get_type()).collect()
-                                }
-                                TypeDescr::Primitive(prim) => vec![prim.get_type()],
-                                TypeDescr::Reference(ptr) => vec![ptr.get_type()],
-                            };
-
+                            let contract: Vec<_> = type_def.units().map(|u| u.get_type()).collect();
                             self.data_stack.expect_contract_pop(&contract, loc)?;
 
                             binds.push(((data_type, loc), type_def.size()));
@@ -447,12 +438,12 @@ impl TypeChecker {
         (frame.get_type(), offset)
     }
 
-    fn expect_struct_pointer(
-        &mut self, prog: &mut Program, word: Name, loc: Loc,
+    fn expect_type_ref(
+        &mut self, prog: &Program, word: Name, loc: Loc,
     ) -> LazyResult<(DataType, u16)> {
         let data_type = self.data_stack.expect_pop(loc)?.get_type();
 
-        let TypeDescr::Reference(ptr) = &prog.get_type_descr(data_type) else {
+        let TypeDescr::Reference(ptr) = &*prog.get_type_descr(data_type) else {
             lazybail!(
                 |f| "{}Cannot `.` access elements of type: `{}`",
                 f.format(Fmt::Loc(loc)),
@@ -460,7 +451,7 @@ impl TypeChecker {
             )
         };
 
-        match prog.get_type_descr(ptr.ptr_type()) {
+        match &*prog.get_type_descr(ptr.ptr_type()) {
             TypeDescr::Structure(StructType(fields, _)) => {
                 let struct_name = fields.name();
                 fields

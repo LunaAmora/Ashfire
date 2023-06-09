@@ -153,8 +153,8 @@ where
     )
 }
 
-pub fn invalid_context<'err>(tok: IRToken, word: &str) -> LazyError<'err> {
-    invalid_token(tok, format!("`{word}` context declaration"))
+pub fn invalid_context<'err, S: Display>(tok: IRToken, word: S) -> LazyError<'err> {
+    invalid_token(tok, format!("`{}` context declaration", word))
 }
 
 pub fn invalid_token<'err, S: Display + 'err>(tok: IRToken, error: S) -> LazyError<'err> {

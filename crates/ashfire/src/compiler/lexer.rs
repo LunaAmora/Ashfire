@@ -57,7 +57,7 @@ impl Program {
             .into()
     }
 
-    fn define_word(&mut self, &(ref name, loc): &Token) -> OptionErr<IRToken> {
+    fn define_word(&self, &(ref name, loc): &Token) -> OptionErr<IRToken> {
         let name = self.get_or_intern(name);
         OptionErr::new((TokenType::Word(name), loc))
     }

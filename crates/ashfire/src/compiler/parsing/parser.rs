@@ -167,8 +167,11 @@ impl Parser {
         .into()
     }
 
-    fn lookup_modified_var(&self, &(name, loc): &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        let (rest, var_typ) = match name.as_str(prog).split_at(1) {
+    fn lookup_modified_var(
+        &self, &(name, loc): &LocWord, prog: &mut Program,
+    ) -> OptionErr<Vec<Op>> {
+        let name_str = name.as_str(prog);
+        let (rest, var_typ) = match name_str.split_at(1) {
             ("!", rest) => (rest, VarWordType::Store),
             (".", rest) => {
                 let Some(key) = prog.get_key(rest) else {
@@ -525,16 +528,13 @@ impl Parser {
 
                 _ => {
                     let kind = self.check_type_kind(tok, "variable type", prog)?;
-                    match prog.get_type_descr(kind) {
-                        TypeDescr::Reference(ptr) => {
-                            ptr.get_type().conditional_push(arrow, &mut outs, &mut ins);
-                        }
 
-                        type_def => {
-                            for typ in type_def.units().map(|prim| prim.get_type()) {
-                                typ.conditional_push(arrow, &mut outs, &mut ins);
-                            }
-                        }
+                    for typ in prog
+                        .get_type_descr(kind)
+                        .units()
+                        .map(|prim| prim.get_type())
+                    {
+                        typ.conditional_push(arrow, &mut outs, &mut ins);
                     }
                 }
             }
@@ -567,14 +567,14 @@ impl Parser {
         while let Some(tok) = self.peek() {
             if tok.is_keyword() {
                 self.expect_keyword(KeywordType::End, "`end` after struct declaration", loc)?;
-                prog.register_struct(StructFields(word.name(), members));
+                prog.register_type(StructFields(word.name(), members));
                 success!();
             }
 
             let (member_name, _) = self.expect_word("struct member name", loc)?;
             let kind = self.expect_type_kind("struct member type", prog, loc)?;
 
-            match prog.get_type_descr(kind) {
+            match &*prog.get_type_descr(kind) {
                 TypeDescr::Structure(StructType(fields, _)) => {
                     let value = prog.get_fields_data_type(fields);
                     members.push(TypeDescr::structure(member_name, fields.to_vec(), value));
@@ -601,7 +601,7 @@ impl Parser {
         } else {
             self.expect_keyword(KeywordType::End, "`end` after variable type", loc)?;
 
-            let type_def = prog.get_type_descr(kind);
+            let type_def = prog.get_type_descr(kind).clone();
 
             let ref_members: Vec<_> = match type_def.clone() {
                 TypeDescr::Structure(StructType(fields, _)) => {

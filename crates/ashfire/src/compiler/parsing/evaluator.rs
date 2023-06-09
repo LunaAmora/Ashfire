@@ -15,7 +15,7 @@ use crate::compiler::{
 type DoubleResult<T> = ashlib::DoubleResult<'static, T, IRToken, Fmt>;
 
 impl Parser {
-    pub fn compile_eval(&self, prog: &mut Program, loc: Loc) -> DoubleResult<(DataToken, usize)> {
+    pub fn compile_eval(&self, prog: &Program, loc: Loc) -> DoubleResult<(DataToken, usize)> {
         let (Either::Left(result), skip) = self.compile_eval_n(1, prog, loc)? else {
             unreachable!();
         };
@@ -23,7 +23,7 @@ impl Parser {
     }
 
     pub fn compile_eval_n(
-        &self, n: usize, prog: &mut Program, loc: Loc,
+        &self, n: usize, prog: &Program, loc: Loc,
     ) -> DoubleResult<(Either<DataToken, Vec<DataToken>>, usize)> {
         let mut stack = EvalStack::<DataToken>::default();
         let mut i = 0;
@@ -72,11 +72,11 @@ impl Parser {
 impl Expect<'_, DataToken> for EvalStack<DataToken> {}
 
 pub trait Evaluator {
-    fn evaluate(&mut self, tok: IRToken, prog: &mut Program) -> DoubleResult<()>;
+    fn evaluate(&mut self, tok: IRToken, prog: &Program) -> DoubleResult<()>;
 }
 
 impl Evaluator for EvalStack<DataToken> {
-    fn evaluate(&mut self, tok: IRToken, prog: &mut Program) -> DoubleResult<()> {
+    fn evaluate(&mut self, tok: IRToken, prog: &Program) -> DoubleResult<()> {
         let (token_type, loc) = tok;
 
         match token_type {

@@ -60,7 +60,7 @@ impl Program {
         })
     }
 
-    pub fn get_intrinsic(&mut self, word: &LocWord) -> Option<Vec<Op>> {
+    pub fn get_intrinsic(&self, word: &LocWord) -> Option<Vec<Op>> {
         self.get_intrinsic_type(&word.as_string(self))
             .map(|intr| vec![Op::new((intr, word.loc()))])
     }
@@ -109,7 +109,7 @@ impl Program {
                 .try_get_field(word, vars)
                 .value?
                 .or_return(OptionErr::default)?;
-            return self.unpack_struct(var, push_type, offset, var_typ, loc);
+            return self.unpack_type(var, push_type, offset, var_typ, loc);
         }
 
         let data_type = vars
@@ -120,10 +120,7 @@ impl Program {
             .or_return(OptionErr::default)?;
 
         OptionErr::new(if var_typ == VarWordType::Pointer {
-            let Some(stk_id) = self.try_get_type_ptr(data_type) else {
-                todo!("must register the ptr type earlier");
-            };
-
+            let stk_id = self.get_type_ptr(data_type);
             vars.get_pointer(word, push_type, stk_id)
         } else {
             let type_descr = self.get_type_descr(data_type);
@@ -131,11 +128,11 @@ impl Program {
         })
     }
 
-    fn unpack_struct(
-        &self, stk: &TypeDescr, push_type: MemOp, mut offset: u16, var_typ: VarWordType, loc: Loc,
+    fn unpack_type(
+        &self, descr: &TypeDescr, push_type: MemOp, mut offset: u16, var_typ: VarWordType, loc: Loc,
     ) -> OptionErr<Vec<Op>> {
         let mut result = Vec::new();
-        match stk {
+        match descr {
             TypeDescr::Primitive(prim) => {
                 let prim_type = prim.get_type();
                 result.push((OpType::MemOp(push_type, offset), loc));
@@ -144,10 +141,7 @@ impl Program {
                     result.insert(0, (OpType::ExpectType(prim_type), loc));
                     result.push(Op::new((IntrinsicType::Store32, loc)));
                 } else if var_typ == VarWordType::Pointer {
-                    let Some(ptr_id) = self.try_get_type_ptr(prim_type) else {
-                        todo!("must register the ptr type earlier");
-                    };
-
+                    let ptr_id = self.get_type_ptr(prim_type);
                     result.push(Op::new((IntrinsicType::Cast(ptr_id), loc)));
                 } else {
                     result.extend([
@@ -166,9 +160,7 @@ impl Program {
                     offset += WORD_USIZE;
                 }
 
-                let Some(ptr_id) = self.try_get_type_ptr(*data_type) else {
-                    todo!("must register the ptr type earlier");
-                };
+                let ptr_id = self.get_type_ptr(*data_type);
 
                 result.extend([
                     (OpType::MemOp(push_type, offset), loc),
@@ -189,7 +181,8 @@ impl Program {
     fn try_get_field<'t>(
         &self, word: &LocWord, vars: &'t [TypeDescr],
     ) -> OptionErr<(&'t TypeDescr, u16)> {
-        let names: Vec<_> = word.as_str(self).split('.').collect();
+        let name = word.as_str(self);
+        let names: Vec<_> = name.split('.').collect();
         let loc = word.loc();
 
         let Some(first) = self.get_key(names[0]) else {
@@ -202,7 +195,7 @@ impl Program {
         let mut var = &vars[i];
 
         for field_name in field_names {
-            let TypeDescr::Structure(StructType(stk_fields, _)) = var else {
+            let TypeDescr::Structure(StructType(fields, _)) = var else {
                 todo!()
             };
 
@@ -212,7 +205,7 @@ impl Program {
 
             let var_name = var.name();
 
-            let (diff, index) = stk_fields.get_offset(field_key).with_err_ctx(lazyctx!(
+            let (diff, index) = fields.get_offset(field_key).with_err_ctx(lazyctx!(
                 |f| "{}The variable `{}` does not contain the field `{}`",
                 f.format(Fmt::Loc(loc)),
                 f.format(Fmt::Key(var_name)),
@@ -220,7 +213,7 @@ impl Program {
             ))?;
 
             offset += diff;
-            var = &stk_fields[index];
+            var = &fields[index];
         }
 
         OptionErr::new((var, offset * WORD_USIZE))

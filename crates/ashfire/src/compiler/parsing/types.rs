@@ -1,4 +1,4 @@
-use std::{collections::HashMap, convert::TryInto};
+use std::{cell::Ref, collections::HashMap, convert::TryInto};
 
 use ashfire_types::{
     core::*,
@@ -100,7 +100,7 @@ pub trait StructUtils {
     fn get_offset_local(&self, word: Name) -> Option<(u16, usize)>;
     fn get_pointer(&self, word: &LocWord, push_type: MemOp, data_type: DataType) -> Vec<Op>;
     fn get_fields(
-        &self, word: &LocWord, push_type: MemOp, stk_def: &TypeDescr, store: bool,
+        &self, word: &LocWord, push_type: MemOp, stk_def: Ref<TypeDescr>, store: bool,
     ) -> Vec<Op>;
 }
 
@@ -143,7 +143,7 @@ impl StructUtils for [TypeDescr] {
     }
 
     fn get_fields(
-        &self, word: &LocWord, push_type: MemOp, stk_def: &TypeDescr, store: bool,
+        &self, word: &LocWord, push_type: MemOp, stk_def: Ref<TypeDescr>, store: bool,
     ) -> Vec<Op> {
         let mut result = Vec::new();
         let &(name, loc) = word;
@@ -160,7 +160,7 @@ impl StructUtils for [TypeDescr] {
             range_step_from(start.into(), -1)
         };
 
-        let members = match stk_def {
+        let members = match &*stk_def {
             TypeDescr::Structure(StructType(fields, _)) => fields
                 .units()
                 .conditional_rev(store)

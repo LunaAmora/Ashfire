@@ -1,4 +1,8 @@
-use std::{collections::HashMap, str::from_utf8};
+use std::{
+    cell::{Ref, RefCell},
+    collections::HashMap,
+    str::from_utf8,
+};
 
 use ashfire_types::{
     core::*,
@@ -16,13 +20,13 @@ pub type LazyResult<T> = utils::LazyResult<'static, T>;
 pub type LazyError = utils::LazyError<'static>;
 
 pub trait InternalString {
-    fn as_str<'p>(&self, prog: &'p Program) -> &'p str;
+    fn as_str<'p>(&self, prog: &'p Program) -> Ref<'p, str>;
     fn as_string(&self, prog: &Program) -> String;
     fn name(&self) -> Name;
 }
 
 impl<T: InternalString, O> InternalString for (T, O) {
-    fn as_str<'p>(&self, prog: &'p Program) -> &'p str {
+    fn as_str<'p>(&self, prog: &'p Program) -> Ref<'p, str> {
         self.0.as_str(prog)
     }
 
@@ -36,12 +40,13 @@ impl<T: InternalString, O> InternalString for (T, O) {
 }
 
 impl InternalString for Name {
-    fn as_str<'p>(&self, prog: &'p Program) -> &'p str {
-        prog.interner.resolve(self)
+    fn as_str<'p>(&self, prog: &'p Program) -> Ref<'p, str> {
+        let interner = prog.interner.borrow();
+        Ref::map(interner, |a| a.resolve(self))
     }
 
     fn as_string(&self, prog: &Program) -> String {
-        prog.interner.resolve(self).to_owned()
+        prog.interner.borrow().resolve(self).to_owned()
     }
 
     fn name(&self) -> Name {
@@ -64,14 +69,14 @@ pub struct Program {
     procs: Vec<Proc>,
     global_vars: Vec<TypeDescr>,
     block_contracts: HashMap<usize, (usize, usize)>,
-    structs_types: Vec<TypeDescr>,
     included_sources: HashMap<Name, Name>,
     consts: Vec<TypeDescr>,
-    interner: Rodeo,
     mem_size: u16,
     memory: Vec<OffsetWord>,
     data_size: u16,
     data: Vec<OffsetData>,
+    types: RefCell<Vec<TypeDescr>>,
+    interner: RefCell<Rodeo>,
 }
 
 impl Program {
@@ -83,7 +88,7 @@ impl Program {
         ];
         let [_, any, any_ptr, bool, int, ptr, str, len, data] = intern_all(&mut interner, names);
 
-        let structs_types = vec![
+        let types = RefCell::new(vec![
             TypeDescr::primitive(any, ANY),
             TypeDescr::reference(any_ptr, ANY_PTR, ANY),
             TypeDescr::primitive(bool, BOOL),
@@ -97,9 +102,13 @@ impl Program {
                 ],
                 STR,
             ),
-        ];
+        ]);
 
-        Self { structs_types, interner, ..Default::default() }
+        Self {
+            types,
+            interner: interner.into(),
+            ..Default::default()
+        }
     }
 
     pub fn ops(&self) -> &[Op] {
@@ -133,7 +142,8 @@ impl Program {
     }
 
     pub fn has_source(&self, source: &str, module: &str) -> bool {
-        if let (Some(src), Some(modl)) = (self.interner.get(source), self.interner.get(module)) {
+        let interner = &self.interner.borrow();
+        if let (Some(src), Some(modl)) = (interner.get(source), interner.get(module)) {
             self.included_sources
                 .get(&src)
                 .map_or(false, |module_src| module_src == &modl)
@@ -143,8 +153,9 @@ impl Program {
     }
 
     pub fn push_source(&mut self, source: &str, module: &str) -> usize {
-        let mkey = self.interner.get_or_intern(module);
-        let skey = self.interner.get_or_intern(source);
+        let mut interner = self.interner.borrow_mut();
+        let mkey = interner.get_or_intern(module);
+        let skey = interner.get_or_intern(source);
 
         //this should only insert a new key-value pair, should check if `has_source` first
         self.included_sources.insert(skey, mkey);
@@ -193,23 +204,23 @@ impl Program {
         self.global_vars_start() + self.global_vars_size()
     }
 
-    pub fn get_or_intern(&mut self, word: &str) -> Name {
-        self.interner.get_or_intern(word)
+    pub fn get_or_intern(&self, word: &str) -> Name {
+        self.interner.borrow_mut().get_or_intern(word)
     }
 
     pub fn get_key(&self, word: &str) -> Option<Name> {
-        self.interner.get(word)
+        self.interner.borrow().get(word)
     }
 
     pub fn get_word(&self, name: Name) -> String {
-        self.interner.resolve(&name).to_owned()
+        self.interner.borrow().resolve(&name).to_owned()
     }
 
     pub fn get_data(&self, DataKey(index): DataKey) -> &OffsetData {
         &self.data[index]
     }
 
-    pub fn get_data_str(&self, index: DataKey) -> &str {
+    pub fn get_data_str(&self, index: DataKey) -> Ref<'_, str> {
         self.get_data(index).as_str(self)
     }
 
@@ -240,7 +251,7 @@ impl Program {
             TypeId::PTR => "Pointer",
             TypeId::STR => "String",
             TypeId::ANY => "Any",
-            _ => self.structs_types[id].name().as_str(self),
+            _ => return self.types.borrow()[id].name().as_string(self),
         }
         .to_owned()
     }
@@ -294,7 +305,7 @@ impl Program {
         }
     }
 
-    pub fn get_intrinsic_type(&mut self, word: &str) -> Option<IntrinsicType> {
+    pub fn get_intrinsic_type(&self, word: &str) -> Option<IntrinsicType> {
         word.parse().ok().or_else(|| {
             Some(match word.as_bytes() {
                 [b'#', b'*', rest @ ..] => IntrinsicType::Cast(self.get_cast_type_ptr(rest)?),
@@ -313,7 +324,7 @@ impl Program {
             .map(|key| self.get_data_type(key))?
     }
 
-    fn get_cast_type_ptr(&mut self, rest: &[u8]) -> Option<DataType> {
+    fn get_cast_type_ptr(&self, rest: &[u8]) -> Option<DataType> {
         self.get_cast_type(rest).map(|id| self.get_type_ptr(id))
     }
 
@@ -323,7 +334,8 @@ impl Program {
     }
 
     pub fn get_data_type(&self, word: Name) -> Option<DataType> {
-        self.structs_types
+        self.types
+            .borrow()
             .iter()
             .position(|def| word.eq(&def.name()))
             .map(DataType::new)
@@ -333,17 +345,11 @@ impl Program {
         self.get_key(word).and_then(|key| self.get_data_type(key))
     }
 
-    pub fn get_type_descr(&self, DataType(id): DataType) -> &TypeDescr {
-        &self.structs_types[id]
+    pub fn get_type_descr(&self, DataType(id): DataType) -> Ref<'_, TypeDescr> {
+        Ref::map(self.types.borrow(), |types| &types[id])
     }
 
-    pub fn try_get_type_ptr(&self, data_type: DataType) -> Option<DataType> {
-        let name = self.get_type_descr(data_type).name();
-        let ptr_name = format!("*{}", name.as_str(self));
-        self.get_data_type_by_str(&ptr_name)
-    }
-
-    pub fn get_type_ptr(&mut self, data_type: DataType) -> DataType {
+    pub fn get_type_ptr(&self, data_type: DataType) -> DataType {
         let name = self.get_type_descr(data_type).name();
         let ptr_name = format!("*{}", name.as_str(self));
 
@@ -352,18 +358,16 @@ impl Program {
         }
 
         let word_id = self.get_or_intern(&ptr_name);
-        let new_type = DataType::new(self.structs_types.len());
-        let stk = TypeDescr::reference(word_id, new_type, data_type);
-
-        self.structs_types.push(stk);
+        let mut types = self.types.borrow_mut();
+        let new_type = DataType::new(types.len());
+        types.push(TypeDescr::reference(word_id, new_type, data_type));
         new_type
     }
 
-    pub fn register_struct(&mut self, stk: StructFields) -> DataType {
-        let data_type = DataType::new(self.structs_types.len());
-        let descr = TypeDescr::Structure(StructType(stk, data_type));
-        self.structs_types.push(descr);
-        self.get_type_ptr(data_type); // Todo: Remove this Hack to auto register an ptr type
+    pub fn register_type(&self, fields: StructFields) -> DataType {
+        let mut types = self.types.borrow_mut();
+        let data_type = DataType::new(types.len());
+        types.push(TypeDescr::Structure(StructType(fields, data_type)));
         data_type
     }
 

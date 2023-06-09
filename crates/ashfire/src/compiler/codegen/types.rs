@@ -154,10 +154,10 @@ impl FuncGen {
     }
 }
 
-pub fn unpack_struct(stk: &TypeDescr) -> Vec<Instruction> {
+pub fn unpack_type(descr: &TypeDescr) -> Vec<Instruction> {
     let mut instructions = vec![];
 
-    match stk.count() {
+    match descr.count() {
         1 => instructions.push(I32(load)),
         2 => instructions.extend(vec![
             Call("dup".into()),
