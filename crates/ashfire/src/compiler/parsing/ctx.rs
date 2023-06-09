@@ -9,9 +9,9 @@ use firelib::{
 use IndexOp::*;
 
 use super::{parser::Parser, types::*};
-use crate::{compiler::program::*, firelib::span::Span};
+use crate::{compiler::ctx::*, firelib::span::Span};
 
-impl Program {
+impl Ctx {
     /// Searches for a `binding` to load that matches the given [`word`][LocWord]
     /// on the current [`Proc`].
     pub fn get_binding(&self, (word, loc): &LocWord, parser: &Parser) -> Option<Vec<Op>> {

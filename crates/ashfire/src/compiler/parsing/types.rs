@@ -13,7 +13,7 @@ use firelib::{
 use num::iter::range_step_from;
 
 use crate::compiler::{
-    program::{InternalString, Program},
+    ctx::{Ctx, InternalString},
     typechecking::expect::Compare,
 };
 
@@ -59,13 +59,13 @@ pub struct NameScopes {
 }
 
 impl NameScopes {
-    pub fn lookup(&self, name: Name, prog: &Program) -> Option<&ParseContext> {
+    pub fn lookup(&self, name: Name, ctx: &Ctx) -> Option<&ParseContext> {
         //Todo: there must be a better way to support `.` accessing structs
-        let word = name.as_str(prog);
+        let word = name.as_str(ctx);
         if word.contains('.') {
             let field_name = word.split('.').next().unwrap();
-            if let Some(key) = prog.get_key(field_name) {
-                return self.lookup(key, prog);
+            if let Some(key) = ctx.get_key(field_name) {
+                return self.lookup(key, ctx);
             }
         }
 

@@ -13,7 +13,7 @@ use firelib::{
 };
 
 use super::expect::*;
-use crate::compiler::{parsing::types::StructUtils, program::*};
+use crate::compiler::{ctx::*, parsing::types::StructUtils};
 
 type TypeFrame = Spanned<DataType>;
 type DataStack = EvalStack<TypeFrame>;
@@ -46,10 +46,10 @@ impl TypeChecker {
         Self::default()
     }
 
-    pub fn type_check(&mut self, program: &mut Program) -> LazyResult<()> {
+    pub fn type_check(&mut self, ctx: &mut Ctx) -> LazyResult<()> {
         let mut ip = 0;
-        while ip < program.ops().len() {
-            self.type_check_op(ip, program)?;
+        while ip < ctx.ops().len() {
+            self.type_check_op(ip, ctx)?;
             ip += 1;
         }
         Ok(())
@@ -67,8 +67,8 @@ impl TypeChecker {
             .expect("Could not get the last block from an empty `block_stack`")
     }
 
-    fn type_check_op(&mut self, ip: usize, program: &mut Program) -> LazyResult<()> {
-        let &(op_type, loc) = &program.ops()[ip];
+    fn type_check_op(&mut self, ip: usize, ctx: &mut Ctx) -> LazyResult<()> {
+        let &(op_type, loc) = &ctx.ops()[ip];
         match op_type {
             OpType::PushData(data @ DataType(id), _) => match id {
                 TypeId::INT | TypeId::BOOL | TypeId::PTR => self.push_frame(data, loc),
@@ -80,10 +80,10 @@ impl TypeChecker {
             },
 
             OpType::Offset(word) => {
-                let (data_type, offset) = self.expect_type_ref(program, word, loc)?;
-                program.update_op(ip, |op| *op = OpType::MemOp(MemOp::Offset, offset));
+                let (data_type, offset) = self.expect_type_ref(ctx, word, loc)?;
+                ctx.update_op(ip, |op| *op = OpType::MemOp(MemOp::Offset, offset));
 
-                self.push_frame(program.get_type_ptr(data_type), loc);
+                self.push_frame(ctx.get_type_ptr(data_type), loc);
             }
 
             OpType::MemOp(op, _) => match op {
@@ -103,8 +103,8 @@ impl TypeChecker {
                 let data_type = self.data_stack.expect_pop(loc)?.get_type();
                 let mut update_op = None;
 
-                match &*program.get_type_descr(data_type) {
-                    TypeDescr::Reference(ptr) => match &*program.get_type_descr(ptr.ptr_type()) {
+                match &*ctx.get_type_descr(data_type) {
+                    TypeDescr::Reference(ptr) => match &*ctx.get_type_descr(ptr.ptr_type()) {
                         TypeDescr::Structure(StructType(fields, ptr_id)) => {
                             for primitive in fields.units() {
                                 self.push_frame(primitive.get_type(), loc);
@@ -123,13 +123,13 @@ impl TypeChecker {
                 }
 
                 if let Some(ptr_id) = update_op {
-                    program.update_op(ip, |op| *op = OpType::UnpackType(Some(ptr_id)));
+                    ctx.update_op(ip, |op| *op = OpType::UnpackType(Some(ptr_id)));
                 }
             }
 
             OpType::IndexOp(index_op, index) => match index_op {
                 IndexOp::Call | IndexOp::CallInline => {
-                    let contr = &program.get_proc(index).contract;
+                    let contr = &ctx.get_proc(index).contract;
                     self.data_stack.expect_contract_pop(contr.ins(), loc)?;
                     for &typ in contr.outs() {
                         self.push_frame(typ, loc);
@@ -140,14 +140,14 @@ impl TypeChecker {
                     let (data_type, offset) = self.get_bind_type_offset(index);
                     self.push_frame(data_type, loc);
 
-                    program.update_op(ip, |op| *op = OpType::MemOp(MemOp::LoadBind, offset));
+                    ctx.update_op(ip, |op| *op = OpType::MemOp(MemOp::LoadBind, offset));
                 }
 
                 IndexOp::PushBind => {
                     let (data_type, offset) = self.get_bind_type_offset(index);
-                    self.push_frame(program.get_type_ptr(data_type), loc);
+                    self.push_frame(ctx.get_type_ptr(data_type), loc);
 
-                    program.update_op(ip, |op| *op = OpType::MemOp(MemOp::PushBind, offset));
+                    ctx.update_op(ip, |op| *op = OpType::MemOp(MemOp::PushBind, offset));
                 }
             },
 
@@ -201,7 +201,7 @@ impl TypeChecker {
 
             OpType::ControlOp(op, index) => match op {
                 ControlOp::PrepProc | ControlOp::PrepInline => {
-                    let proc = self.visit_proc(program, index);
+                    let proc = self.visit_proc(ctx, index);
 
                     if matches!(proc.mode_data, ModeData::Imported) {
                         return Ok(());
@@ -214,7 +214,7 @@ impl TypeChecker {
 
                 ControlOp::EndProc | ControlOp::EndInline => {
                     let proc = self
-                        .current_proc_mut(program)
+                        .current_proc_mut(ctx)
                         .expect("Expected to be used inside a procedure");
 
                     if matches!(proc.mode_data, ModeData::Imported) {
@@ -265,8 +265,7 @@ impl TypeChecker {
                     let ins = self.data_stack.min().abs();
                     let out = self.data_stack.count() + ins;
 
-                    program
-                        .block_contracts()
+                    ctx.block_contracts()
                         .insert(start_op, (ins.unsigned_abs(), out.unsigned_abs()));
 
                     let old_count = expected.count();
@@ -289,8 +288,7 @@ impl TypeChecker {
                     let ins = (self.data_stack.min()).min(expected.min()).abs();
                     let out = (self.data_stack.count()).max(expected.count()) + ins;
 
-                    program
-                        .block_contracts()
+                    ctx.block_contracts()
                         .insert(start_op, (ins.unsigned_abs(), out.unsigned_abs()));
 
                     let TypeBlock(old_stack, _) = self.block_stack_pop();
@@ -343,15 +341,14 @@ impl TypeChecker {
                         *operand = ip - start_op;
                     };
 
-                    program.update_op(start_op, updater);
-                    program.update_op(ip, updater);
+                    ctx.update_op(start_op, updater);
+                    ctx.update_op(ip, updater);
 
                     let ins = (self.data_stack.min()).min(expected.min()).abs();
                     let out = (self.data_stack.count()).max(expected.count()) + ins;
                     let contr = (ins.unsigned_abs(), out.unsigned_abs());
 
-                    program
-                        .block_contracts()
+                    ctx.block_contracts()
                         .extend([(do_op, contr), (start_op, contr)]);
 
                     let old_count = old_stack.count();
@@ -360,7 +357,7 @@ impl TypeChecker {
 
                 ControlOp::BindStack => {
                     let proc = self
-                        .current_proc(program)
+                        .current_proc(ctx)
                         .expect("Expected to be used inside a procedure");
 
                     let Binds(bindings) = &proc.binds[index];
@@ -368,7 +365,7 @@ impl TypeChecker {
 
                     for (_, typ) in bindings.iter() {
                         if let &Some(data_type) = typ {
-                            let type_def = program.get_type_descr(data_type);
+                            let type_def = ctx.get_type_descr(data_type);
 
                             let contract: Vec<_> = type_def.units().map(|u| u.get_type()).collect();
                             self.data_stack.expect_contract_pop(&contract, loc)?;
@@ -385,7 +382,7 @@ impl TypeChecker {
 
                 ControlOp::PopBind => {
                     let proc = self
-                        .current_proc(program)
+                        .current_proc(ctx)
                         .expect("Expected to be used inside a procedure");
 
                     let Binds(bindings) = &proc.binds[index];
@@ -438,12 +435,10 @@ impl TypeChecker {
         (frame.get_type(), offset)
     }
 
-    fn expect_type_ref(
-        &mut self, prog: &Program, word: Name, loc: Loc,
-    ) -> LazyResult<(DataType, u16)> {
+    fn expect_type_ref(&mut self, ctx: &Ctx, word: Name, loc: Loc) -> LazyResult<(DataType, u16)> {
         let data_type = self.data_stack.expect_pop(loc)?.get_type();
 
-        let TypeDescr::Reference(ptr) = &*prog.get_type_descr(data_type) else {
+        let TypeDescr::Reference(ptr) = &*ctx.get_type_descr(data_type) else {
             lazybail!(
                 |f| "{}Cannot `.` access elements of type: `{}`",
                 f.format(Fmt::Loc(loc)),
@@ -451,7 +446,7 @@ impl TypeChecker {
             )
         };
 
-        match &*prog.get_type_descr(ptr.ptr_type()) {
+        match &*ctx.get_type_descr(ptr.ptr_type()) {
             TypeDescr::Structure(StructType(fields, _)) => {
                 let struct_name = fields.name();
                 fields
@@ -479,14 +474,14 @@ impl TypeChecker {
     }
 }
 
-impl Program {
+impl Ctx {
     fn update_op(&mut self, ip: usize, setter: impl Fn(&mut OpType)) {
         let (op, _) = &mut self.ops_mut()[ip];
         setter(op);
     }
 
     pub fn type_check(&mut self) -> Result<&mut Self> {
-        info!("Typechecking program");
+        info!("Typechecking ctx");
 
         TypeChecker::new()
             .type_check(self)

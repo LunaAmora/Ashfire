@@ -13,7 +13,7 @@ use ControlOp::*;
 
 use super::{types::*, utils::*};
 use crate::compiler::{
-    program::*,
+    ctx::*,
     typechecking::expect::{expect_type, Compare},
     utils::err_loc,
 };
@@ -85,21 +85,21 @@ impl Parser {
     }
 
     /// Parse each [`IRToken`] from this [`Parser`] to an [`Op`],
-    /// appending to the given [`Program`].
+    /// appending to the given [`Ctx`].
     ///
     /// # Errors
     ///
     /// This function will return an error if any problem is encountered during parsing.
-    pub fn parse_tokens(&mut self, prog: &mut Program) -> LazyResult<()> {
+    pub fn parse_tokens(&mut self, ctx: &mut Ctx) -> LazyResult<()> {
         while let Some(token) = self.next() {
-            if let Some(mut op) = self.define_op(&token, prog).value? {
-                prog.ops_mut().append(&mut op);
+            if let Some(mut op) = self.define_op(&token, ctx).value? {
+                ctx.ops_mut().append(&mut op);
             }
         }
         Ok(())
     }
 
-    fn define_op(&mut self, &(tok_typ, loc): &IRToken, prog: &mut Program) -> OptionErr<Vec<Op>> {
+    fn define_op(&mut self, &(tok_typ, loc): &IRToken, ctx: &mut Ctx) -> OptionErr<Vec<Op>> {
         if !(matches!(tok_typ, TokenType::Keyword(_) | TokenType::Word(_)) || self.inside_proc()) {
             lazybail!(
                 |f| "{}Token type cannot be used outside of a procedure: `{}`",
@@ -109,7 +109,7 @@ impl Parser {
         };
 
         let op = match tok_typ {
-            TokenType::Keyword(key) => return self.define_keyword_op(key, loc, prog),
+            TokenType::Keyword(key) => return self.define_keyword_op(key, loc, ctx),
 
             TokenType::Str(data_key) => (OpType::DataOp(DataOp::PushStr, data_key), loc),
 
@@ -132,13 +132,13 @@ impl Parser {
 
                 choice!(
                     OptionErr,
-                    prog.get_intrinsic(word),
-                    self.lookup_context(word, prog),
-                    self.define_context(word, prog)
+                    ctx.get_intrinsic(word),
+                    self.lookup_context(word, ctx),
+                    self.define_context(word, ctx)
                 )?;
 
                 lazybail!(
-                    |f| "{}Word was not declared on the program: `{}`",
+                    |f| "{}Word was not declared on the ctx: `{}`",
                     f.format(Fmt::Loc(loc)),
                     f.format(Fmt::Key(name))
                 )
@@ -150,31 +150,29 @@ impl Parser {
         OptionErr::new(vec![op])
     }
 
-    fn lookup_context(&self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        let Some(ctx) = self.name_scopes.lookup(word.name(), prog) else {
-            return self.lookup_modified_var(word, prog);
+    fn lookup_context(&self, word: &LocWord, ctx: &mut Ctx) -> OptionErr<Vec<Op>> {
+        let Some(parse_ctx) = self.name_scopes.lookup(word.name(), ctx) else {
+            return self.lookup_modified_var(word, ctx);
         };
 
-        match ctx {
-            ParseContext::ProcName => prog.get_proc_name(word),
-            ParseContext::GlobalMem => prog.get_global_mem(word),
-            ParseContext::Binding => prog.get_binding(word, self),
-            ParseContext::LocalMem => prog.get_local_mem(word, self),
-            ParseContext::ConstStruct => prog.get_const_struct(word),
-            ParseContext::LocalVar => return prog.get_local_var(word, VarWordType::None, self),
-            ParseContext::GlobalVar => return prog.get_global_var(word, VarWordType::None, self),
+        match parse_ctx {
+            ParseContext::ProcName => ctx.get_proc_name(word),
+            ParseContext::GlobalMem => ctx.get_global_mem(word),
+            ParseContext::Binding => ctx.get_binding(word, self),
+            ParseContext::LocalMem => ctx.get_local_mem(word, self),
+            ParseContext::ConstStruct => ctx.get_const_struct(word),
+            ParseContext::LocalVar => return ctx.get_local_var(word, VarWordType::None, self),
+            ParseContext::GlobalVar => return ctx.get_global_var(word, VarWordType::None, self),
         }
         .into()
     }
 
-    fn lookup_modified_var(
-        &self, &(name, loc): &LocWord, prog: &mut Program,
-    ) -> OptionErr<Vec<Op>> {
-        let name_str = name.as_str(prog);
+    fn lookup_modified_var(&self, &(name, loc): &LocWord, ctx: &mut Ctx) -> OptionErr<Vec<Op>> {
+        let name_str = name.as_str(ctx);
         let (rest, var_typ) = match name_str.split_at(1) {
             ("!", rest) => (rest, VarWordType::Store),
             (".", rest) => {
-                let Some(key) = prog.get_key(rest) else {
+                let Some(key) = ctx.get_key(rest) else {
                     todo!()
                 };
 
@@ -186,25 +184,25 @@ impl Parser {
             _ => return OptionErr::default(),
         };
 
-        let Some(key) = prog.get_key(rest) else {
+        let Some(key) = ctx.get_key(rest) else {
             todo!()
         };
 
-        let local = match self.name_scopes.lookup(key, prog) {
+        let local = match self.name_scopes.lookup(key, ctx) {
             Some(ParseContext::LocalVar) => true,
             Some(ParseContext::GlobalVar) => false,
             _ => todo!(),
         };
 
         if local {
-            prog.get_local_var(&(key, loc), var_typ, self)
+            ctx.get_local_var(&(key, loc), var_typ, self)
         } else {
-            prog.get_global_var(&(key, loc), var_typ, self)
+            ctx.get_global_var(&(key, loc), var_typ, self)
         }
     }
 
     fn define_keyword_op(
-        &mut self, key: KeywordType, loc: Loc, prog: &mut Program,
+        &mut self, key: KeywordType, loc: Loc, ctx: &mut Ctx,
     ) -> OptionErr<Vec<Op>> {
         let op = match key {
             KeywordType::Drop => Op::new((StackOp::Drop, loc)),
@@ -246,10 +244,10 @@ impl Parser {
                 let ref_word = &self.expect_word("type after `*`", loc)?;
                 let var_typ = VarWordType::Pointer;
 
-                return match self.name_scopes.lookup(ref_word.name(), prog) {
-                    Some(ParseContext::LocalVar) => prog.get_local_var(ref_word, var_typ, self),
-                    Some(ParseContext::GlobalVar) => prog.get_global_var(ref_word, var_typ, self),
-                    Some(ParseContext::Binding) => prog.get_binding_ref(ref_word, self).into(),
+                return match self.name_scopes.lookup(ref_word.name(), ctx) {
+                    Some(ParseContext::LocalVar) => ctx.get_local_var(ref_word, var_typ, self),
+                    Some(ParseContext::GlobalVar) => ctx.get_global_var(ref_word, var_typ, self),
+                    Some(ParseContext::Binding) => ctx.get_binding_ref(ref_word, self).into(),
                     _ => todo!(),
                 };
             }
@@ -264,7 +262,7 @@ impl Parser {
                 }
             },
 
-            KeywordType::Let => return self.parse_bindings(loc, prog),
+            KeywordType::Let => return self.parse_bindings(loc, ctx),
 
             KeywordType::Case => todo!(),
 
@@ -277,7 +275,7 @@ impl Parser {
                 ))?,
             },
 
-            KeywordType::If => self.push_control_block((IfStart, prog.current_ip(), loc)),
+            KeywordType::If => self.push_control_block((IfStart, ctx.current_ip(), loc)),
 
             KeywordType::Else => match self.pop_control_block(key, loc)? {
                 (IfStart, ..) => self.push_control_block((Else, 0, loc)),
@@ -344,30 +342,30 @@ impl Parser {
 
     /// Tries to define the parsing context to use
     /// based on the preceding [`IRTokens`][IRToken].
-    fn define_context(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
+    fn define_context(&mut self, word: &LocWord, ctx: &mut Ctx) -> OptionErr<Vec<Op>> {
         let mut i = 0;
         let mut colons: u8 = 0;
         while let Some(tok) = self.get(i) {
             match (colons, tok.token_type()) {
                 (1, TokenType::Data(Value(DataType(TypeId::INT), _))) => {
-                    self.parse_memory(word, prog).try_success()?;
+                    self.parse_memory(word, ctx).try_success()?;
                 }
 
-                (1, TokenType::Word(name)) if prog.get_data_type(name).is_none() => {
-                    return self.parse_struct(word, prog);
+                (1, TokenType::Word(name)) if ctx.get_data_type(name).is_none() => {
+                    return self.parse_struct(word, ctx);
                 }
 
                 (_, TokenType::Word(_)) => {}
 
                 (0, TokenType::Keyword(_)) => {
-                    self.parse_expected_type(&mut colons, i, word, prog)?;
+                    self.parse_expected_type(&mut colons, i, word, ctx)?;
                 }
 
                 (1, TokenType::Keyword(_)) => {
-                    self.parse_keyword_ctx(i, word, prog)?;
+                    self.parse_keyword_ctx(i, word, ctx)?;
                 }
 
-                _ => return invalid_context(*tok, word.as_str(prog)).into(),
+                _ => return invalid_context(*tok, word.as_str(ctx)).into(),
             }
             i += 1;
         }
@@ -375,38 +373,38 @@ impl Parser {
     }
 
     fn parse_expected_type(
-        &mut self, colons: &mut u8, top_index: usize, word: &LocWord, prog: &mut Program,
+        &mut self, colons: &mut u8, top_index: usize, word: &LocWord, ctx: &mut Ctx,
     ) -> OptionErr<Vec<Op>> {
         let tok = &self[top_index];
         match tok.as_keyword() {
             KeywordType::Mem => {
                 self.next();
-                self.parse_memory(word, prog).try_success()?;
+                self.parse_memory(word, ctx).try_success()?;
             }
 
             KeywordType::Struct => {
                 self.next();
-                self.parse_struct(word, prog)
+                self.parse_struct(word, ctx)
             }
 
             KeywordType::Proc => {
                 self.next();
-                self.parse_procedure(word, prog, ModeType::Declare)
+                self.parse_procedure(word, ctx, ModeType::Declare)
             }
 
             KeywordType::Import => {
                 self.next();
-                self.parse_procedure(word, prog, ModeType::Import)
+                self.parse_procedure(word, ctx, ModeType::Import)
             }
 
             KeywordType::Export => {
                 self.next();
-                self.parse_procedure(word, prog, ModeType::Export)
+                self.parse_procedure(word, ctx, ModeType::Export)
             }
 
             KeywordType::Inline => {
                 self.next();
-                self.parse_procedure(word, prog, ModeType::Inline(prog.current_ip()))
+                self.parse_procedure(word, ctx, ModeType::Inline(ctx.current_ip()))
             }
 
             KeywordType::Colon => {
@@ -417,29 +415,29 @@ impl Parser {
             KeywordType::End => {
                 let error = format!(
                     "Missing body or contract necessary to infer the type of the word: `{}`",
-                    word.as_str(prog)
+                    word.as_str(ctx)
                 );
                 err_loc(error, word.loc()).into()
             }
 
-            _ => invalid_context(*tok, word.as_str(prog)).into(),
+            _ => invalid_context(*tok, word.as_str(ctx)).into(),
         }
     }
 
     fn parse_keyword_ctx(
-        &mut self, top_index: usize, word: &LocWord, prog: &mut Program,
+        &mut self, top_index: usize, word: &LocWord, ctx: &mut Ctx,
     ) -> OptionErr<Vec<Op>> {
         let tok = &self[top_index];
         match tok.as_keyword() {
             KeywordType::Equal => {
                 self.skip(1);
-                self.parse_var(word, prog, true).try_success()?
+                self.parse_var(word, ctx, true).try_success()?
             }
 
-            KeywordType::Colon if top_index == 1 => self.parse_end_ctx(word, prog),
+            KeywordType::Colon if top_index == 1 => self.parse_end_ctx(word, ctx),
 
             KeywordType::Colon | KeywordType::Arrow => {
-                self.parse_procedure(word, prog, ModeType::Declare)
+                self.parse_procedure(word, ctx, ModeType::Declare)
             }
 
             KeywordType::End => {
@@ -447,29 +445,29 @@ impl Parser {
                     todo!("Uninitialized, unknown type");
                 } else {
                     self.skip(1);
-                    self.parse_var(word, prog, false).try_success()?
+                    self.parse_var(word, ctx, false).try_success()?
                 }
             }
 
             KeywordType::Ref => OptionErr::default(),
 
-            _ => invalid_context(*tok, word.as_str(prog)).into(),
+            _ => invalid_context(*tok, word.as_str(ctx)).into(),
         }
     }
 
-    fn parse_end_ctx(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
+    fn parse_end_ctx(&mut self, word: &LocWord, ctx: &mut Ctx) -> OptionErr<Vec<Op>> {
         self.skip(2);
-        self.parse_static_ctx(word, prog)?;
-        self.define_proc(word, Contract::default(), prog, ModeType::Declare)
+        self.parse_static_ctx(word, ctx)?;
+        self.define_proc(word, Contract::default(), ctx, ModeType::Declare)
             .into_success()?
     }
 
-    fn parse_static_ctx(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
-        if let Ok((eval, skip)) = self.compile_eval(prog, word.loc()).value {
+    fn parse_static_ctx(&mut self, word: &LocWord, ctx: &mut Ctx) -> OptionErr<Vec<Op>> {
+        if let Ok((eval, skip)) = self.compile_eval(ctx, word.loc()).value {
             if eval != ANY {
                 self.skip(skip);
                 let primitive = Primitive::new(word.name(), eval);
-                prog.register_const(TypeDescr::Primitive(primitive));
+                ctx.register_const(TypeDescr::Primitive(primitive));
 
                 self.name_scopes
                     .register(word.name(), ParseContext::ConstStruct);
@@ -480,7 +478,7 @@ impl Parser {
     }
 
     fn define_proc(
-        &mut self, &(name, loc): &LocWord, contract: Contract, prog: &mut Program, mode: ModeType,
+        &mut self, &(name, loc): &LocWord, contract: Contract, ctx: &mut Ctx, mode: ModeType,
     ) -> LazyResult<Op> {
         if self.inside_proc() {
             let error = "Cannot define a procedure inside of another procedure";
@@ -489,7 +487,7 @@ impl Parser {
 
         let proc = Proc::new(name, contract, mode);
 
-        let operand = prog.push_proc(proc);
+        let operand = ctx.push_proc(proc);
         self.enter_proc(operand);
 
         self.name_scopes.register(name, ParseContext::ProcName);
@@ -504,7 +502,7 @@ impl Parser {
     }
 
     fn parse_procedure(
-        &mut self, word: &LocWord, prog: &mut Program, mode: ModeType,
+        &mut self, word: &LocWord, ctx: &mut Ctx, mode: ModeType,
     ) -> OptionErr<Vec<Op>> {
         let mut ins = Vec::new();
         let mut outs = Vec::new();
@@ -523,17 +521,13 @@ impl Parser {
                 }
 
                 Some(KeywordType::Colon) => self
-                    .define_proc(word, Contract::new(ins, outs), prog, mode)
+                    .define_proc(word, Contract::new(ins, outs), ctx, mode)
                     .into_success()?,
 
                 _ => {
-                    let kind = self.check_type_kind(tok, "variable type", prog)?;
+                    let kind = self.check_type_kind(tok, "variable type", ctx)?;
 
-                    for typ in prog
-                        .get_type_descr(kind)
-                        .units()
-                        .map(|prim| prim.get_type())
-                    {
+                    for typ in ctx.get_type_descr(kind).units().map(|prim| prim.get_type()) {
                         typ.conditional_push(arrow, &mut outs, &mut ins);
                     }
                 }
@@ -543,7 +537,7 @@ impl Parser {
         unexpected_end("proc contract or `:` after procedure definition", loc).into()
     }
 
-    fn parse_memory(&mut self, word: &LocWord, prog: &mut Program) -> LazyResult<()> {
+    fn parse_memory(&mut self, word: &LocWord, ctx: &mut Ctx) -> LazyResult<()> {
         let loc = word.loc();
 
         self.expect_keyword(KeywordType::Colon, "`:` after `mem`", loc)?;
@@ -552,13 +546,13 @@ impl Parser {
         self.expect_keyword(KeywordType::End, "`end` after memory size", loc)?;
 
         let size = mem_size.try_into().expect("ICE"); //Todo: explain this error
-        let ctx = prog.push_mem_by_context(self, word.name(), size);
+        let ctx = ctx.push_mem_by_context(self, word.name(), size);
         self.name_scopes.register(word.name(), ctx);
 
         Ok(())
     }
 
-    fn parse_struct(&mut self, word: &LocWord, prog: &mut Program) -> OptionErr<Vec<Op>> {
+    fn parse_struct(&mut self, word: &LocWord, ctx: &mut Ctx) -> OptionErr<Vec<Op>> {
         let loc = word.loc();
 
         self.expect_keyword(KeywordType::Colon, "`:` after keyword `struct`", loc)?;
@@ -567,16 +561,16 @@ impl Parser {
         while let Some(tok) = self.peek() {
             if tok.is_keyword() {
                 self.expect_keyword(KeywordType::End, "`end` after struct declaration", loc)?;
-                prog.register_type(StructFields(word.name(), members));
+                ctx.register_type(StructFields(word.name(), members));
                 success!();
             }
 
             let (member_name, _) = self.expect_word("struct member name", loc)?;
-            let kind = self.expect_type_kind("struct member type", prog, loc)?;
+            let kind = self.expect_type_kind("struct member type", ctx, loc)?;
 
-            match &*prog.get_type_descr(kind) {
+            match &*ctx.get_type_descr(kind) {
                 TypeDescr::Structure(StructType(fields, _)) => {
-                    let value = prog.get_fields_data_type(fields);
+                    let value = ctx.get_fields_data_type(fields);
                     members.push(TypeDescr::structure(member_name, fields.to_vec(), value));
                 }
                 TypeDescr::Primitive(prim) => {
@@ -589,19 +583,17 @@ impl Parser {
         unexpected_end("struct members or `end` after struct declaration", loc).into()
     }
 
-    fn parse_var(
-        &mut self, word: &LocWord, prog: &mut Program, initialize: bool,
-    ) -> LazyResult<()> {
+    fn parse_var(&mut self, word: &LocWord, ctx: &mut Ctx, initialize: bool) -> LazyResult<()> {
         let loc = word.loc();
-        let kind = self.expect_type_kind("variable type", prog, loc)?;
+        let kind = self.expect_type_kind("variable type", ctx, loc)?;
 
         if initialize {
             self.expect_keyword(KeywordType::Equal, "`=` after variable type", loc)?;
-            self.eval_const_or_var(false, word, kind, prog)
+            self.eval_const_or_var(false, word, kind, ctx)
         } else {
             self.expect_keyword(KeywordType::End, "`end` after variable type", loc)?;
 
-            let type_def = prog.get_type_descr(kind).clone();
+            let type_def = ctx.get_type_descr(kind).clone();
 
             let ref_members: Vec<_> = match type_def.clone() {
                 TypeDescr::Structure(StructType(fields, _)) => {
@@ -611,7 +603,7 @@ impl Parser {
                 TypeDescr::Reference(ptr) => {
                     let struct_type =
                         TypeDescr::reference(word.name(), ptr.get_type(), ptr.ptr_type());
-                    self.register_const_or_var(false, word, ptr.ptr_type(), struct_type, prog);
+                    self.register_const_or_var(false, word, ptr.ptr_type(), struct_type, ctx);
                     return Ok(());
                 }
             };
@@ -621,13 +613,13 @@ impl Parser {
             } else {
                 let struct_type =
                     TypeDescr::structure(word.name(), ref_members, type_def.get_type());
-                self.register_const_or_var(false, word, type_def.get_type(), struct_type, prog);
+                self.register_const_or_var(false, word, type_def.get_type(), struct_type, ctx);
             }
             Ok(())
         }
     }
 
-    fn parse_bindings(&mut self, loc: Loc, prog: &mut Program) -> OptionErr<Vec<Op>> {
+    fn parse_bindings(&mut self, loc: Loc, ctx: &mut Ctx) -> OptionErr<Vec<Op>> {
         let mut bindings = vec![];
 
         while let Some(tok) = self.peek() {
@@ -636,7 +628,7 @@ impl Parser {
 
                 bindings.reverse();
                 let current_proc_mut = self
-                    .current_proc_mut(prog)
+                    .current_proc_mut(ctx)
                     .expect("Expected to be used inside a procedure");
 
                 let proc_bindings = &mut current_proc_mut.binds;
@@ -648,7 +640,7 @@ impl Parser {
                 return OptionErr::new(vec![result]);
             }
 
-            let LabelKind((word, _), typ) = self.expect_label_kind("bind", loc, prog)?;
+            let LabelKind((word, _), typ) = self.expect_label_kind("bind", loc, ctx)?;
             self.name_scopes.register(word, ParseContext::Binding);
 
             bindings.push((word, typ));
@@ -658,12 +650,12 @@ impl Parser {
     }
 
     fn eval_const_or_var(
-        &mut self, is_constant: bool, word: &LocWord, reftype: DataType, prog: &mut Program,
+        &mut self, is_constant: bool, word: &LocWord, reftype: DataType, ctx: &mut Ctx,
     ) -> LazyResult<()> {
-        let stk = prog.get_type_descr(reftype).clone();
+        let stk = ctx.get_type_descr(reftype).clone();
         let &(name, loc) = word;
 
-        let (result, skip) = match self.compile_eval_n(stk.count(), prog, loc).value {
+        let (result, skip) = match self.compile_eval_n(stk.count(), ctx, loc).value {
             Ok(value) => value,
             Err(either) => {
                 return Err(either.either(
@@ -718,27 +710,27 @@ impl Parser {
             }
         };
 
-        self.register_const_or_var(is_constant, word, reftype, struct_type, prog);
+        self.register_const_or_var(is_constant, word, reftype, struct_type, ctx);
         Ok(())
     }
 
     fn register_const_or_var(
         &mut self, is_constant: bool, word: &LocWord, reftype: DataType, struct_type: TypeDescr,
-        prog: &mut Program,
+        ctx: &mut Ctx,
     ) {
         let ctx = if is_constant {
-            prog.register_const(struct_type);
+            ctx.register_const(struct_type);
             ParseContext::ConstStruct
         } else {
-            self.register_var(struct_type, prog)
+            self.register_var(struct_type, ctx)
         };
 
         self.name_scopes.register(word.name(), ctx);
         self.structs.push(TypedWord::new(word.name(), reftype));
     }
 
-    pub fn register_var(&mut self, struct_word: TypeDescr, prog: &mut Program) -> ParseContext {
-        if let Some(proc) = self.current_proc_mut(prog) {
+    pub fn register_var(&mut self, struct_word: TypeDescr, ctx: &mut Ctx) -> ParseContext {
+        if let Some(proc) = self.current_proc_mut(ctx) {
             let Some(data) = proc.get_data_mut() else {
                 todo!("Cannot use variables inside inlined procedures")
             };
@@ -746,61 +738,61 @@ impl Parser {
             data.local_vars.push(struct_word);
             ParseContext::LocalVar
         } else {
-            prog.push_global_var(struct_word);
+            ctx.push_global_var(struct_word);
             ParseContext::GlobalVar
         }
     }
 
-    pub fn lex_path(&mut self, path: &Path, prog: &mut Program) -> LazyResult<&mut Self> {
+    pub fn lex_path(&mut self, path: &Path, ctx: &mut Ctx) -> LazyResult<&mut Self> {
         let module_name = path.get_dir()?;
         let source_name = path.get_file()?;
 
-        self.lex_include(path, module_name, source_name, prog)
+        self.lex_include(path, module_name, source_name, ctx)
     }
 
     pub fn lex_source(
-        &mut self, source: &str, module: &str, prog: &mut Program,
+        &mut self, source: &str, module: &str, ctx: &mut Ctx,
     ) -> LazyResult<&mut Self> {
         let path = Path::new(module).join(source).with_extension("fire");
 
         let module_name = path.get_dir()?;
         let source_name = path.get_file()?;
 
-        if prog.has_source(source_name, module_name) {
+        if ctx.has_source(source_name, module_name) {
             return Ok(self);
         }
 
-        self.lex_include(&path, module_name, source_name, prog)
+        self.lex_include(&path, module_name, source_name, ctx)
     }
 
     pub fn lex_include(
-        &mut self, path: &Path, module: &str, source: &str, prog: &mut Program,
+        &mut self, path: &Path, module: &str, source: &str, ctx: &mut Ctx,
     ) -> LazyResult<&mut Self> {
         debug!("Including: {:?}", path);
         let file = File::open(path).with_context(|| format!("Could not read file `{path:?}`"))?;
 
-        let lex = prog.new_lexer(file, source, module);
-        self.read_lexer(prog, lex, module)
+        let lex = ctx.new_lexer(file, source, module);
+        self.read_lexer(ctx, lex, module)
     }
 
     pub fn read_lexer(
-        &mut self, prog: &mut Program, mut lex: Lexer, module: &str,
+        &mut self, ctx: &mut Ctx, mut lex: Lexer, module: &str,
     ) -> LazyResult<&mut Self> {
-        while let Some(token) = prog.lex_next_token(&mut lex).value? {
+        while let Some(token) = ctx.lex_next_token(&mut lex).value? {
             if &token != KeywordType::Include {
                 self.ir_tokens.push_back(token);
                 continue;
             }
 
             let (tok, _) = expect_token_by_option(
-                prog.lex_next_token(&mut lex).value?,
+                ctx.lex_next_token(&mut lex).value?,
                 IRTokenExt::get_word,
                 "include source name",
                 token.loc(),
             )?;
 
-            let include_path = prog.get_word(tok);
-            self.lex_source(&include_path, module, prog)?;
+            let include_path = ctx.get_word(tok);
+            self.lex_source(&include_path, module, ctx)?;
         }
         Ok(self)
     }

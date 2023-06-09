@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use firelib::{lazy, lexer::Loc};
 
-use super::program::{Fmt, Program};
+use super::ctx::{Ctx, Fmt};
 
 pub type OptionErr<'err, T, E = Fmt> = ashlib::OptionErr<'err, T, E>;
 pub type LazyResult<'err, T, E = Fmt> = lazy::LazyResult<'err, T, E>;
@@ -17,7 +17,7 @@ pub fn todo<'err>(loc: Loc) -> LazyError<'err> {
     err_loc(format!("\n[HERE]  {}", std::panic::Location::caller()), loc)
 }
 
-impl Program {
+impl Ctx {
     #[track_caller]
     pub fn todo<S: Display>(&self, loc: Loc, error: S) -> ! {
         panic!("{}{error}", self.loc_fmt(loc))

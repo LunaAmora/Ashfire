@@ -7,7 +7,7 @@ use ashfire_types::{
 use firelib::{lazy::LazyCtx, lexer::*, ShortCircuit};
 
 use super::{
-    program::{Fmt, OptionErr, Program},
+    ctx::{Ctx, Fmt, OptionErr},
     utils::err_loc,
 };
 
@@ -27,7 +27,7 @@ fn new_lexer<'r>(buf_id: usize, reader: impl Read + 'r) -> Lexer<'r> {
     builder().build(buf_id, reader)
 }
 
-impl Program {
+impl Ctx {
     pub fn new_lexer<'r>(
         &mut self, reader: impl Read + 'r, source: &str, module: &str,
     ) -> Lexer<'r> {
@@ -79,7 +79,7 @@ fn parse_as_char(&(ref name, loc): &Token) -> OptionErr<IRToken> {
 fn parse_char(word: &str, loc: Loc) -> OptionErr<i32> {
     word.strip_prefix('\\').map_or_else(
         || match word.len() {
-            0 => err_loc("Char literals have to contain at leat on char", loc).into(),
+            0 => err_loc("Char literals have to contain at least one char", loc).into(),
 
             2.. => {
                 err_loc(format!("Char literals cannot contain more than one char: `{word}`"), loc)

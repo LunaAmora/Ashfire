@@ -20,18 +20,18 @@ pub type LazyResult<T> = utils::LazyResult<'static, T>;
 pub type LazyError = utils::LazyError<'static>;
 
 pub trait InternalString {
-    fn as_str<'p>(&self, prog: &'p Program) -> Ref<'p, str>;
-    fn as_string(&self, prog: &Program) -> String;
+    fn as_str<'p>(&self, ctx: &'p Ctx) -> Ref<'p, str>;
+    fn as_string(&self, ctx: &Ctx) -> String;
     fn name(&self) -> Name;
 }
 
 impl<T: InternalString, O> InternalString for (T, O) {
-    fn as_str<'p>(&self, prog: &'p Program) -> Ref<'p, str> {
-        self.0.as_str(prog)
+    fn as_str<'p>(&self, ctx: &'p Ctx) -> Ref<'p, str> {
+        self.0.as_str(ctx)
     }
 
-    fn as_string(&self, prog: &Program) -> String {
-        self.0.as_string(prog)
+    fn as_string(&self, ctx: &Ctx) -> String {
+        self.0.as_string(ctx)
     }
 
     fn name(&self) -> Name {
@@ -40,13 +40,13 @@ impl<T: InternalString, O> InternalString for (T, O) {
 }
 
 impl InternalString for Name {
-    fn as_str<'p>(&self, prog: &'p Program) -> Ref<'p, str> {
-        let interner = prog.interner.borrow();
+    fn as_str<'p>(&self, ctx: &'p Ctx) -> Ref<'p, str> {
+        let interner = ctx.interner.borrow();
         Ref::map(interner, |a| a.resolve(self))
     }
 
-    fn as_string(&self, prog: &Program) -> String {
-        prog.interner.borrow().resolve(self).to_owned()
+    fn as_string(&self, ctx: &Ctx) -> String {
+        ctx.interner.borrow().resolve(self).to_owned()
     }
 
     fn name(&self) -> Name {
@@ -64,7 +64,7 @@ fn intern_all<const N: usize>(rodeo: &mut Rodeo, strings: [&'static str; N]) -> 
 }
 
 #[derive(Default)]
-pub struct Program {
+pub struct Ctx {
     ops: Vec<Op>,
     procs: Vec<Proc>,
     global_vars: Vec<TypeDescr>,
@@ -79,7 +79,7 @@ pub struct Program {
     interner: RefCell<Rodeo>,
 }
 
-impl Program {
+impl Ctx {
     pub fn new() -> Self {
         let mut interner = Rodeo::new();
 
@@ -416,21 +416,21 @@ pub trait Visitor {
         self.get_index().is_some()
     }
 
-    fn current_proc<'p>(&self, program: &'p Program) -> Option<&'p Proc> {
-        self.get_index().and_then(|i| program.procs.get(i))
+    fn current_proc<'p>(&self, ctx: &'p Ctx) -> Option<&'p Proc> {
+        self.get_index().and_then(|i| ctx.procs.get(i))
     }
 
-    fn current_proc_data<'p>(&self, program: &'p Program) -> Option<&'p Data> {
-        self.current_proc(program).and_then(Proc::get_data)
+    fn current_proc_data<'p>(&self, ctx: &'p Ctx) -> Option<&'p Data> {
+        self.current_proc(ctx).and_then(Proc::get_data)
     }
 
-    fn current_proc_mut<'p>(&self, program: &'p mut Program) -> Option<&'p mut Proc> {
-        self.get_index().and_then(|i| program.procs.get_mut(i))
+    fn current_proc_mut<'p>(&self, ctx: &'p mut Ctx) -> Option<&'p mut Proc> {
+        self.get_index().and_then(|i| ctx.procs.get_mut(i))
     }
 
-    fn visit_proc<'p>(&mut self, program: &'p Program, index: usize) -> &'p Proc {
+    fn visit_proc<'p>(&mut self, ctx: &'p Ctx, index: usize) -> &'p Proc {
         self.enter_proc(index);
-        &program.procs[index]
+        &ctx.procs[index]
     }
 
     fn enter_proc(&mut self, i: usize) {

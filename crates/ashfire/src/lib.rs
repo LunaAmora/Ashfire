@@ -13,10 +13,10 @@ use std::{
 use compiler::parsing::parser::Parser;
 use firelib::Result;
 
-use crate::{compiler::program::Program, target::Target};
+use crate::{compiler::ctx::Ctx, target::Target};
 
 pub fn compile(path: &Path, writer: impl Write, target: Target) -> Result<()> {
-    Program::new()
+    Ctx::new()
         .compile_file(path)?
         .type_check()?
         .generate_wasm(writer, target)
@@ -26,22 +26,22 @@ pub fn compile_buffer(
     source: &str, reader: impl Read, writer: impl Write, target: Target, std: bool,
 ) -> Result<()> {
     info!("Compiling buffer: {:?}", source);
-    let mut prog = Program::new();
+    let mut ctx = Ctx::new();
 
     if std {
         let mut parser = Parser::new();
-        prog.include_libs(&mut parser, target)?;
-        prog.include(&mut parser, reader, source, LANG_FOLDER)?;
+        ctx.include_libs(&mut parser, target)?;
+        ctx.include(&mut parser, reader, source, LANG_FOLDER)?;
 
-        prog.compile_parser(parser)?;
+        ctx.compile_parser(parser)?;
     } else {
-        prog.compile_buffer(source, reader)?;
+        ctx.compile_buffer(source, reader)?;
     };
 
-    prog.type_check()?.generate_wasm(writer, target)
+    ctx.type_check()?.generate_wasm(writer, target)
 }
 
-impl Program {
+impl Ctx {
     fn include_libs(&mut self, parser: &mut Parser, target: Target) -> Result<()> {
         let folder = Path::new(LANG_FOLDER);
 

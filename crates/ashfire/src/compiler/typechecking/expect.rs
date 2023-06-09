@@ -6,7 +6,7 @@ use firelib::{lazy::LazyFormatter, lexer::Loc};
 use itertools::Itertools;
 
 use crate::compiler::{
-    program::Fmt,
+    ctx::Fmt,
     utils::{LazyError, LazyResult},
 };
 

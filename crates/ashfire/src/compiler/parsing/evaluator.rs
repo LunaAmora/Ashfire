@@ -8,22 +8,22 @@ use firelib::{lazy::LazyFormatter, lexer::Loc};
 
 use super::{parser::Parser, utils::unexpected_end};
 use crate::compiler::{
-    program::{Fmt, Program},
+    ctx::{Ctx, Fmt},
     typechecking::expect::{format_frames, ArityType, Expect},
 };
 
 type DoubleResult<T> = ashlib::DoubleResult<'static, T, IRToken, Fmt>;
 
 impl Parser {
-    pub fn compile_eval(&self, prog: &Program, loc: Loc) -> DoubleResult<(DataToken, usize)> {
-        let (Either::Left(result), skip) = self.compile_eval_n(1, prog, loc)? else {
+    pub fn compile_eval(&self, ctx: &Ctx, loc: Loc) -> DoubleResult<(DataToken, usize)> {
+        let (Either::Left(result), skip) = self.compile_eval_n(1, ctx, loc)? else {
             unreachable!();
         };
         DoubleResult::new((result, skip))
     }
 
     pub fn compile_eval_n(
-        &self, n: usize, prog: &Program, loc: Loc,
+        &self, n: usize, ctx: &Ctx, loc: Loc,
     ) -> DoubleResult<(Either<DataToken, Vec<DataToken>>, usize)> {
         let mut stack = EvalStack::<DataToken>::default();
         let mut i = 0;
@@ -60,7 +60,7 @@ impl Parser {
                 ));
             }
 
-            stack.evaluate(tok, prog)?;
+            stack.evaluate(tok, ctx)?;
 
             i += 1;
         }
@@ -72,11 +72,11 @@ impl Parser {
 impl Expect<'_, DataToken> for EvalStack<DataToken> {}
 
 pub trait Evaluator {
-    fn evaluate(&mut self, tok: IRToken, prog: &Program) -> DoubleResult<()>;
+    fn evaluate(&mut self, tok: IRToken, ctx: &Ctx) -> DoubleResult<()>;
 }
 
 impl Evaluator for EvalStack<DataToken> {
-    fn evaluate(&mut self, tok: IRToken, prog: &Program) -> DoubleResult<()> {
+    fn evaluate(&mut self, tok: IRToken, ctx: &Ctx) -> DoubleResult<()> {
         let (token_type, loc) = tok;
 
         match token_type {
@@ -99,7 +99,7 @@ impl Evaluator for EvalStack<DataToken> {
                 _ => Err(Either::Left(tok))?,
             },
 
-            TokenType::Word(name) => match prog.get_intrinsic_type(&prog.get_word(name)) {
+            TokenType::Word(name) => match ctx.get_intrinsic_type(&ctx.get_word(name)) {
                 Some(intrinsic) => match intrinsic {
                     IntrinsicType::Plus => {
                         self.pop_push_arity(|[a, b]| a.add(b, loc), ArityType::Same, loc)?;
@@ -118,7 +118,7 @@ impl Evaluator for EvalStack<DataToken> {
                     _ => Err(Either::Left(tok))?,
                 },
 
-                None => match prog.get_const_by_name(name) {
+                None => match ctx.get_const_by_name(name) {
                     Some(TypeDescr::Primitive(unit)) => {
                         self.push(DataToken::new(unit.get_type(), unit.value(), loc));
                     }
@@ -128,7 +128,7 @@ impl Evaluator for EvalStack<DataToken> {
             },
 
             TokenType::Str(key @ DataKey(index)) => {
-                let (size, _) = prog.get_data(key).data();
+                let (size, _) = ctx.get_data(key).data();
 
                 self.extend([
                     DataToken::new(INT, size.into(), loc),

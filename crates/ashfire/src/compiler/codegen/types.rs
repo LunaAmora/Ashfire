@@ -12,7 +12,7 @@ use Instruction::*;
 use NumMethod::*;
 use Scope::*;
 
-use crate::compiler::program::{InternalString, Program, Visitor};
+use crate::compiler::ctx::{Ctx, InternalString, Visitor};
 
 pub struct Generator {
     current_proc: Option<usize>,
@@ -39,12 +39,12 @@ impl Generator {
         }
     }
 
-    pub fn prep_proc<'p>(&mut self, program: &'p Program, ip: usize) -> Result<Option<&'p Proc>> {
+    pub fn prep_proc<'p>(&mut self, ctx: &'p Ctx, ip: usize) -> Result<Option<&'p Proc>> {
         if self.current_func.is_some() {
             bail!("Cannot start an Wasm function block without closing the current one");
         }
 
-        let proc = self.visit_proc(program, ip);
+        let proc = self.visit_proc(ctx, ip);
         let Some(data) = proc.get_data() else {
             return Ok(None);
         };
@@ -74,9 +74,9 @@ impl Generator {
         Ok(Some(proc))
     }
 
-    pub fn end_proc(&mut self, program: &Program, wasm: &mut Module) -> Result<()> {
+    pub fn end_proc(&mut self, ctx: &Ctx, wasm: &mut Module) -> Result<()> {
         let proc = self
-            .current_proc(program)
+            .current_proc(ctx)
             .expect("No procedure to end was found");
 
         let Some(data) = proc.get_data() else {
@@ -94,7 +94,7 @@ impl Generator {
             func.extend(vec![Const(mem_to_free), Call("free_local".into())]);
         }
 
-        let label = &func.label.as_str(program);
+        let label = &func.label.as_str(ctx);
         let (ins, outs) = &func.contract;
         let id = wasm.add_fn(label, ins, outs, func.code);
 

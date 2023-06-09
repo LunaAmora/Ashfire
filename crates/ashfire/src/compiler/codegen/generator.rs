@@ -14,10 +14,10 @@ use NumMethod::*;
 use Scope::*;
 
 use super::types::{unpack_type, FuncGen, Generator};
-use crate::{compiler::program::*, target::Target};
+use crate::{compiler::ctx::*, target::Target};
 
 impl Generator {
-    fn generate_module(&mut self, program: &Program, target: Target) -> Result<Module> {
+    fn generate_module(&mut self, ctx: &Ctx, target: Target) -> Result<Module> {
         let i1 = &[WasmType::I32; 1];
         let i2 = &[WasmType::I32; 2];
         let i3 = &[WasmType::I32; 3];
@@ -25,9 +25,9 @@ impl Generator {
         let mut wasm = Module::new();
 
         let module = &target.module();
-        for import in program.procs().iter().filter(|p| p.is_import()) {
+        for import in ctx.procs().iter().filter(|p| p.is_import()) {
             let (ins, outs) = import.contract.as_vec(WasmType::I32, WasmType::I32);
-            let name = &import.name.as_str(program);
+            let name = &import.name.as_str(ctx);
             wasm.add_import(module, name, name, &ins, &outs);
         }
 
@@ -44,7 +44,7 @@ impl Generator {
         wasm.add_fn("over", i2, i3, vec![Get(local, Id(0)), Get(local, Id(1)), Get(local, Id(0))]);
         wasm.add_fn("rot", i3, i3, vec![Get(local, Id(1)), Get(local, Id(2)), Get(local, Id(0))]);
 
-        let stk = wasm.add_global("LOCAL_STACK", WasmType::I32, program.stack_start().into(), true);
+        let stk = wasm.add_global("LOCAL_STACK", WasmType::I32, ctx.stack_start().into(), true);
 
         wasm.add_fn("aloc_local", i1, &[], vec![
             Get(global, Id(stk)),
@@ -71,37 +71,37 @@ impl Generator {
         wasm.add_fn("push_local", i1, i1, vec![Get(global, Id(stk)), Get(local, Id(0)), I32(sub)]);
 
         let mut proc_ctx = None;
-        for (ip, &(op_type, _)) in program.ops().iter().enumerate() {
+        for (ip, &(op_type, _)) in ctx.ops().iter().enumerate() {
             match (op_type, proc_ctx) {
                 (OpType::ControlOp(ControlOp::PrepProc | ControlOp::PrepInline, proc_ip), _) => {
-                    proc_ctx = self.prep_proc(program, proc_ip)?;
+                    proc_ctx = self.prep_proc(ctx, proc_ip)?;
                 }
 
                 (OpType::ControlOp(ControlOp::EndProc, _), _) => {
-                    self.end_proc(program, &mut wasm)?;
+                    self.end_proc(ctx, &mut wasm)?;
                     proc_ctx = None;
                 }
 
-                (_, Some(proc)) => self.current_fn()?.append_op(program, ip, proc, &mut wasm),
+                (_, Some(proc)) => self.current_fn()?.append_op(ctx, ip, proc, &mut wasm),
 
                 _ => (),
             }
         }
 
-        wasm.set_data_offset(program.data_start());
+        wasm.set_data_offset(ctx.data_start());
 
-        for data in program.get_all_data() {
-            wasm.add_data(data.as_string(program));
+        for data in ctx.get_all_data() {
+            wasm.add_data(data.as_string(ctx));
         }
 
-        if !program.global_vars().is_empty() {
-            let padding = WORD_USIZE - program.data_size() % WORD_USIZE;
+        if !ctx.global_vars().is_empty() {
+            let padding = WORD_USIZE - ctx.data_size() % WORD_USIZE;
             if padding < WORD_USIZE {
                 wasm.add_data((0..padding).map(|_| "\\00").collect());
             }
 
-            for var in program.global_vars().units() {
-                wasm.add_data_value(program.final_value(&var));
+            for var in ctx.global_vars().units() {
+                wasm.add_data_value(ctx.final_value(&var));
             }
         }
 
@@ -110,15 +110,15 @@ impl Generator {
 }
 
 impl FuncGen {
-    fn append_op(&mut self, prog: &Program, ip: usize, proc: &Proc, module: &mut Module) {
-        let (op_type, _) = prog.ops()[ip];
+    fn append_op(&mut self, ctx: &Ctx, ip: usize, proc: &Proc, module: &mut Module) {
+        let (op_type, _) = ctx.ops()[ip];
         match op_type {
             OpType::PushData(_, operand) => self.push(Const(operand)),
 
             OpType::DataOp(op, data_type) => match op {
                 DataOp::PushStr => {
-                    let (size, offset) = prog.get_data(data_type).data();
-                    let ptr = offset + prog.data_start();
+                    let (size, offset) = ctx.get_data(data_type).data();
+                    let ptr = offset + ctx.data_start();
                     self.extend([Const(size.into()), Const(ptr.into())]);
                 }
             },
@@ -140,7 +140,7 @@ impl FuncGen {
                 }
 
                 MemOp::PushGlobal => {
-                    let ptr = prog.global_vars_start() + offset;
+                    let ptr = ctx.global_vars_start() + offset;
                     self.push(Const(ptr.into()));
                 }
 
@@ -158,23 +158,23 @@ impl FuncGen {
             OpType::UnpackType(None) => self.push(I32(load)),
 
             OpType::UnpackType(Some(data_type)) => {
-                self.extend(unpack_type(&prog.get_type_descr(data_type)));
+                self.extend(unpack_type(&ctx.get_type_descr(data_type)));
             }
 
             OpType::IndexOp(op, index) => match op {
                 IndexOp::Call => {
-                    let label: &str = &prog.get_proc(index).name.as_str(prog);
+                    let label: &str = &ctx.get_proc(index).name.as_str(ctx);
                     self.push(Call(label.into()));
                 }
 
                 IndexOp::CallInline => {
-                    let inlined_proc = prog.get_proc(index);
+                    let inlined_proc = ctx.get_proc(index);
                     let ModeData::Inlined(start, end) = inlined_proc.mode_data else {
                         unreachable!();
                     };
 
                     for inlined_ip in (start + 1)..end {
-                        self.append_op(prog, inlined_ip, inlined_proc, module);
+                        self.append_op(ctx, inlined_ip, inlined_proc, module);
                     }
                 }
 
@@ -216,7 +216,7 @@ impl FuncGen {
 
             OpType::ControlOp(op, index) => match op {
                 ControlOp::IfStart => {
-                    let contract = register_contract(prog, index, module);
+                    let contract = register_contract(ctx, index, module);
                     self.push(Block(BlockType::If, Some(contract)));
                 }
 
@@ -226,12 +226,12 @@ impl FuncGen {
 
                 ControlOp::While => {
                     let loop_label = Ident::Label(format!("while{index}"));
-                    let contract = register_contract(prog, ip, module);
+                    let contract = register_contract(ctx, ip, module);
                     self.push(Block(BlockType::Loop(Some(loop_label)), Some(contract)));
                 }
 
                 ControlOp::Do => {
-                    let contract = register_contract(prog, ip, module);
+                    let contract = register_contract(ctx, ip, module);
                     self.push(Block(BlockType::If, Some(contract)));
                 }
 
@@ -247,7 +247,7 @@ impl FuncGen {
 
                     for (_, typ) in bindings {
                         if let &Some(id) = typ {
-                            for size in prog.get_type_descr(id).units().map(|unit| unit.size()) {
+                            for size in ctx.get_type_descr(id).units().map(|unit| unit.size()) {
                                 bind_size += size;
                                 inst.extend([Const(bind_size.into()), Call("bind_local".into())]);
                             }
@@ -266,7 +266,7 @@ impl FuncGen {
                     let Binds(bindings) = &proc.binds[index];
 
                     let size = bindings.iter().fold(0, |acc, (_, typ)| {
-                        acc + typ.map_or(WORD_USIZE, |id| prog.get_type_descr(id).size())
+                        acc + typ.map_or(WORD_USIZE, |id| ctx.get_type_descr(id).size())
                     });
 
                     self.extend(vec![Const(size.into()), Call("free_local".into())]);
@@ -291,12 +291,12 @@ impl FuncGen {
     }
 }
 
-fn register_contract(prog: &Program, index: usize, module: &mut Module) -> Ident {
-    let (ins, outs) = prog.get_contract(index);
+fn register_contract(ctx: &Ctx, index: usize, module: &mut Module) -> Ident {
+    let (ins, outs) = ctx.get_contract(index);
     Ident::Id(module.new_contract(&vec![WasmType::I32; ins], &vec![WasmType::I32; outs]))
 }
 
-impl Program {
+impl Ctx {
     pub fn final_value(&self, var: &Primitive) -> i32 {
         match var.get_type() {
             DataType(TypeId::STR) => {

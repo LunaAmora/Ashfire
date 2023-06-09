@@ -12,7 +12,7 @@ use super::{
     types::{Block, LocWord},
 };
 use crate::compiler::{
-    program::{Fmt, Program},
+    ctx::{Ctx, Fmt},
     utils::{LazyError, LazyResult},
 };
 
@@ -20,15 +20,15 @@ pub struct LabelKind(pub LocWord, pub Option<DataType>);
 
 pub trait ExpectToken<'err, S: Display + 'err> {
     fn expect_label_kind(
-        &mut self, error_text: S, loc: Loc, prog: &mut Program,
+        &mut self, error_text: S, loc: Loc, ctx: &mut Ctx,
     ) -> LazyResult<'err, LabelKind>;
 
     fn expect_type_kind(
-        &mut self, error_text: S, prog: &mut Program, loc: Loc,
+        &mut self, error_text: S, ctx: &mut Ctx, loc: Loc,
     ) -> LazyResult<'err, DataType>;
 
     fn check_type_kind(
-        &mut self, tok: IRToken, error_text: S, prog: &mut Program,
+        &mut self, tok: IRToken, error_text: S, ctx: &mut Ctx,
     ) -> LazyResult<'err, DataType>;
 
     fn expect_keyword(
@@ -48,7 +48,7 @@ pub trait ExpectToken<'err, S: Display + 'err> {
 
 impl<'err, S: Display + 'err> ExpectToken<'err, S> for Parser {
     fn expect_label_kind(
-        &mut self, error_text: S, loc: Loc, prog: &mut Program,
+        &mut self, error_text: S, loc: Loc, ctx: &mut Ctx,
     ) -> LazyResult<'err, LabelKind> {
         let word = self.expect_word(error_text.to_string(), loc)?;
 
@@ -56,7 +56,7 @@ impl<'err, S: Display + 'err> ExpectToken<'err, S> for Parser {
             Some(tok) => match tok.get_keyword() {
                 Some(KeywordType::Colon) => {
                     self.next();
-                    self.expect_type_kind(error_text, prog, loc).map(Some)?
+                    self.expect_type_kind(error_text, ctx, loc).map(Some)?
                 }
                 _ => None,
             },
@@ -67,7 +67,7 @@ impl<'err, S: Display + 'err> ExpectToken<'err, S> for Parser {
     }
 
     fn expect_type_kind(
-        &mut self, error_text: S, prog: &mut Program, loc: Loc,
+        &mut self, error_text: S, ctx: &mut Ctx, loc: Loc,
     ) -> LazyResult<'err, DataType> {
         let next = self.expect_by(
             |tok| tok == KeywordType::Ref || tok.get_word().is_some(),
@@ -75,11 +75,11 @@ impl<'err, S: Display + 'err> ExpectToken<'err, S> for Parser {
             loc,
         )?;
 
-        self.check_type_kind(next, error_text, prog)
+        self.check_type_kind(next, error_text, ctx)
     }
 
     fn check_type_kind(
-        &mut self, tok: IRToken, error_text: S, prog: &mut Program,
+        &mut self, tok: IRToken, error_text: S, ctx: &mut Ctx,
     ) -> LazyResult<'err, DataType> {
         let (token_type, loc) = tok;
         match token_type {
@@ -87,12 +87,12 @@ impl<'err, S: Display + 'err> ExpectToken<'err, S> for Parser {
                 let word_error = format!("{error_text} after `*`");
                 let ref_word @ (name, _) = self.expect_word(word_error.clone(), loc)?;
 
-                prog.get_data_type(name)
-                    .map(|x| prog.get_type_ptr(x))
+                ctx.get_data_type(name)
+                    .map(|x| ctx.get_type_ptr(x))
                     .map_or_else(|| Err(unexpected_token(ref_word, word_error)), Ok)
             }
 
-            TokenType::Word(name) => prog
+            TokenType::Word(name) => ctx
                 .get_data_type(name)
                 .map_or_else(|| Err(unexpected_token((name, loc), error_text)), Ok),
 
