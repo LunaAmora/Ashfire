@@ -152,7 +152,7 @@ pub trait Compare<'err, T: Clone + Typed + Location + 'err>: Deref<Target = [T]>
     fn format_stack_diff<V: Typed>(&self, contract: &[V], loc: Loc) -> LazyError<'err> {
         let contr = format_stack(contract);
         let stack = format_stack(self);
-        let frame = format_frames(self);
+        let frame = format_frames(self.to_vec());
 
         lazyerr!(
             |f| concat!(
@@ -169,18 +169,18 @@ pub trait Compare<'err, T: Clone + Typed + Location + 'err>: Deref<Target = [T]>
     }
 }
 
-pub fn expect_type<'err, T: Clone + Typed + Location + 'err, V: Typed>(
-    frame: &T, expected: V, loc: Loc,
+pub fn expect_type<'err, T: Typed + Location + 'err, V: Typed>(
+    frame: T, expected: V, loc: Loc,
 ) -> LazyResult<'err, ()> {
     let expected_type = expected.get_type();
     // Todo: Improve this equality check
     if equals_any!(expected_type, ANY, ANY_PTR, frame.get_type()) {
         return Ok(());
     }
-    Err(format_type_diff(frame.clone(), expected.get_type(), loc))
+    Err(format_type_diff(frame, expected.get_type(), loc))
 }
 
-fn format_type_diff<'err, T: Clone + Typed + Location + 'err>(
+fn format_type_diff<'err, T: Typed + Location + 'err>(
     frame: T, expected: DataType, loc: Loc,
 ) -> LazyError<'err> {
     lazyerr!(
@@ -192,9 +192,8 @@ fn format_type_diff<'err, T: Clone + Typed + Location + 'err>(
     )
 }
 
-pub fn format_frames<T: Clone + Typed + Location>(stack: &[T]) -> impl LazyFormatter<Fmt> {
-    let copied = stack.to_vec();
-    lazyformatter!(|f| copied.iter().map(|t| format_frame(t).apply(f)).join("\n"))
+pub fn format_frames<T: Typed + Location>(stack: Vec<T>) -> impl LazyFormatter<Fmt> {
+    lazyformatter!(|f| stack.iter().map(|t| format_frame(t).apply(f)).join("\n"))
 }
 
 pub fn format_frame<T: Typed + Location>(t: T) -> impl LazyFormatter<Fmt> {

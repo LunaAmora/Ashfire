@@ -677,11 +677,11 @@ impl Parser {
                     TypeDescr::Primitive(_) => todo!(),
 
                     TypeDescr::Structure(StructType(fields, _)) => {
-                        expect_type(&tok, &fields[0], end_loc)?;
+                        expect_type(tok, &fields[0], end_loc)?;
                     }
 
                     TypeDescr::Reference(ptr) => {
-                        expect_type(&tok, ptr, end_loc)?;
+                        expect_type(tok, ptr, end_loc)?;
                     }
                 };
 

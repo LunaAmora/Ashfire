@@ -187,6 +187,10 @@ impl<T> EvalStack<T> {
     pub fn count(&self) -> isize {
         self.stack_count
     }
+
+    pub fn into_inner(self) -> Vec<T> {
+        self.frames
+    }
 }
 
 impl<T> Deref for EvalStack<T> {

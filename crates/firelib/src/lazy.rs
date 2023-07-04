@@ -153,9 +153,10 @@ impl<'err, R, T: 'err, A: private::SealedT<'err, T, Internal = R>> LazyErrCtx<'e
 
 #[macro_export]
 macro_rules! lazybail {
-    (| $i:pat_param | $($fmt:expr ),* ) => {
-        Err($crate::lazyerr!(|$i| $($fmt),* ))?
-    };
+    (| $i:pat_param | $($fmt:expr ),* ) => {{
+        Err($crate::lazyerr!(|$i| $($fmt),* ))?;
+        unreachable!();
+    }};
 }
 
 #[macro_export]

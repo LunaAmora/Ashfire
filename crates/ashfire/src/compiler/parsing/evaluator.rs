@@ -33,8 +33,8 @@ impl Parser {
                 if stack.is_empty() && i == 0 {
                     todo!()
                 } else if stack.len() != n {
-                    let frames = format_frames(&stack);
                     let len = stack.len();
+                    let frames = format_frames(stack.into_inner());
 
                     lazybail!(
                         |f| concat!(
