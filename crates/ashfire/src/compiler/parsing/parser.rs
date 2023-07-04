@@ -103,8 +103,8 @@ impl Parser {
         if !(matches!(tok_typ, TokenType::Keyword(_) | TokenType::Word(_)) || self.inside_proc()) {
             lazybail!(
                 |f| "{}Token type cannot be used outside of a procedure: `{}`",
-                f.format(Fmt::Loc(loc)),
-                f.format(Fmt::Typ(tok_typ))
+                f(Fmt::Loc(loc)),
+                f(Fmt::Typ(tok_typ))
             );
         };
 
@@ -121,8 +121,8 @@ impl Parser {
 
                     _ => lazybail!(
                         |f| "{}Value type not valid here: `{}`",
-                        f.format(Fmt::Loc(loc)),
-                        f.format(Fmt::Dat(data))
+                        f(Fmt::Loc(loc)),
+                        f(Fmt::Dat(data))
                     ),
                 },
             },
@@ -139,8 +139,8 @@ impl Parser {
 
                 lazybail!(
                     |f| "{}Word was not declared on the ctx: `{}`",
-                    f.format(Fmt::Loc(loc)),
-                    f.format(Fmt::Key(name))
+                    f(Fmt::Loc(loc)),
+                    f(Fmt::Key(name))
                 )
             }
 

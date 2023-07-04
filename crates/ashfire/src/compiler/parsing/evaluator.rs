@@ -42,7 +42,7 @@ impl Parser {
                             "in the end of the compile-time evaluation, ",
                             "but found {}:\n{}"
                         ),
-                        f.format(Fmt::Loc(tok.loc())),
+                        f(Fmt::Loc(tok.loc())),
                         n,
                         if n > 1 { "s" } else { "" },
                         len,

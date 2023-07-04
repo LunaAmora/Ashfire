@@ -1,11 +1,7 @@
 use std::{io::Read, path::Path};
 
 use ashfire_types::{core::*, data::*, enums::*, proc::ModeData};
-use firelib::{
-    lazy::{LazyCtx, LazyErrCtx},
-    lexer::Loc,
-    Result, ShortCircuit,
-};
+use firelib::{lazy::LazyCtx, lexer::Loc, Result, ShortCircuit};
 use IndexOp::*;
 
 use super::{parser::Parser, types::*};
@@ -207,9 +203,9 @@ impl Ctx {
 
             let (diff, index) = fields.get_offset(field_key).with_err_ctx(lazyctx!(
                 |f| "{}The variable `{}` does not contain the field `{}`",
-                f.format(Fmt::Loc(loc)),
-                f.format(Fmt::Key(var_name)),
-                f.format(Fmt::Key(field_key))
+                f(Fmt::Loc(loc)),
+                f(Fmt::Key(var_name)),
+                f(Fmt::Key(field_key))
             ))?;
 
             offset += diff;

@@ -134,7 +134,7 @@ pub fn invalid_option<'err, S: Display + 'err>(
 }
 
 pub fn unexpected_end<'err, S: Display + 'err>(desc: S, loc: Loc) -> LazyError<'err> {
-    lazyerr!(|f| "{}Expected {desc}, but found nothing", f.format(Fmt::Loc(loc)))
+    lazyerr!(|f| "{}Expected {desc}, but found nothing", f(Fmt::Loc(loc)))
 }
 
 pub fn unexpected_token<'err, S: Display + 'err, T>(
@@ -147,9 +147,9 @@ where
 
     lazyerr!(
         |f| "{}Expected {desc}, but found: {} `{}`",
-        f.format(Fmt::Loc(loc)),
-        f.format(Fmt::Typ(token_type)),
-        f.format(Fmt::Tok(tok))
+        f(Fmt::Loc(loc)),
+        f(Fmt::Typ(token_type)),
+        f(Fmt::Tok(tok))
     )
 }
 
@@ -161,9 +161,9 @@ pub fn invalid_token<'err, S: Display + 'err>(tok: IRToken, error: S) -> LazyErr
     let (token_type, loc) = tok;
     lazyerr!(
         |f| "{}Invalid `{}` found on {error}: `{}`",
-        f.format(Fmt::Loc(loc)),
-        f.format(Fmt::Typ(token_type)),
-        f.format(Fmt::Tok(tok))
+        f(Fmt::Loc(loc)),
+        f(Fmt::Typ(token_type)),
+        f(Fmt::Tok(tok))
     )
 }
 
@@ -175,10 +175,10 @@ pub fn format_block<'err, S: Display + 'err>(
             "{}{}, but found a `{:?}` block instead\n",
             "[INFO] {}The found block started here."
         ),
-        f.format(Fmt::Loc(loc)),
+        f(Fmt::Loc(loc)),
         error,
         OpType::ControlOp(control, value),
-        f.format(Fmt::Loc(start_loc))
+        f(Fmt::Loc(start_loc))
     )
 }
 

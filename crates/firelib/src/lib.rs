@@ -10,7 +10,7 @@ use std::{
 pub use anyhow::{self, bail, Context, Error, Result};
 #[cfg(feature = "derive")]
 pub use firelib_macro::{alternative, FlowControl};
-use lazy::private::{Sealed, SealedT};
+use lazy::{private::Sealed, LazyError};
 use log::info;
 
 pub mod choice;
@@ -88,7 +88,8 @@ pub trait TrySuccess: Sized {
 
     fn into_success<'err, T, R, F>(self) -> ControlFlow<T, !>
     where
-        Self: Try<Residual = R, Output = Self::Internal> + SealedT<'err, F>,
+        Self: Try<Residual = R, Output = Self::Internal>,
+        Self: Sealed<Error = LazyError<'err, F>>,
         T: SuccessFrom<From = Self::Internal> + FromResidual<R>,
     {
         match self.branch() {

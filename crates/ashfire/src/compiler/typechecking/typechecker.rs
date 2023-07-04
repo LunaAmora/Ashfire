@@ -6,7 +6,7 @@ use ashfire_types::{
 };
 use ashlib::{EvalStack, UncheckedStack};
 use firelib::{
-    lazy::{LazyCtx, LazyErrCtx},
+    lazy::{LazyCtx, LazyFormatter},
     lexer::Loc,
     span::Spanned,
     Result,
@@ -441,8 +441,8 @@ impl TypeChecker {
         let TypeDescr::Reference(ptr) = &*ctx.get_type_descr(data_type) else {
             lazybail!(
                 |f| "{}Cannot `.` access elements of type: `{}`",
-                f.format(Fmt::Loc(loc)),
-                f.format(Fmt::Dat(data_type))
+                f(Fmt::Loc(loc)),
+                f(Fmt::Dat(data_type))
             )
         };
 
@@ -453,9 +453,9 @@ impl TypeChecker {
                     .get_offset(word)
                     .with_err_ctx(lazyctx!(
                         |f| "{}The struct {} does not contain a member with name: `{}`",
-                        f.format(Fmt::Loc(loc)),
-                        f.format(Fmt::Key(struct_name)),
-                        f.format(Fmt::Key(word))
+                        f(Fmt::Loc(loc)),
+                        f(Fmt::Key(struct_name)),
+                        f(Fmt::Key(word))
                     ))
                     .map(|(offset, index)| (fields[index].get_type(), offset * WORD_USIZE))
             }

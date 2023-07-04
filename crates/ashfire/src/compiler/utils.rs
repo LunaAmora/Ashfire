@@ -9,7 +9,7 @@ pub type LazyResult<'err, T, E = Fmt> = lazy::LazyResult<'err, T, E>;
 pub type LazyError<'err, E = Fmt> = lazy::LazyError<'err, E>;
 
 pub fn err_loc<'err, S: Display + 'err>(error: S, loc: Loc) -> LazyError<'err> {
-    lazyerr!(|f| "{}{}", f.format(Fmt::Loc(loc)), error)
+    lazyerr!(|f| "{}{}", f(Fmt::Loc(loc)), error)
 }
 
 #[track_caller]

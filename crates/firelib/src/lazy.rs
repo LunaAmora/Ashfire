@@ -11,39 +11,45 @@ use itertools::Itertools;
 
 pub type LazyResult<'err, R, T> = Result<R, LazyError<'err, T>>;
 
-pub trait Formatter<T> {
-    fn format(&self, t: T) -> String;
-}
-
-impl<T, A: Fn(T) -> String> Formatter<T> for A {
-    fn format(&self, t: T) -> String {
-        self(t)
-    }
-}
+pub type Formatter<'a, T> = &'a dyn Fn(T) -> String;
 
 pub trait LazyFormatter<T> {
-    fn apply(&self, t: &dyn Formatter<T>) -> String;
-}
-
-impl<T, A: Fn(&dyn Formatter<T>) -> String> LazyFormatter<T> for A {
-    fn apply(&self, t: &dyn Formatter<T>) -> String {
-        self(t)
+    fn apply(&self, f: Formatter<'_, T>) -> String;
+    fn is_empty(&self) -> bool {
+        false
     }
 }
 
-pub struct LazyError<'err, T>(Box<dyn for<'a> Formatter<&'a dyn Formatter<T>> + 'err>);
+impl<T, A: Fn(Formatter<'_, T>) -> String> LazyFormatter<T> for A {
+    fn apply(&self, f: Formatter<'_, T>) -> String {
+        self(f)
+    }
+}
+impl<'err, T> LazyFormatter<T> for LazyError<'err, T> {
+    fn apply(&self, f: Formatter<'_, T>) -> String {
+        self.0(f)
+    }
+}
+
+impl<T> LazyFormatter<T> for anyhow::Error {
+    fn apply(&self, _: Formatter<'_, T>) -> String {
+        self.to_string()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.to_string().is_empty()
+    }
+}
+
+pub struct LazyError<'err, T>(Box<dyn for<'a> Fn(Formatter<'a, T>) -> String + 'err>);
 
 impl<'err, T> LazyError<'err, T> {
-    pub fn new(lazy_error: impl Fn(&dyn Formatter<T>) -> String + 'err) -> Self {
+    pub fn new(lazy_error: impl Fn(Formatter<'_, T>) -> String + 'err) -> Self {
         Self(Box::new(lazy_error))
     }
 
-    pub fn apply(&self, formatter: &dyn Formatter<T>) -> Error {
-        anyhow::anyhow!(self.0.format(formatter))
-    }
-
     pub fn skip(&self) -> Error {
-        anyhow::anyhow!(self.0.format(&|_| format!("<{}>", type_name::<T>())))
+        anyhow::anyhow!(self.0(&|_| format!("<{}>", type_name::<T>())))
     }
 }
 
@@ -67,86 +73,53 @@ impl<'err, E> From<Error> for LazyError<'err, E> {
 
 pub trait LazyCtx<'err, T>: private::Sealed {
     fn with_ctx(
-        self, lazy_error: impl Fn(&dyn Formatter<T>) -> String + 'err,
-    ) -> Result<Self::Internal, LazyError<'err, T>>;
-
-    fn with_err_ctx(
-        self, lazy_error: impl Fn() -> LazyError<'err, T> + 'err,
-    ) -> Result<Self::Internal, LazyError<'err, T>>;
-}
-
-impl<'err, A: private::Sealed, T> LazyCtx<'err, T> for A {
-    fn with_ctx(
-        self, lazy_error: impl Fn(&dyn Formatter<T>) -> String + 'err,
-    ) -> Result<Self::Internal, LazyError<'err, T>> {
-        match self.value() {
-            Ok(output) => Ok(output),
-            Err(err) => Err(if err.to_string().is_empty() {
-                LazyError::new(lazy_error)
-            } else {
-                LazyError::new(move |f| format!("{}\n{err}", lazy_error.apply(f)))
-            }),
-        }
-    }
-
-    fn with_err_ctx(
-        self, lazy_error: impl Fn() -> LazyError<'err, T> + 'err,
-    ) -> Result<Self::Internal, LazyError<'err, T>> {
-        match self.value() {
-            Ok(output) => Ok(output),
-            Err(err) => Err(if err.to_string().is_empty() {
-                lazy_error()
-            } else {
-                LazyError::new(move |f| format!("{}\n{err}", lazy_error().apply(f)))
-            }),
-        }
-    }
-}
-
-pub trait LazyErrCtx<'err, T>: private::SealedT<'err, T> {
-    fn with_ctx(
-        self, lazy_error: impl Fn(&dyn Formatter<T>) -> String + 'err,
+        self, lazy_error: impl Fn(Formatter<'_, T>) -> String + 'err,
     ) -> Result<Self::Internal, LazyError<'err, T>>;
 
     fn with_err_ctx(
         self, lazy_error: impl Fn() -> LazyError<'err, T> + 'err,
     ) -> Result<Self::Internal, LazyError<'err, T>>;
 
-    fn try_or_apply(self, format: &dyn Formatter<T>) -> Result<Self::Internal>
+    fn try_or_apply(self, format: Formatter<'_, T>) -> Result<Self::Internal>
     where
         Self: Try<Residual = Result<Infallible, LazyError<'err, T>>, Output = Self::Internal>;
 }
 
-impl<'err, R, T: 'err, A: private::SealedT<'err, T, Internal = R>> LazyErrCtx<'err, T> for A {
+impl<'err, A: private::Sealed, T> LazyCtx<'err, T> for A
+where
+    A::Error: LazyFormatter<T> + 'err,
+{
     fn with_ctx(
-        self, lazy_error: impl Fn(&dyn Formatter<T>) -> String + 'err,
+        self, lazy_error: impl Fn(Formatter<'_, T>) -> String + 'err,
     ) -> Result<Self::Internal, LazyError<'err, T>> {
-        match self.lazy_value() {
-            Ok(output) => Ok(output),
-            Err(err) => {
-                Err(LazyError::new(move |f| format!("{}\n{}", lazy_error.apply(f), err.apply(f))))
+        self.value().map_err(|err| {
+            if err.is_empty() {
+                LazyError::new(lazy_error)
+            } else {
+                LazyError::new(move |f| format!("{}\n{}", lazy_error.apply(f), err.apply(f)))
             }
-        }
+        })
     }
 
     fn with_err_ctx(
         self, lazy_error: impl Fn() -> LazyError<'err, T> + 'err,
     ) -> Result<Self::Internal, LazyError<'err, T>> {
-        match self.lazy_value() {
-            Ok(output) => Ok(output),
-            Err(err) => {
-                Err(LazyError::new(move |f| format!("{}\n{}", lazy_error().apply(f), err.apply(f))))
+        self.value().map_err(|err| {
+            if err.is_empty() {
+                lazy_error()
+            } else {
+                LazyError::new(move |f| format!("{}\n{}", lazy_error().apply(f), err.apply(f)))
             }
-        }
+        })
     }
 
-    fn try_or_apply(self, format: &dyn Formatter<T>) -> Result<Self::Internal>
+    fn try_or_apply(self, format: Formatter<'_, T>) -> Result<Self::Internal>
     where
         Self: Try<Residual = Result<Infallible, LazyError<'err, T>>, Output = Self::Internal>,
     {
         match self.branch() {
             ControlFlow::Continue(output) => Ok(output),
-            ControlFlow::Break(lazy) => Err(lazy.unwrap_err().apply(format)),
+            ControlFlow::Break(lazy) => Err(anyhow::anyhow!(lazy.unwrap_err().apply(format))),
         }
     }
 }
@@ -178,62 +151,50 @@ macro_rules! lazyerr {
 #[macro_export]
 macro_rules! lazyformat {
     (| $i:pat_param | $($fmt:expr ),*) => {
-        move |$i: &dyn $crate::lazy::Formatter<_>| format!( $( $fmt ),* )
+        move |$i: $crate::lazy::Formatter<_>| format!( $( $fmt ),* )
     };
 }
 
 #[macro_export]
 macro_rules! lazyformatter {
     (| $i:pat_param | $fmt:expr) => {
-        move |$i: &dyn $crate::lazy::Formatter<_>| $fmt
+        move |$i: $crate::lazy::Formatter<_>| $fmt
     };
 }
 
 pub(crate) mod private {
-    use anyhow::{Context, Result};
-
-    use super::LazyResult;
+    use anyhow::{Context, Error};
 
     pub trait Sealed {
+        type Error;
         type Internal;
-        fn value(self) -> Result<Self::Internal>;
+        fn value(self) -> Result<Self::Internal, Self::Error>;
     }
 
-    impl<T> Sealed for Result<T> {
+    impl<T, E> Sealed for Result<T, E> {
+        type Error = E;
         type Internal = T;
 
-        fn value(self) -> Self {
+        fn value(self) -> Result<Self::Internal, Self::Error> {
             self
         }
     }
 
     impl<T> Sealed for Option<T> {
+        type Error = Error;
         type Internal = T;
 
-        fn value(self) -> Result<T> {
+        fn value(self) -> Result<Self::Internal, Self::Error> {
             self.with_context(String::new)
         }
     }
 
     impl Sealed for bool {
+        type Error = Error;
         type Internal = Self;
 
-        fn value(self) -> Result<Self> {
+        fn value(self) -> Result<Self::Internal, Self::Error> {
             self.then_some(true).with_context(String::new)
-        }
-    }
-
-    pub trait SealedT<'err, T> {
-        type Internal;
-
-        fn lazy_value(self) -> LazyResult<'err, Self::Internal, T>;
-    }
-
-    impl<'err, R, T> SealedT<'err, T> for LazyResult<'err, R, T> {
-        type Internal = R;
-
-        fn lazy_value(self) -> LazyResult<'err, R, T> {
-            self
         }
     }
 }
@@ -241,11 +202,11 @@ pub(crate) mod private {
 #[cfg(test)]
 mod tests {
     use super::{LazyCtx, LazyError, LazyResult};
-    use crate::lazy::LazyErrCtx;
+    use crate::lazy::LazyFormatter;
 
     #[test]
     fn lazyerr_test() {
-        let lazyerr = |i| -> LazyResult<'_, (), i32> { Err(lazyerr!(|f| "{}", f.format(i))) };
+        let lazyerr = |i| -> LazyResult<'_, (), i32> { Err(lazyerr!(|f| "{}", f(i))) };
         let err = lazyerr(69).try_or_apply(&int_error_fmt).unwrap_err();
 
         assert_eq!("Error: `69`", err.to_string());
@@ -254,7 +215,7 @@ mod tests {
     #[test]
     fn ctx_test() {
         let err = None::<()>
-            .with_ctx(|f| f.format(420))
+            .with_ctx(|f| f(420))
             .try_or_apply(&int_error_fmt)
             .unwrap_err();
 
@@ -264,7 +225,7 @@ mod tests {
     #[test]
     fn ctx_ok_test() {
         Some(())
-            .with_ctx(|f| f.format(0))
+            .with_ctx(|f| f(0))
             .try_or_apply(&int_error_fmt)
             .unwrap();
     }
@@ -303,7 +264,7 @@ mod tests {
     }
 
     fn new_lazy_err<'err, T: Copy + 'err>(value: T) -> LazyError<'err, T> {
-        lazyerr!(|f| "Value: {}", f.format(value))
+        lazyerr!(|f| "Value: {}", f(value))
     }
 
     struct Program(i32);

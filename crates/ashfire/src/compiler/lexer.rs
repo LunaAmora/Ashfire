@@ -114,7 +114,7 @@ fn parse_scaped(escaped: String, loc: Loc) -> OptionErr<i32> {
 
         _ => lazybail!(
             |f| "{}Invalid escaped character sequence found on char literal: `{escaped}`",
-            f.format(Fmt::Loc(loc))
+            f(Fmt::Loc(loc))
         ),
     };
 
