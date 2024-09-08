@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
-use quote::{quote, __private::TokenStream as QuoteStream};
-use syn::{parse_macro_input, DeriveInput, punctuated::Punctuated, Token, Meta};
+use quote::{__private::TokenStream as QuoteStream, quote};
+use syn::{parse_macro_input, punctuated::Punctuated, DeriveInput, Meta, Token};
 
 /// Derive macro generating an impl of the trait `FlowControl`.
 #[proc_macro_derive(FlowControl)]
@@ -25,13 +25,13 @@ pub fn derive_flow(item: TokenStream) -> TokenStream {
     })
 }
 
-type AttributeArgs = Punctuated::<Meta, Token![,]>;
+type AttributeArgs = Punctuated<Meta, Token![,]>;
 
 /// Attribute macro generating a simple impl of the trait `Alternative`
 /// based on the given pairs of field names and patterns.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```compile_fail
 /// #[alternative(value, None)]
 /// struct Alter<T> {
