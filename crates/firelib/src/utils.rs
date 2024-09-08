@@ -65,3 +65,12 @@ pub fn strip_trailing_newline(input: &str) -> &str {
         .or_else(|| input.strip_suffix('\n'))
         .unwrap_or(input)
 }
+
+/// Checks if the the first element is equivalent (using `==`)
+/// to any of the preceding elements.
+#[macro_export]
+macro_rules! equals_any {
+    ($expression:expr, $( $equal:expr ),+) => {
+        ($($expression == $equal)||*)
+    };
+}

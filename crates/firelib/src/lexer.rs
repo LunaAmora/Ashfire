@@ -28,7 +28,7 @@ impl LexerBuilder {
     }
 
     #[must_use]
-    /// Captures everything betwen a pair of chars or until the end of the line.
+    /// Captures everything between a pair of chars or until the end of the line.
     pub fn with_matches<const N: usize>(mut self, matches: [Match; N]) -> Self {
         self.matches.extend(matches);
         self

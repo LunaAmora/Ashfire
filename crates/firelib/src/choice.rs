@@ -82,7 +82,7 @@ macro_rules! choice {
 mod tests {
     use std::{convert::Infallible, fmt::Display, ops::FromResidual};
 
-    use anyhow::{Context, Error, Result};
+    use anyhow::{Context, Error};
 
     use crate::{
         self as firelib, alternative, choice,
@@ -152,8 +152,8 @@ mod tests {
     }
 
     impl<T, E> FromResidual<LazyResult<Infallible, E>> for OptionErr<T, E> {
-        fn from_residual(residual: LazyResult<Infallible, E>) -> Self {
-            Self { value: Err(residual.unwrap_err()) }
+        fn from_residual(Err(err): LazyResult<Infallible, E>) -> Self {
+            Self { value: Err(err) }
         }
     }
 
@@ -166,15 +166,6 @@ mod tests {
     impl<T, E> From<LazyResult<Option<T>, E>> for OptionErr<T, E> {
         fn from(value: LazyResult<Option<T>, E>) -> Self {
             Self { value }
-        }
-    }
-
-    impl<T, E> From<Result<Option<T>>> for OptionErr<T, E> {
-        fn from(value: Result<Option<T>>) -> Self {
-            match value {
-                Ok(ok) => Self::from(ok),
-                Err(err) => Self::from(err),
-            }
         }
     }
 

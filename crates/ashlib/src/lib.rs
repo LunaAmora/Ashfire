@@ -33,8 +33,8 @@ impl<'err, T, E> Default for OptionErr<'err, T, E> {
 }
 
 impl<'err, T, E> FromResidual<lazy::Result<'err, Infallible, E>> for OptionErr<'err, T, E> {
-    fn from_residual(residual: lazy::Result<'err, Infallible, E>) -> Self {
-        Self { value: Err(residual.unwrap_err()) }
+    fn from_residual(Err(err): lazy::Result<'err, Infallible, E>) -> Self {
+        Self { value: Err(err) }
     }
 }
 
@@ -55,20 +55,12 @@ impl<'err, T, E> From<lazy::Result<'err, Option<T>, E>> for OptionErr<'err, T, E
         Self { value }
     }
 }
+
 impl<'err, T, E> From<lazy::Result<'err, T, E>> for OptionErr<'err, T, E> {
     fn from(res: lazy::Result<'err, T, E>) -> Self {
         match res {
             Ok(value) => Self::new(value),
             Err(err) => Self { value: Err(err) },
-        }
-    }
-}
-
-impl<'err, T, E> From<Result<Option<T>>> for OptionErr<'err, T, E> {
-    fn from(value: Result<Option<T>>) -> Self {
-        match value {
-            Ok(ok) => Self::from(ok),
-            Err(err) => Self::from(err),
         }
     }
 }
@@ -136,16 +128,16 @@ impl<'err, T, E, F> FromResidual for DoubleResult<'err, T, E, F> {
 impl<'err, T, E, F> FromResidual<Result<Infallible, <Self as Try>::Residual>>
     for DoubleResult<'err, T, E, F>
 {
-    fn from_residual(residual: Result<Infallible, <Self as Try>::Residual>) -> Self {
-        Self { value: Err(residual.unwrap_err()) }
+    fn from_residual(Err(err): Result<Infallible, <Self as Try>::Residual>) -> Self {
+        Self { value: Err(err) }
     }
 }
 
 impl<'err, T, E, F> FromResidual<Result<Infallible, lazy::Error<'err, F>>>
     for DoubleResult<'err, T, E, F>
 {
-    fn from_residual(residual: Result<Infallible, lazy::Error<'err, F>>) -> Self {
-        Self { value: Err(Either::Right(residual.unwrap_err())) }
+    fn from_residual(Err(err): Result<Infallible, lazy::Error<'err, F>>) -> Self {
+        Self { value: Err(Either::Right(err)) }
     }
 }
 
