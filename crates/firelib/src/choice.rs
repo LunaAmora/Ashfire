@@ -91,7 +91,7 @@ mod tests {
         FlowControl,
     };
 
-    type LazyResult<R, T> = lazy::LazyResult<'static, R, T>;
+    type LazyResult<R, T> = lazy::Result<'static, R, T>;
 
     #[test]
     fn test1() {

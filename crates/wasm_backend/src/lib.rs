@@ -1,9 +1,7 @@
+#![feature(slice_as_chunks)]
 pub mod wasm_types;
 
-use std::{
-    collections::HashMap,
-    io::{Result, Write},
-};
+use std::{collections::HashMap, fmt::Write, io};
 
 use itertools::Itertools;
 use wasm_types::*;
@@ -118,7 +116,7 @@ impl Module {
         }
     }
 
-    fn write_imports(&mut self, writer: &mut impl Write) -> Result<&mut Self> {
+    fn write_imports(&mut self, writer: &mut impl io::Write) -> io::Result<&mut Self> {
         for import in &self.imports {
             match &import.bind {
                 Bind::Global(_) => todo!(),
@@ -153,7 +151,7 @@ impl Module {
         Ok(self)
     }
 
-    fn write_globals(&self, writer: &mut impl Write) -> Result<&Self> {
+    fn write_globals(&self, writer: &mut impl io::Write) -> io::Result<&Self> {
         for (label, index) in self.global_map.iter().sorted_by_key(|entry| entry.1) {
             let global = &self.globals[*index].value;
 
@@ -173,7 +171,7 @@ impl Module {
         Ok(self)
     }
 
-    fn write_funcs(&self, writer: &mut impl Write) -> Result<&Self> {
+    fn write_funcs(&self, writer: &mut impl io::Write) -> io::Result<&Self> {
         for (label, index) in self.func_map.iter().sorted_by_key(|entry| entry.1) {
             let func = &self.funcs[*index];
             let contr = &self.types[func.contract];
@@ -206,7 +204,7 @@ impl Module {
         format!("{block}{}", &self.types[*id])
     }
 
-    fn write_data(&self, writer: &mut impl Write) -> Result<&Self> {
+    fn write_data(&self, writer: &mut impl io::Write) -> io::Result<&Self> {
         writer.write_all(
             format!(
                 "(data (i32.const {})\n{}\n)\n",
@@ -218,7 +216,7 @@ impl Module {
         Ok(self)
     }
 
-    fn write_exports(&self, writer: &mut impl Write) -> Result<()> {
+    fn write_exports(&self, writer: &mut impl io::Write) -> io::Result<()> {
         for export in &self.exports {
             match &export.bind {
                 Bind::Global(_) => todo!(),
@@ -246,7 +244,7 @@ impl Module {
         Ok(())
     }
 
-    pub fn write_text(mut self, mut writer: impl Write) -> Result<()> {
+    pub fn write_text(mut self, mut writer: impl io::Write) -> io::Result<()> {
         writer.write_all(b"(module\n")?;
 
         self.write_imports(&mut writer)?
@@ -260,29 +258,21 @@ impl Module {
 }
 
 fn wasm_data_format(data: i32) -> String {
-    let b_to_hex_b = |b| match b {
+    let mut result = String::with_capacity(12);
+
+    for &[a, b] in format!("{data:08x}").as_bytes().as_rchunks::<2>().1 {
+        let byte = (hex_to_nibble(a) << 4) | hex_to_nibble(b);
+        write!(&mut result, "\\{:02x}", byte).unwrap();
+    }
+
+    result
+}
+
+fn hex_to_nibble(b: u8) -> u8 {
+    match b {
+        b'0'..=b'9' => b - b'0',
         b'A'..=b'F' => b - b'A' + 10,
         b'a'..=b'f' => b - b'a' + 10,
-        b'0'..=b'9' => b - b'0',
         _ => unreachable!(),
-    };
-
-    format!("{data:08x}")
-        .as_bytes()
-        .rchunks(2)
-        .map(|pair| b_to_hex_b(pair[0]) << 4 | b_to_hex_b(pair[1]))
-        .flat_map(u8_to_escaped_hex)
-        .collect()
-}
-
-fn u8_to_escaped_hex(byte: u8) -> [char; 3] {
-    let (high, low) = byte2hex(byte, b"0123456789abcdef");
-    ['\\', high, low]
-}
-
-fn byte2hex(byte: u8, table: &[u8; 16]) -> (char, char) {
-    let high = table[((byte & 0xf0) >> 4) as usize] as char;
-    let low = table[(byte & 0x0f) as usize] as char;
-
-    (high, low)
+    }
 }

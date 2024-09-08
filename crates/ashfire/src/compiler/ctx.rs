@@ -134,7 +134,7 @@ impl Ctx {
     }
 
     pub fn push_global_var(&mut self, var: TypeDescr) {
-        self.global_vars.push(var)
+        self.global_vars.push(var);
     }
 
     pub fn block_contracts(&mut self) -> &mut HashMap<usize, (usize, usize)> {
@@ -377,7 +377,7 @@ impl Ctx {
     }
 
     #[cfg(debug_assertions)]
-    #[allow(dead_code)]
+    #[allow(dead_code, reason = "Debug utility")]
     fn op_debug(&self, &(op_type, _): &Op) -> String {
         use ashfire_types::enums::{ControlOp, IndexOp, OpType};
         match op_type {
@@ -397,7 +397,7 @@ impl Ctx {
                 _ => format!("{op:?}: [{index}]"),
             },
 
-            OpType::ControlOp(op, index) if matches!(op, ControlOp::EndProc) => {
+            OpType::ControlOp(ControlOp::EndProc, index) => {
                 format!("EndProc [{}]", self.get_proc(index).name.as_str(self))
             }
 

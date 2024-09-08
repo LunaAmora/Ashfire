@@ -5,13 +5,14 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 readme.workspace = true
+repository.workspace = true
 license-file.workspace = true
 
 [dependencies]
-log = "0.4.18"
+log = "0.4.22"
 anyhow = "1.0"
-itertools = "0.10.5"
-firelib_macro = {path = "../firelib_macro", optional = true}
+itertools = "0.13.0"
+firelib_macro = { path = "../firelib_macro", optional = true }
 
 [features]
 default = ["derive"]

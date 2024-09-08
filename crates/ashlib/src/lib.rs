@@ -6,21 +6,18 @@ use std::{
 
 pub use either::Either;
 use firelib::{
-    alternative,
-    choice::Alternative,
-    lazy::{LazyError, LazyResult},
-    Error, FlowControl, Result, Success, SuccessFrom,
+    alternative, choice::Alternative, lazy, Error, FlowControl, Result, Success, SuccessFrom,
 };
 
 #[derive(FlowControl)]
 #[alternative(value, Ok(None))]
 pub struct OptionErr<'err, T, E> {
-    pub value: LazyResult<'err, Option<T>, E>,
+    pub value: lazy::Result<'err, Option<T>, E>,
 }
 
 impl<'err, T, E> Alternative for OptionErr<'err, T, E> {
     type ChoiceOutput = Option<T>;
-    type ChoiceResidual = LazyResult<'err, Option<T>, E>;
+    type ChoiceResidual = lazy::Result<'err, Option<T>, E>;
 }
 
 impl<'err, T, E> OptionErr<'err, T, E> {
@@ -35,31 +32,31 @@ impl<'err, T, E> Default for OptionErr<'err, T, E> {
     }
 }
 
-impl<'err, T, E> FromResidual<LazyResult<'err, Infallible, E>> for OptionErr<'err, T, E> {
-    fn from_residual(residual: LazyResult<'err, Infallible, E>) -> Self {
+impl<'err, T, E> FromResidual<lazy::Result<'err, Infallible, E>> for OptionErr<'err, T, E> {
+    fn from_residual(residual: lazy::Result<'err, Infallible, E>) -> Self {
         Self { value: Err(residual.unwrap_err()) }
     }
 }
 
-impl<'err, T, E> From<LazyError<'err, E>> for OptionErr<'err, T, E> {
-    fn from(value: LazyError<'err, E>) -> Self {
+impl<'err, T, E> From<lazy::Error<'err, E>> for OptionErr<'err, T, E> {
+    fn from(value: lazy::Error<'err, E>) -> Self {
         Self { value: Err(value) }
     }
 }
 
 impl<'err, T, E> From<Error> for OptionErr<'err, T, E> {
     fn from(err: Error) -> Self {
-        Self { value: Err(LazyError::from(err)) }
+        Self { value: Err(lazy::Error::from(err)) }
     }
 }
 
-impl<'err, T, E> From<LazyResult<'err, Option<T>, E>> for OptionErr<'err, T, E> {
-    fn from(value: LazyResult<'err, Option<T>, E>) -> Self {
+impl<'err, T, E> From<lazy::Result<'err, Option<T>, E>> for OptionErr<'err, T, E> {
+    fn from(value: lazy::Result<'err, Option<T>, E>) -> Self {
         Self { value }
     }
 }
-impl<'err, T, E> From<LazyResult<'err, T, E>> for OptionErr<'err, T, E> {
-    fn from(res: LazyResult<'err, T, E>) -> Self {
+impl<'err, T, E> From<lazy::Result<'err, T, E>> for OptionErr<'err, T, E> {
+    fn from(res: lazy::Result<'err, T, E>) -> Self {
         match res {
             Ok(value) => Self::new(value),
             Err(err) => Self { value: Err(err) },
@@ -97,7 +94,7 @@ impl<'err, T, E> SuccessFrom for OptionErr<'err, Vec<T>, E> {
 }
 
 pub struct DoubleResult<'err, T, E, F> {
-    pub value: Result<T, Either<E, LazyError<'err, F>>>,
+    pub value: Result<T, Either<E, lazy::Error<'err, F>>>,
 }
 
 impl<'err, T, E, F> DoubleResult<'err, T, E, F> {
@@ -107,7 +104,7 @@ impl<'err, T, E, F> DoubleResult<'err, T, E, F> {
 }
 
 impl<'err, T, E, F> Deref for DoubleResult<'err, T, E, F> {
-    type Target = Result<T, Either<E, LazyError<'err, F>>>;
+    type Target = Result<T, Either<E, lazy::Error<'err, F>>>;
 
     fn deref(&self) -> &Self::Target {
         &self.value
@@ -116,7 +113,7 @@ impl<'err, T, E, F> Deref for DoubleResult<'err, T, E, F> {
 
 impl<'err, T, E, F> Try for DoubleResult<'err, T, E, F> {
     type Output = T;
-    type Residual = Either<E, LazyError<'err, F>>;
+    type Residual = Either<E, lazy::Error<'err, F>>;
 
     fn from_output(output: Self::Output) -> Self {
         Self { value: Ok(output) }
@@ -144,10 +141,10 @@ impl<'err, T, E, F> FromResidual<Result<Infallible, <Self as Try>::Residual>>
     }
 }
 
-impl<'err, T, E, F> FromResidual<Result<Infallible, LazyError<'err, F>>>
+impl<'err, T, E, F> FromResidual<Result<Infallible, lazy::Error<'err, F>>>
     for DoubleResult<'err, T, E, F>
 {
-    fn from_residual(residual: Result<Infallible, LazyError<'err, F>>) -> Self {
+    fn from_residual(residual: Result<Infallible, lazy::Error<'err, F>>) -> Self {
         Self { value: Err(Either::Right(residual.unwrap_err())) }
     }
 }
@@ -261,7 +258,7 @@ impl<T> UncheckedStack<T> for EvalStack<T> {
         let range = (len - N)..;
         let drain: Vec<T> = self.frames.drain(range).collect();
 
-        drain.try_into().map_or_else(|_| panic!(), |array| array)
+        drain.try_into().unwrap_or_else(|_| panic!())
     }
 
     fn peek(&mut self) -> &T {

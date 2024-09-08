@@ -1,4 +1,4 @@
-use std::{ops::Deref, usize};
+use std::ops::Deref;
 
 use firelib::{lexer::Loc, span::Spanned};
 use lasso::Key;

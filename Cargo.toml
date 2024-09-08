@@ -8,10 +8,10 @@ readme.workspace = true
 license-file.workspace = true
 
 [dependencies]
-clap = { version = "4.3.0", features = ["derive"] }
-clap-verbosity-flag = "2.0.1"
-log = "0.4.18"
-env_logger = { features = ["auto-color"], default-features = false, version = "0.10.0" }
+clap = { version = "4.5.17", features = ["derive"] }
+clap-verbosity-flag = "2.2.1"
+log = "0.4.22"
+env_logger = { features = ["auto-color"], default-features = false, version = "0.11.5" }
 ashfire = { path = "crates/ashfire" }
 firelib = { path = "crates/firelib" }
 
@@ -27,12 +27,26 @@ members = [
 
 [workspace.package]
 authors = ["Luna Amora <luna.mberry@gmail.com>"]
+repository = "https://github.com/LunaAmora/Ashfire"
 version = "0.1.0"
 edition = "2021"
 readme = "README.md"
 license-file = "LICENSE"
 
 [workspace.lints.clippy]
-all = "warn"
-nursery = "warn"
+all = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
 missing_const_for_fn = "allow"
+
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+uninlined_format_args = "allow"
+missing_panics_doc = "allow"
+missing_errors_doc = "allow"
+must_use_candidate = "allow"
+wildcard_imports = "allow"
+too_many_lines = "allow"
+enum_glob_use = "allow"
+
+allow_attributes_without_reason = "warn"
+as_conversions = "warn"

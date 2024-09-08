@@ -5,8 +5,9 @@ pub fn formatted_builder() -> Builder {
 
     builder.format(|f, record| {
         use std::io::Write;
-        let level = f.default_styled_level(record.level());
-        writeln!(f, "[{level}] {}", record.args())
+        let level = record.level();
+        let style = f.default_level_style(level);
+        writeln!(f, "[{style}{level}{style:#}] {}", record.args())
     });
 
     builder

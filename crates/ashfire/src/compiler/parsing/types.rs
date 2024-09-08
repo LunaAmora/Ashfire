@@ -28,7 +28,6 @@ pub enum VarWordType {
     Pointer,
 }
 
-#[allow(dead_code)]
 pub enum ParseContext {
     ProcName,
     LocalMem,
@@ -60,19 +59,17 @@ pub struct NameScopes {
 
 impl NameScopes {
     pub fn lookup(&self, name: Name, ctx: &Ctx) -> Option<&ParseContext> {
-        //Todo: there must be a better way to support `.` accessing structs
-        let word = name.as_str(ctx);
-        if word.contains('.') {
-            let field_name = word.split('.').next().unwrap();
+        // Todo: there must be a better way to support `.` accessing structs
+        if let Some(field_name) = name.as_str(ctx).split('.').next() {
             if let Some(key) = ctx.get_key(field_name) {
                 return self.lookup(key, ctx);
             }
         }
 
         for scope in self.scopes.iter().rev() {
-            let ctx = scope.names.get(&name);
-            if ctx.is_some() {
-                return ctx;
+            let parse_ctx = scope.names.get(&name);
+            if parse_ctx.is_some() {
+                return parse_ctx;
             }
         }
 

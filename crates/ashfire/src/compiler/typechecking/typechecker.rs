@@ -61,7 +61,7 @@ impl TypeChecker {
             .expect("Could not pop from an empty `block_stack`")
     }
 
-    fn block_stack_last(&mut self) -> &TypeBlock {
+    fn block_stack_last(&self) -> &TypeBlock {
         self.block_stack
             .last()
             .expect("Could not get the last block from an empty `block_stack`")
@@ -109,7 +109,7 @@ impl TypeChecker {
                             for primitive in fields.units() {
                                 self.push_frame(primitive.get_type(), loc);
                             }
-                            update_op = Some(*ptr_id)
+                            update_op = Some(*ptr_id);
                         }
 
                         TypeDescr::Primitive(_) => {
@@ -363,7 +363,7 @@ impl TypeChecker {
                     let Binds(bindings) = &proc.binds[index];
                     let mut binds = vec![];
 
-                    for (_, typ) in bindings.iter() {
+                    for (_, typ) in bindings {
                         if let &Some(data_type) = typ {
                             let type_def = ctx.get_type_descr(data_type);
 
@@ -424,7 +424,7 @@ impl TypeChecker {
         self.data_stack.push((data_type, loc));
     }
 
-    fn get_bind_type_offset(&mut self, operand: usize) -> (DataType, u16) {
+    fn get_bind_type_offset(&self, operand: usize) -> (DataType, u16) {
         let mut offset = 0;
         for ((_, size), _) in self.bind_stack.iter().rev().zip(0..=operand) {
             offset += size;

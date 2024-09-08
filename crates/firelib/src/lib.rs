@@ -1,6 +1,7 @@
 #![feature(try_trait_v2)]
 #![feature(never_type)]
 #![feature(try_blocks)]
+#![feature(trait_alias)]
 use std::{
     convert::Infallible,
     ops::{ControlFlow, FromResidual, Try},
@@ -10,7 +11,7 @@ use std::{
 pub use anyhow::{self, bail, Context, Error, Result};
 #[cfg(feature = "derive")]
 pub use firelib_macro::{alternative, FlowControl};
-use lazy::{private::Sealed, LazyError};
+use lazy::{private::Sealed, Error as LazyError};
 use log::info;
 
 pub mod choice;
@@ -59,16 +60,14 @@ pub trait FlowControl:
 
     #[doc(hidden)]
     fn __from_residual(residual: ControlFlow<Self, Infallible>) -> Self {
-        match residual {
-            ControlFlow::Break(value) => value,
-            ControlFlow::Continue(_) => unreachable!(),
-        }
+        let ControlFlow::Break(value) = residual;
+        value
     }
 
     #[doc(hidden)]
-    fn __from_error(residual: Result<Infallible, anyhow::Error>) -> Self
+    fn __from_error(residual: Result<Infallible, Error>) -> Self
     where
-        Self: From<anyhow::Error>,
+        Self: From<Error>,
     {
         Self::from(residual.unwrap_err())
     }
@@ -88,8 +87,7 @@ pub trait TrySuccess: Sized {
 
     fn into_success<'err, T, R, F>(self) -> ControlFlow<T, !>
     where
-        Self: Try<Residual = R, Output = Self::Internal>,
-        Self: Sealed<Error = LazyError<'err, F>>,
+        Self: Try<Residual = R, Output = Self::Internal> + Sealed<Error = LazyError<'err, F>>,
         T: SuccessFrom<From = Self::Internal> + FromResidual<R>,
     {
         match self.branch() {

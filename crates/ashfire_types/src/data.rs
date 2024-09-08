@@ -223,18 +223,12 @@ impl Typed for TypeDescr {
     }
 }
 
-pub trait Transposer<T, I> {
-    type Provider<'i>
-    where
-        I: 'i,
-    = &'i mut (dyn Iterator<Item = I>);
-    fn transpose(self, rev: bool, provider: Self::Provider<'_>) -> Option<T>;
+pub trait Transposer {
+    type Provider<'i> = &'i mut (dyn Iterator<Item = DataToken>);
+    fn transpose(self, rev: bool, provider: Self::Provider<'_>) -> Option<Vec<TypeDescr>>;
 }
 
-impl<I> Transposer<Vec<TypeDescr>, DataToken> for I
-where
-    I: Iterator<Item = TypeDescr>,
-{
+impl<I: Iterator<Item = TypeDescr>> Transposer for I {
     fn transpose(self, rev: bool, provider: Self::Provider<'_>) -> Option<Vec<TypeDescr>> {
         self.map(|descr| {
             Some(match descr {
@@ -247,7 +241,7 @@ where
                     TypeDescr::Primitive(ptr.as_primitive(operand))
                 }
 
-                TypeDescr::Structure(StructType(field @ StructFields(name, _), reftype)) => field
+                TypeDescr::Structure(StructType(fields @ StructFields(name, _), reftype)) => fields
                     .transpose(rev, provider)
                     .map(|members| TypeDescr::structure(name, members, reftype))?,
             })
@@ -256,7 +250,7 @@ where
     }
 }
 
-impl Transposer<Vec<TypeDescr>, DataToken> for StructFields {
+impl Transposer for StructFields {
     fn transpose(self, rev: bool, provider: Self::Provider<'_>) -> Option<Vec<TypeDescr>> {
         self.ordered_members(rev).transpose(rev, provider)
     }

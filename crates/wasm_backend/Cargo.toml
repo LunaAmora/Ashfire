@@ -5,10 +5,11 @@ description = "Wasm backend used by the Ashfire compiler"
 edition.workspace = true
 authors.workspace = true
 readme.workspace = true
+repository.workspace = true
 license-file.workspace = true
 
 [dependencies]
-itertools = "0.10.5"
+itertools = "0.13.0"
 
 [lints]
 workspace = true

@@ -103,7 +103,7 @@ pub struct Func {
 }
 
 #[derive(Debug)]
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, reason = "Debug format used in wasm generation")]
 pub enum Scope {
     local,
     global,
@@ -166,7 +166,7 @@ impl Display for BlockType {
 }
 
 #[derive(Debug)]
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, reason = "Debug format used in wasm generation")]
 pub enum NumMethod {
     add,
     sub,

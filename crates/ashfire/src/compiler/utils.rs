@@ -5,14 +5,15 @@ use firelib::{lazy, lexer::Loc};
 use super::ctx::{Ctx, Fmt};
 
 pub type OptionErr<'err, T, E = Fmt> = ashlib::OptionErr<'err, T, E>;
-pub type LazyResult<'err, T, E = Fmt> = lazy::LazyResult<'err, T, E>;
-pub type LazyError<'err, E = Fmt> = lazy::LazyError<'err, E>;
+pub type LazyResult<'err, T, E = Fmt> = lazy::Result<'err, T, E>;
+pub type LazyError<'err, E = Fmt> = lazy::Error<'err, E>;
 
 pub fn err_loc<'err, S: Display + 'err>(error: S, loc: Loc) -> LazyError<'err> {
     lazyerr!(|f| "{}{}", f(Fmt::Loc(loc)), error)
 }
 
 #[track_caller]
+#[allow(dead_code, reason = "Debug utility")]
 pub fn todo<'err>(loc: Loc) -> LazyError<'err> {
     err_loc(format!("\n[HERE]  {}", std::panic::Location::caller()), loc)
 }

@@ -1,5 +1,5 @@
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{quote, __private::TokenStream as QuoteStream};
 use syn::{parse_macro_input, DeriveInput, punctuated::Punctuated, Token, Meta};
 
 /// Derive macro generating an impl of the trait `FlowControl`.
@@ -17,8 +17,8 @@ pub fn derive_flow(item: TokenStream) -> TokenStream {
             }
         }
 
-        #imp std::ops::FromResidual<Result<std::convert::Infallible, firelib::Error>> for #struct_name {
-            fn from_residual(residual: Result<std::convert::Infallible, firelib::Error>) -> Self {
+        #imp std::ops::FromResidual<core::result::Result<std::convert::Infallible, firelib::Error>> for #struct_name {
+            fn from_residual(residual: core::result::Result<std::convert::Infallible, firelib::Error>) -> Self {
                 <Self as firelib::FlowControl>::__from_error(residual)
             }
         }
@@ -44,7 +44,10 @@ pub fn alternative(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr with AttributeArgs::parse_terminated);
 
     let (imp, struct_name) = extract_generics(&ast);
-    let (name, pattern) = generate_matcher(&args);
+
+    assert!(args.len() <= 2, "Only two arguments are supported!");
+    let name = args.first().expect("Missing match attribute name");
+    let pattern = args.last().expect("Missing match attribute pattern");
 
     TokenStream::from(quote! {
         #ast
@@ -71,15 +74,6 @@ pub fn alternative(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         }
     })
-}
-
-type QuoteStream = quote::__private::TokenStream;
-
-fn generate_matcher(args: &AttributeArgs) -> (&Meta, &Meta) {
-    assert!(args.len() <= 2, "Only two arguments are supported!");
-    
-    (args.first().expect("Missing match attribute name"),
-        args.last().expect("Missing match attribute pattern"))
 }
 
 fn extract_generics(ast: &DeriveInput) -> (QuoteStream, QuoteStream) {

@@ -59,7 +59,7 @@ impl Parser {
     }
 
     pub fn peek(&self) -> Option<&IRToken> {
-        self.ir_tokens.get(0)
+        self.ir_tokens.front()
     }
 
     pub fn get(&self, index: usize) -> Option<&IRToken> {
@@ -67,7 +67,7 @@ impl Parser {
     }
 
     /// Pops `n` elements and returns the last [`IRToken`] of this [`Parser`].
-    pub fn skip(&mut self, n: usize) -> Option<IRToken> {
+    pub fn pop_n(&mut self, n: usize) -> Option<IRToken> {
         let mut result = None;
         for _ in 0..n {
             result = self.next();
@@ -150,7 +150,7 @@ impl Parser {
         OptionErr::new(vec![op])
     }
 
-    fn lookup_context(&self, word: &LocWord, ctx: &mut Ctx) -> OptionErr<Vec<Op>> {
+    fn lookup_context(&self, word: &LocWord, ctx: &Ctx) -> OptionErr<Vec<Op>> {
         let Some(parse_ctx) = self.name_scopes.lookup(word.name(), ctx) else {
             return self.lookup_modified_var(word, ctx);
         };
@@ -167,7 +167,7 @@ impl Parser {
         .into()
     }
 
-    fn lookup_modified_var(&self, &(name, loc): &LocWord, ctx: &mut Ctx) -> OptionErr<Vec<Op>> {
+    fn lookup_modified_var(&self, &(name, loc): &LocWord, ctx: &Ctx) -> OptionErr<Vec<Op>> {
         let name_str = name.as_str(ctx);
         let (rest, var_typ) = match name_str.split_at(1) {
             ("!", rest) => (rest, VarWordType::Store),
@@ -430,7 +430,7 @@ impl Parser {
         let tok = &self[top_index];
         match tok.as_keyword() {
             KeywordType::Equal => {
-                self.skip(1);
+                self.pop_n(1);
                 self.parse_var(word, ctx, true).try_success()?
             }
 
@@ -444,7 +444,7 @@ impl Parser {
                 if top_index == 0 {
                     todo!("Uninitialized, unknown type");
                 } else {
-                    self.skip(1);
+                    self.pop_n(1);
                     self.parse_var(word, ctx, false).try_success()?
                 }
             }
@@ -456,7 +456,7 @@ impl Parser {
     }
 
     fn parse_end_ctx(&mut self, word: &LocWord, ctx: &mut Ctx) -> OptionErr<Vec<Op>> {
-        self.skip(2);
+        self.pop_n(2);
         self.parse_static_ctx(word, ctx)?;
         self.define_proc(word, Contract::default(), ctx, ModeType::Declare)
             .into_success()?
@@ -465,7 +465,7 @@ impl Parser {
     fn parse_static_ctx(&mut self, word: &LocWord, ctx: &mut Ctx) -> OptionErr<Vec<Op>> {
         if let Ok((eval, skip)) = self.compile_eval(ctx, word.loc()).value {
             if eval != ANY {
-                self.skip(skip);
+                self.pop_n(skip);
                 let primitive = Primitive::new(word.name(), eval);
                 ctx.register_const(TypeDescr::Primitive(primitive));
 
@@ -668,7 +668,7 @@ impl Parser {
         };
 
         let (_, end_loc) = self
-            .skip(skip)
+            .pop_n(skip)
             .expect("Should not fail if `compile_eval_n` was successful");
 
         let struct_type = match result {
