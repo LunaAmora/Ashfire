@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
+use Ident::*;
+use Instruction::*;
+use NumMethod::*;
+use Scope::*;
 use ashfire_types::{
     core::{Name, WORD_SIZE},
     data::{Primitive, StructInfo, TypeDescr},
     proc::{Contract, Proc},
 };
-use firelib::{anyhow::bail, Context, Result};
-use wasm_backend::{wasm_types::*, Module};
-use Ident::*;
-use Instruction::*;
-use NumMethod::*;
-use Scope::*;
+use firelib::{Context, Result, anyhow::bail};
+use wasm_backend::{Module, wasm_types::*};
 
 use crate::compiler::ctx::{Ctx, InternalString, Visitor};
 
@@ -190,6 +190,6 @@ pub fn unpack_type(descr: &TypeDescr) -> Vec<Instruction> {
 
             instructions.extend(vec![Const(WORD_SIZE), Call("free_local".into())]);
         }
-    };
+    }
     instructions
 }

@@ -60,10 +60,10 @@ pub struct NameScopes {
 impl NameScopes {
     pub fn lookup(&self, name: Name, ctx: &Ctx) -> Option<&ParseContext> {
         // Todo: there must be a better way to support `.` accessing structs
-        if let Some(field_name) = name.as_str(ctx).split('.').next() {
-            if let Some(key) = ctx.get_key(field_name) {
-                return self.lookup(key, ctx);
-            }
+        if let Some(field_name) = name.as_str(ctx).split('.').next() &&
+            let Some(key) = ctx.get_key(field_name)
+        {
+            return self.lookup(key, ctx);
         }
 
         for scope in self.scopes.iter().rev() {

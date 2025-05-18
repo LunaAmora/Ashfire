@@ -9,7 +9,7 @@ use firelib::{lazy::LazyFormatter, lexer::Loc};
 use super::{parser::Parser, utils::unexpected_end};
 use crate::compiler::{
     ctx::{Ctx, Fmt},
-    typechecking::expect::{format_frames, ArityType, Expect},
+    typechecking::expect::{ArityType, Expect, format_frames},
 };
 
 type DoubleResult<T> = ashlib::DoubleResult<'static, T, IRToken, Fmt>;

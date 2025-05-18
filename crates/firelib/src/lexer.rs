@@ -81,7 +81,7 @@ pub struct Lexer<'r> {
     line_num: usize,
 }
 
-impl<'r> Iterator for Lexer<'r> {
+impl Iterator for Lexer<'_> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -142,7 +142,7 @@ impl<'r> Lexer<'r> {
         self.col_num = self.lex_pos;
         self.comments
             .as_ref()
-            .map_or(false, |pattern| !self.read_from_pos().starts_with(pattern))
+            .is_some_and(|pattern| !self.read_from_pos().starts_with(pattern))
     }
 
     fn read_from_pos(&self) -> String {
@@ -213,7 +213,7 @@ impl<'r> Lexer<'r> {
                 },
 
                 _ => self.lex_pos += 1,
-            };
+            }
         }
     }
 
@@ -226,10 +226,10 @@ impl<'r> Lexer<'r> {
 
     fn check_match_next(&self, matcher: &str) -> bool {
         for (index, c) in matcher.char_indices().skip(1) {
-            if !self
+            if self
                 .buffer
                 .get(self.lex_pos + index)
-                .map_or(false, |&next| c == next)
+                .is_none_or(|&next| c != next)
             {
                 return false;
             }

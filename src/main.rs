@@ -78,7 +78,7 @@ fn main() {
     };
 
     if let Err(err) = result {
-        error!("{:#}", err);
+        error!("{err:#}");
     }
 }
 
@@ -90,7 +90,7 @@ fn compile_command(
     let writer = BufWriter::new(File::create(&out)?);
     compile(path, writer, target)?;
 
-    info!("Generated {:?}", out);
+    info!("Generated {out:?}");
     let out_wasm = out.with_extension("wasm");
 
     cmd_wait!("wat2wasm", &out, "-o", &out_wasm);

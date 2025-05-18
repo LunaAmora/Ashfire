@@ -1,7 +1,7 @@
 use std::{io, path::Path};
 
-use ashfire::{compile, target::Target, LANG_FOLDER};
-use criterion::{criterion_group, criterion_main, Criterion};
+use ashfire::{LANG_FOLDER, compile, target::Target};
+use criterion::{Criterion, criterion_group, criterion_main};
 
 fn bench_wasi(c: &mut Criterion) {
     let path = Path::new(LANG_FOLDER).join("test.fire");

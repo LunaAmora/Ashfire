@@ -1,5 +1,5 @@
 use crate::{
-    core::{word_aligned, Name, OffsetWord, WORD_USIZE},
+    core::{Name, OffsetWord, WORD_USIZE, word_aligned},
     data::{DataType, StructInfo, TypeDescr},
 };
 

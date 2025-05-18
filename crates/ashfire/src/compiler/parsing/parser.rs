@@ -1,20 +1,20 @@
 use std::{collections::VecDeque, fs::File, ops::Index, path::Path};
 
+use ControlOp::*;
 use ashfire_types::{core::*, data::*, enums::*, proc::*};
 use ashlib::Either;
 use firelib::{
+    Context, TrySuccess,
     lazy::LazyCtx,
     lexer::{Lexer, Loc},
     span::Span,
     utils::*,
-    Context, TrySuccess,
 };
-use ControlOp::*;
 
 use super::{types::*, utils::*};
 use crate::compiler::{
     ctx::*,
-    typechecking::expect::{expect_type, Compare},
+    typechecking::expect::{Compare, expect_type},
     utils::err_loc,
 };
 
@@ -106,7 +106,7 @@ impl Parser {
                 f(Fmt::Loc(loc)),
                 f(Fmt::Typ(tok_typ))
             );
-        };
+        }
 
         let op = match tok_typ {
             TokenType::Keyword(key) => return self.define_keyword_op(key, loc, ctx),
@@ -234,7 +234,7 @@ impl Parser {
                         return OptionErr::new(vec![
                             (OpType::Offset(name), loc),
                             (OpType::UnpackType(None), loc),
-                        ])
+                        ]);
                     }
                     _ => todo!(),
                 }
@@ -463,16 +463,16 @@ impl Parser {
     }
 
     fn parse_static_ctx(&mut self, word: &LocWord, ctx: &mut Ctx) -> OptionErr<Vec<Op>> {
-        if let Ok((eval, skip)) = self.compile_eval(ctx, word.loc()).value {
-            if eval != ANY {
-                self.pop_n(skip);
-                let primitive = Primitive::new(word.name(), eval);
-                ctx.register_const(TypeDescr::Primitive(primitive));
+        if let Ok((eval, skip)) = self.compile_eval(ctx, word.loc()).value &&
+            eval != ANY
+        {
+            self.pop_n(skip);
+            let primitive = Primitive::new(word.name(), eval);
+            ctx.register_const(TypeDescr::Primitive(primitive));
 
-                self.name_scopes
-                    .register(word.name(), ParseContext::ConstStruct);
-                success!();
-            }
+            self.name_scopes
+                .register(word.name(), ParseContext::ConstStruct);
+            success!();
         }
         OptionErr::default()
     }
@@ -483,7 +483,7 @@ impl Parser {
         if self.inside_proc() {
             let error = "Cannot define a procedure inside of another procedure";
             return Err(err_loc(error, loc));
-        };
+        }
 
         let proc = Proc::new(name, contract, mode);
 
@@ -663,7 +663,7 @@ impl Parser {
                         err_loc("Failed to parse an valid struct value at compile-time", loc)
                     },
                     |err| err,
-                ))
+                ));
             }
         };
 
@@ -683,7 +683,7 @@ impl Parser {
                     TypeDescr::Reference(ptr) => {
                         expect_type(tok, ptr, end_loc)?;
                     }
-                };
+                }
 
                 TypeDescr::Primitive(Primitive::new(name, tok))
             }
@@ -768,8 +768,9 @@ impl Parser {
     pub fn lex_include(
         &mut self, path: &Path, module: &str, source: &str, ctx: &mut Ctx,
     ) -> LazyResult<&mut Self> {
-        debug!("Including: {:?}", path);
-        let file = File::open(path).with_context(|| format!("Could not read file `{path:?}`"))?;
+        debug!("Including: {}", path.display());
+        let file = File::open(path)
+            .with_context(|| format!("Could not read file `{}`", path.display()))?;
 
         let lex = ctx.new_lexer(file, source, module);
         self.read_lexer(ctx, lex, module)

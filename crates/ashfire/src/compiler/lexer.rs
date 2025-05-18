@@ -4,7 +4,7 @@ use ashfire_types::{
     core::{IRToken, IRTokenExt, TokenType},
     data::TypeId,
 };
-use firelib::{lazy::LazyCtx, lexer::*, ShortCircuit};
+use firelib::{ShortCircuit, lazy::LazyCtx, lexer::*};
 
 use super::{
     ctx::{Ctx, Fmt, OptionErr},

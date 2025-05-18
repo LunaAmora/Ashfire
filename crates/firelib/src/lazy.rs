@@ -24,7 +24,7 @@ impl<T, A: Fn(Formatter<'_, T>) -> String> LazyFormatter<T> for A {
         self(f)
     }
 }
-impl<'err, T> LazyFormatter<T> for Error<'err, T> {
+impl<T> LazyFormatter<T> for Error<'_, T> {
     fn apply(&self, f: Formatter<'_, T>) -> String {
         self.0(f)
     }
@@ -54,19 +54,19 @@ impl<'err, T> Error<'err, T> {
     }
 }
 
-impl<'err, T> Display for Error<'err, T> {
+impl<T> Display for Error<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", &self.skip())
     }
 }
 
-impl<'err, T> Debug for Error<'err, T> {
+impl<T> Debug for Error<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("LazyError").field(&self.skip()).finish()
     }
 }
 
-impl<'err, E> From<anyhow::Error> for Error<'err, E> {
+impl<E> From<anyhow::Error> for Error<'_, E> {
     fn from(value: anyhow::Error) -> Self {
         Self::new(move |_| value.chain().map(ToString::to_string).join("\n"))
     }

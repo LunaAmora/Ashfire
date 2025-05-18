@@ -1,8 +1,8 @@
 use std::{io::Read, path::Path};
 
-use ashfire_types::{core::*, data::*, enums::*, proc::ModeData};
-use firelib::{lazy::LazyCtx, lexer::Loc, Result, ShortCircuit};
 use IndexOp::*;
+use ashfire_types::{core::*, data::*, enums::*, proc::ModeData};
+use firelib::{Result, ShortCircuit, lazy::LazyCtx, lexer::Loc};
 
 use super::{parser::Parser, types::*};
 use crate::{compiler::ctx::*, firelib::span::Span};
@@ -169,7 +169,7 @@ impl Ctx {
             }
 
             TypeDescr::Reference(_) => todo!(),
-        };
+        }
 
         OptionErr::new(result)
     }
@@ -255,7 +255,7 @@ impl Ctx {
     }
 
     pub fn compile_file(&mut self, path: &Path) -> Result<&mut Self> {
-        info!("Compiling file: {:?}", path);
+        info!("Compiling file: {}", path.display());
 
         let mut parser = Parser::new();
         self.include_path(&mut parser, path)?;

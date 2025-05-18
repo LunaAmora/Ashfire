@@ -154,7 +154,7 @@ where
 }
 
 pub fn invalid_context<'err, S: Display>(tok: IRToken, word: S) -> LazyError<'err> {
-    invalid_token(tok, format!("`{}` context declaration", word))
+    invalid_token(tok, format!("`{word}` context declaration"))
 }
 
 pub fn invalid_token<'err, S: Display + 'err>(tok: IRToken, error: S) -> LazyError<'err> {
@@ -194,10 +194,10 @@ pub fn expect_token_by<'err, S: Display + 'err>(
 pub fn expect_token_by_option<'err, S: Display + 'err, T>(
     value: Option<IRToken>, pred: impl FnOnce(&IRToken) -> Option<T>, desc: S, loc: Loc,
 ) -> LazyResult<'err, Spanned<T>> {
-    if let Some(tok) = value {
-        if let Some(t) = pred(&tok) {
-            return Ok((t, tok.loc()));
-        }
+    if let Some(tok) = value &&
+        let Some(t) = pred(&tok)
+    {
+        return Ok((t, tok.loc()));
     }
 
     Err(invalid_option(value, desc, loc))

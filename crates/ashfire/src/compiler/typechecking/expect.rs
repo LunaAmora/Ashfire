@@ -90,7 +90,7 @@ pub trait Expect<'err, T: Clone + Typed + Location + 'err>: UncheckedStack<T> {
                 n,
                 len
             );
-        };
+        }
         Ok(())
     }
 

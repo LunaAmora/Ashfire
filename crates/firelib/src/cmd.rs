@@ -68,13 +68,12 @@ impl ChildGuard {
 
 impl Drop for ChildGuard {
     fn drop(&mut self) {
-        if let Some(mut child) = self.guard.take() {
-            if matches!(child.try_wait(), Ok(None)) {
-                if let Err(e) = child.kill() {
-                    eprintln!("Could not kill child process: {e}");
-                }
-            }
-        };
+        if let Some(mut child) = self.guard.take() &&
+            matches!(child.try_wait(), Ok(None)) &&
+            let Err(e) = child.kill()
+        {
+            eprintln!("Could not kill child process: {e}");
+        }
     }
 }
 

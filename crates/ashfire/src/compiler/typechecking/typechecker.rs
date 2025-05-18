@@ -6,10 +6,10 @@ use ashfire_types::{
 };
 use ashlib::{EvalStack, UncheckedStack};
 use firelib::{
+    Result,
     lazy::{LazyCtx, LazyFormatter},
     lexer::Loc,
     span::Spanned,
-    Result,
 };
 
 use super::expect::*;
@@ -400,7 +400,7 @@ impl TypeChecker {
                 self.data_stack
                     .expect_peek(ArityType::Type(data_type), loc)?;
             }
-        };
+        }
         Ok(())
     }
 

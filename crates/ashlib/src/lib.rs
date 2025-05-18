@@ -6,7 +6,7 @@ use std::{
 
 pub use either::Either;
 use firelib::{
-    alternative, choice::Alternative, lazy, Error, FlowControl, Result, Success, SuccessFrom,
+    Error, FlowControl, Result, Success, SuccessFrom, alternative, choice::Alternative, lazy,
 };
 
 #[derive(FlowControl)]
@@ -20,13 +20,13 @@ impl<'err, T, E> Alternative for OptionErr<'err, T, E> {
     type ChoiceResidual = lazy::Result<'err, Option<T>, E>;
 }
 
-impl<'err, T, E> OptionErr<'err, T, E> {
+impl<T, E> OptionErr<'_, T, E> {
     pub fn new(value: T) -> Self {
         Self { value: Ok(Some(value)) }
     }
 }
 
-impl<'err, T, E> Default for OptionErr<'err, T, E> {
+impl<T, E> Default for OptionErr<'_, T, E> {
     fn default() -> Self {
         Self { value: Ok(None) }
     }
@@ -44,7 +44,7 @@ impl<'err, T, E> From<lazy::Error<'err, E>> for OptionErr<'err, T, E> {
     }
 }
 
-impl<'err, T, E> From<Error> for OptionErr<'err, T, E> {
+impl<T, E> From<Error> for OptionErr<'_, T, E> {
     fn from(err: Error) -> Self {
         Self { value: Err(lazy::Error::from(err)) }
     }
@@ -65,19 +65,19 @@ impl<'err, T, E> From<lazy::Result<'err, T, E>> for OptionErr<'err, T, E> {
     }
 }
 
-impl<'err, T, E> From<Option<T>> for OptionErr<'err, T, E> {
+impl<T, E> From<Option<T>> for OptionErr<'_, T, E> {
     fn from(value: Option<T>) -> Self {
         Self { value: Ok(value) }
     }
 }
 
-impl<'err, T, E> Success for OptionErr<'err, Vec<T>, E> {
+impl<T, E> Success for OptionErr<'_, Vec<T>, E> {
     fn success_value() -> Self {
         Self { value: Ok(Some(vec![])) }
     }
 }
 
-impl<'err, T, E> SuccessFrom for OptionErr<'err, Vec<T>, E> {
+impl<T, E> SuccessFrom for OptionErr<'_, Vec<T>, E> {
     type From = T;
 
     fn success_from(from: Self::From) -> Self {
@@ -89,7 +89,7 @@ pub struct DoubleResult<'err, T, E, F> {
     pub value: Result<T, Either<E, lazy::Error<'err, F>>>,
 }
 
-impl<'err, T, E, F> DoubleResult<'err, T, E, F> {
+impl<T, E, F> DoubleResult<'_, T, E, F> {
     pub fn new(value: T) -> Self {
         Self { value: Ok(value) }
     }
@@ -119,14 +119,14 @@ impl<'err, T, E, F> Try for DoubleResult<'err, T, E, F> {
     }
 }
 
-impl<'err, T, E, F> FromResidual for DoubleResult<'err, T, E, F> {
+impl<T, E, F> FromResidual for DoubleResult<'_, T, E, F> {
     fn from_residual(residual: <Self as Try>::Residual) -> Self {
         Self { value: Err(residual) }
     }
 }
 
-impl<'err, T, E, F> FromResidual<Result<Infallible, <Self as Try>::Residual>>
-    for DoubleResult<'err, T, E, F>
+impl<T, E, F> FromResidual<Result<Infallible, <Self as Try>::Residual>>
+    for DoubleResult<'_, T, E, F>
 {
     fn from_residual(Err(err): Result<Infallible, <Self as Try>::Residual>) -> Self {
         Self { value: Err(err) }

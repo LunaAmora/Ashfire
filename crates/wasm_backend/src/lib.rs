@@ -1,4 +1,3 @@
-#![feature(slice_as_chunks)]
 pub mod wasm_types;
 
 use std::{collections::HashMap, fmt::Write, io};
@@ -262,7 +261,7 @@ fn wasm_data_format(data: i32) -> String {
 
     for &[a, b] in format!("{data:08x}").as_bytes().as_rchunks::<2>().1 {
         let byte = (hex_to_nibble(a) << 4) | hex_to_nibble(b);
-        write!(&mut result, "\\{:02x}", byte).unwrap();
+        write!(&mut result, "\\{byte:02x}").unwrap();
     }
 
     result

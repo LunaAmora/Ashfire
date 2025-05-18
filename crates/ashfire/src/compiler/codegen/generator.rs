@@ -1,5 +1,9 @@
 use std::io::Write;
 
+use Ident::*;
+use Instruction::*;
+use NumMethod::*;
+use Scope::*;
 use ashfire_types::{
     core::{DataKey, Typed, WORD_USIZE},
     data::{DataType, Primitive, StructInfo, TypeId},
@@ -7,13 +11,9 @@ use ashfire_types::{
     proc::{Binds, ModeData, Proc},
 };
 use firelib::{Context, Result};
-use wasm_backend::{wasm_types::*, Module};
-use Ident::*;
-use Instruction::*;
-use NumMethod::*;
-use Scope::*;
+use wasm_backend::{Module, wasm_types::*};
 
-use super::types::{unpack_type, FuncGen, Generator};
+use super::types::{FuncGen, Generator, unpack_type};
 use crate::{compiler::ctx::*, target::Target};
 
 impl Generator {

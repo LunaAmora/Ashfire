@@ -15,7 +15,7 @@ pub const WORD_SIZE: i32 = 4;
 pub const WORD_USIZE: u16 = 4;
 
 pub fn word_aligned(value: u16) -> u16 {
-    ((value + WORD_USIZE - 1) / WORD_USIZE) * WORD_USIZE
+    value.div_ceil(WORD_USIZE) * WORD_USIZE
 }
 
 pub trait Typed {
@@ -177,7 +177,7 @@ impl IRToken {
 
 impl PartialEq<KeywordType> for &IRToken {
     fn eq(&self, other: &KeywordType) -> bool {
-        self.get_keyword().map_or(false, |key| other == &key)
+        self.get_keyword().is_some_and(|key| other == &key)
     }
 }
 
@@ -208,13 +208,11 @@ impl DataToken {
         self.0.value()
     }
 
-    #[must_use]
     pub fn add(self, (Value(_, r_value), _): Self, loc: Loc) -> Self {
         let (Value(id, value), _) = self;
         (Value(id, value + r_value), loc)
     }
 
-    #[must_use]
     pub fn sub(self, (Value(_, r_value), _): Self, loc: Loc) -> Self {
         let (Value(id, value), _) = self;
         (Value(id, value - r_value), loc)

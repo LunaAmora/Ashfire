@@ -144,9 +144,7 @@ impl Ctx {
     pub fn has_source(&self, source: &str, module: &str) -> bool {
         let interner = &self.interner.borrow();
         if let (Some(src), Some(modl)) = (interner.get(source), interner.get(module)) {
-            self.included_sources
-                .get(&src)
-                .map_or(false, |module_src| module_src == &modl)
+            self.included_sources.get(&src) == Some(&modl)
         } else {
             false
         }
@@ -171,7 +169,7 @@ impl Ctx {
     pub fn push_data(&mut self, mut word: String, size: u16) -> DataKey {
         if word.ends_with("\\0") {
             word.push('0');
-        };
+        }
 
         let name = self.get_or_intern(&word);
         let value = OffsetData::new(name, size, self.data_size);

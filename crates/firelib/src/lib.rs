@@ -9,8 +9,8 @@ use std::{
 
 pub use anyhow::{self, Context, Error, Result};
 #[cfg(feature = "derive")]
-pub use firelib_macro::{alternative, FlowControl};
-use lazy::{private::Sealed, Error as LazyError};
+pub use firelib_macro::{FlowControl, alternative};
+use lazy::{Error as LazyError, private::Sealed};
 
 pub mod choice;
 pub mod cmd;

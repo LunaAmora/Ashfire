@@ -25,7 +25,7 @@ pub fn compile(path: &Path, writer: impl Write, target: Target) -> Result<()> {
 pub fn compile_buffer(
     source: &str, reader: impl Read, writer: impl Write, target: Target, std: bool,
 ) -> Result<()> {
-    info!("Compiling buffer: {:?}", source);
+    info!("Compiling buffer: {source:?}");
     let mut ctx = Ctx::new();
 
     if std {
@@ -36,7 +36,7 @@ pub fn compile_buffer(
         ctx.compile_parser(parser)?;
     } else {
         ctx.compile_buffer(source, reader)?;
-    };
+    }
 
     ctx.type_check()?.generate_wasm(writer, target)
 }
@@ -48,7 +48,7 @@ impl Ctx {
         match target {
             Target::Wasi => self.include_path(parser, &folder.join("lib/wasi.fire"))?,
             Target::Wasm4 => self.include_path(parser, &folder.join("lib/wasm4.fire"))?,
-        };
+        }
 
         self.include_path(parser, &folder.join("lib/std.fire"))
     }
